@@ -42,6 +42,7 @@ OpenMate si ispira all'obiettivo core di [OpenClaw](https://github.com/openclaw/
 | 08 | [UI Tamagotchi](docs/08-ui-tamagotchi.md) | Contratto d'interfaccia (design futuro) |
 | 09 | [Stack e Layout Repo](docs/09-tech-stack-and-repo-layout.md) | TS/Node, pnpm, package |
 | 10 | [Roadmap](docs/10-roadmap.md) | Fasi di sviluppo, MVP |
+| 11 | [Piano di Implementazione MVP](docs/11-mvp-implementation-plan.md) | Task, milestone, contratti, test |
 | — | [Architecture Decision Records](docs/adr/) | Le decisioni chiave tracciate |
 
 ## Contribuire

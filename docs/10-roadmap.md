@@ -10,7 +10,7 @@ Definire visione, architettura e decisioni chiave (questi documenti + gli [ADR](
 
 ## Fase 1 — MVP: agente autonomo minimo
 
-Il nucleo funzionante, senza UI grafica.
+Il nucleo funzionante, senza UI grafica. **Piano dettagliato ed eseguibile:** [11 — Piano di Implementazione MVP](11-mvp-implementation-plan.md).
 
 - **`packages/daemon`** — processo con API locale + event stream ([01](01-architecture-overview.md), [08](08-ui-tamagotchi.md)).
 - **`packages/core`** — cognitive loop base (perceive → plan → act → reflect) e macchina a stati ([02](02-agent-loop-and-autonomy.md)).
