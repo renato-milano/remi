@@ -17,6 +17,9 @@
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist .turbo"
   },
+  "dependencies": {
+    "croner": "^9.0.0"
+  },
   "devDependencies": {
     "typescript": "catalog:",
     "tsup": "catalog:",
