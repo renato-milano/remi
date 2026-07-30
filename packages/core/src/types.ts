@@ -1,5 +1,4 @@
 import type { TokenUsage } from '@openmate/llm';
-import type { ApprovalRequest } from '@openmate/tools';
 
 export type AgentStatus = 'idle' | 'thinking' | 'acting' | 'sleeping' | 'waiting_approval';
 
@@ -14,12 +13,14 @@ export type Trigger =
   | { kind: 'heartbeat' }
   | { kind: 'cron'; name: string };
 
-/** Eventi emessi dal loop verso i client (vedi docs/01, docs/08). */
+/**
+ * Eventi emessi dal loop verso i client (vedi docs/01, docs/08).
+ * L'approval_request (con requestId) è emesso dal daemon, non dal loop.
+ */
 export type AgentEvent =
   | { kind: 'state'; state: AgentState }
   | { kind: 'message'; role: 'agent'; content: string }
-  | { kind: 'action'; summary: string }
-  | { kind: 'approval_request'; request: ApprovalRequest };
+  | { kind: 'action'; summary: string };
 
 export interface CycleResult {
   taskId?: string;

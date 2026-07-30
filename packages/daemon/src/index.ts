@@ -1,12 +1,26 @@
 import { fileURLToPath } from 'node:url';
+import { loadConfig, resolveSecrets } from '@openmate/config';
+import { Daemon } from './daemon.js';
+import { startHttpServer } from './server.js';
 
-export const PACKAGE_NAME = '@openmate/daemon';
+export { Daemon, type DaemonOptions, type DaemonEvent } from './daemon.js';
+export { SqliteAuditSink } from './audit-sqlite.js';
+export { startHttpServer, type ClientCommand } from './server.js';
 
-// TODO(MVP): API locale (Hono/http) + SSE event stream; monta tutto — vedi docs/11-mvp-implementation-plan.md
-export function main(): void {
-  console.log('OpenMate daemon — stub (M0). Vedi docs/11-mvp-implementation-plan.md');
+/** Entrypoint: carica config, monta il daemon, avvia scheduler e HTTP. */
+export async function main(): Promise<void> {
+  const config = loadConfig({ configPath: process.env.OPENMATE_CONFIG });
+  const secrets = resolveSecrets(config);
+  const daemon = new Daemon({ config, secrets });
+  daemon.start();
+  const port = Number(process.env.OPENMATE_PORT ?? 8787);
+  startHttpServer(daemon, port);
+  if (!secrets.apiKey) {
+    console.warn('⚠️  Nessuna chiave API (OPENMATE_ANTHROPIC_API_KEY): i cicli LLM falliranno.');
+  }
+  console.log(`OpenMate daemon in ascolto su http://127.0.0.1:${port}`);
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  main();
+  void main();
 }

@@ -61,7 +61,6 @@ export class CognitiveLoop {
       audit: this.audit,
       requestApproval: async (req) => {
         this.setState({ status: 'waiting_approval' });
-        this.opts.onEvent?.({ kind: 'approval_request', request: req });
         const approved = await this.opts.requestApproval(req);
         this.setState({ status: 'acting' });
         return approved;

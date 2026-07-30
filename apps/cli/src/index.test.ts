@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { PACKAGE_NAME } from './index.js';
+import { main } from './index.js';
 
 describe('@openmate/cli', () => {
-  it('espone il nome del package', () => {
-    expect(PACKAGE_NAME).toBe('@openmate/cli');
+  it('espone un entrypoint main()', () => {
+    expect(typeof main).toBe('function');
   });
 });
