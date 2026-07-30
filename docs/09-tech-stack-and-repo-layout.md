@@ -9,7 +9,7 @@ Fissare lo stack tecnico e la struttura del monorepo, in modo che un contributor
 | Ambito | Scelta | Note |
 |---|---|---|
 | Linguaggio | **TypeScript** | Tipi su tutto il core. |
-| Runtime | **Node.js 24+** | Coerente col riferimento OpenClaw. |
+| Runtime | **Node.js 22+ (LTS)** | 22 è la LTS corrente e regge tutto lo stack; 24+ opzionale. |
 | Monorepo | **pnpm workspace** | Package multipli, dipendenze condivise. |
 | DB embedded | **SQLite** via `better-sqlite3` | Sincrono, veloce, zero server ([03](03-memory-architecture.md)). |
 | Vector search | **`sqlite-vec`** | Estensione vettoriale su SQLite. |

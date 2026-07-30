@@ -1,0 +1,17 @@
+packages:
+  - packages/*
+  - apps/*
+
+# Build script approvati (esbuild serve a tsup/vitest/tsx; biome per lint/format).
+allowBuilds:
+  '@biomejs/biome': true
+  esbuild: true
+
+# Versioni centralizzate delle dev-dependency condivise (pnpm catalog).
+# I package le referenziano con "catalog:".
+catalog:
+  typescript: ^5.6.3
+  tsup: ^8.3.0
+  vitest: ^2.1.9
+  tsx: ^4.19.2
+  "@types/node": ^22.10.0
