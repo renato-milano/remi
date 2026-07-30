@@ -1,3 +1,9 @@
-export const PACKAGE_NAME = '@openmate/core';
-
-// TODO(MVP): cognitive loop + macchina a stati + goal/task + budget — vedi docs/11-mvp-implementation-plan.md
+export { CognitiveLoop, type CognitiveLoopOptions } from './loop.js';
+export { TaskStore, type Goal, type Task, type TaskStatus } from './task-store.js';
+export type {
+  AgentEvent,
+  AgentState,
+  AgentStatus,
+  CycleResult,
+  Trigger,
+} from './types.js';
