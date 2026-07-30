@@ -17,10 +17,15 @@
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist .turbo"
   },
+  "dependencies": {
+    "better-sqlite3": "^12.2.0",
+    "gray-matter": "^4.0.3"
+  },
   "devDependencies": {
     "typescript": "catalog:",
     "tsup": "catalog:",
     "vitest": "catalog:",
-    "@types/node": "catalog:"
+    "@types/node": "catalog:",
+    "@types/better-sqlite3": "^7.6.11"
   }
 }

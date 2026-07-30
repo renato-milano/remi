@@ -1,3 +1,13 @@
-export const PACKAGE_NAME = '@openmate/memory';
-
-// TODO(MVP): SQLite + wiki markdown + FTS5 + core memory + tool memory.* — vedi docs/11-mvp-implementation-plan.md
+export { Memory, createMemory } from './memory.js';
+export type {
+  Actor,
+  CoreBlock,
+  EpisodicEvent,
+  EpisodicKind,
+  MemoryHit,
+  MemoryRef,
+  MemorySource,
+  MemorySystem,
+  SearchOptions,
+  SemanticNote,
+} from './types.js';

@@ -6,6 +6,7 @@ packages:
 allowBuilds:
   '@biomejs/biome': true
   esbuild: true
+  better-sqlite3: true
 
 # Versioni centralizzate delle dev-dependency condivise (pnpm catalog).
 # I package le referenziano con "catalog:".
