@@ -23,6 +23,16 @@ flowchart LR
 
 Questo loop è un sotto-processo della fase **Act** del ciclo cognitivo ([02](02-agent-loop-and-autonomy.md)): l'agente entra in modalità computer-use per un task GUI e ne esce col risultato.
 
+### Verifica via screenshot (screenshot-verify)
+
+Ogni azione è seguita da una **verifica esplicita**: si cattura un nuovo screenshot e si controlla che lo **stato atteso** si sia realizzato *prima* di procedere. Non si assume mai che un click abbia avuto effetto. Su **mismatch** (lo schermo non è cambiato come previsto) l'agente riprova o ri-pianifica, entro il budget di step ([02](02-agent-loop-and-autonomy.md)).
+
+- Ogni step porta con sé un'**aspettativa verificabile** ("dopo il click dovrebbe comparire X"), controllata dal modello vision sullo screenshot successivo.
+- Riduce gli errori di *grounding* (coordinate sbagliate) e rende il loop robusto ad app lente o layout inattesi.
+- Lo screenshot pre/post azione alimenta anche l'**audit visivo** (sotto).
+
+> Pattern ispirato alle skill `capture-verify`/`screenshot-verify` di [OpenWork](https://github.com/different-ai/openwork); è indipendente dal modello e dal reasoning backend.
+
 ## Tool esposti
 
 | Tool | Permesso | Note |
@@ -59,7 +69,7 @@ Il vision-only è costoso su cicli frequenti. Mitigazioni di default:
 
 ## Rischi e questioni aperte
 
-- **Affidabilità del grounding** (click sulle coordinate giuste) tra risoluzioni/temi diversi.
+- **Affidabilità del grounding** (click sulle coordinate giuste) tra risoluzioni/temi diversi — mitigata ma non risolta da screenshot-verify.
 - **Privacy degli screenshot**: se e quanto conservarli nell'audit; redazione di contenuti sensibili.
 - **Latenza percepita** per task interattivi: l'esperienza tamagotchi deve comunicare che l'agente "sta guardando/agendo" ([08](08-ui-tamagotchi.md)).
 - **Portabilità** dei backend di cattura/input oltre macOS.

@@ -51,12 +51,47 @@ Lettura/scrittura entro **percorsi consentiti** (es. workspace dell'agente, cart
 
 ## Estensibilità (skills)
 
-Una **skill** è un pacchetto che registra uno o più tool (più eventuali prompt/istruzioni). Requisiti:
+Una **skill** è un pacchetto che estende l'agente con conoscenza procedurale + eventuali script/tool. Requisiti:
 - dichiara i permessi richiesti in modo esplicito;
 - non bypassa il registry né il layer di permessi;
 - versionabile e disinstallabile senza toccare il core.
 
+### Formato: `SKILL.md`
+
+Adottiamo il formato **`SKILL.md`** (già standard in agenti come Claude/opencode; usato da [OpenWork](https://github.com/different-ai/openwork) come *prior art*): una cartella per skill con un file markdown a frontmatter, più eventuali script.
+
+```
+skills/
+  <nome-skill>/
+    SKILL.md            # frontmatter + istruzioni
+    scripts/*.mjs       # opzionale: script eseguibili dalla skill
+```
+
+```markdown
+---
+name: nome-skill
+description: Cosa fa. Use when ... (trigger per far scegliere la skill all'agente)
+---
+
+# Nome Skill
+## Cosa fa
+...
+## Come si usa
+...
+```
+
+Il campo `description` con i trigger "Use when…" è ciò che permette all'agente di **scoprire e selezionare** la skill pertinente (discovery, sotto). Una skill può registrare tool nel registry e/o fornire solo istruzioni procedurali.
+
 Un eventuale registry pubblico di skill è materiale da roadmap ([10](10-roadmap.md)), non MVP.
+
+## Interoperabilità MCP
+
+Il **Model Context Protocol (MCP)** è il confine di interoperabilità di OpenMate, in due direzioni:
+
+- **OpenMate come server MCP** — espone le proprie capacità (tool `memory.*`, `computer.*`, `shell.*`, skill) a agenti esterni. Seguiamo il pattern a **due verbi** che OpenWork usa a scala (`search_capabilities` / `execute_capability`): un verbo per *scoprire* le capacità disponibili, uno per *eseguirle*. Vantaggio: un registry grande resta gestibile per il modello esterno senza gonfiare il contesto con tutti gli schemi. È così che il futuro **`LocalAgentBackend`** (es. Claude Code/opencode) userà memoria e computer-use di OpenMate ([ADR-0009](adr/0009-reasoning-backend-own-loop.md)).
+- **OpenMate come client MCP** — consuma capability/skill esterne (server MCP di terzi) come tool aggiuntivi nel registry, con gli stessi permessi e audit dei tool nativi ([06](06-security-and-permissions.md)).
+
+I permessi e l'audit si applicano **identici** che la capacità sia nativa, da skill o via MCP: nessuna scorciatoia che aggiri il layer di sicurezza.
 
 ## Contesto di esecuzione
 
@@ -73,4 +108,5 @@ interface ToolContext {
 
 - **Granularità dei permessi:** per-tool basta o serve per-parametro (es. `shell.run` con comando specifico)?
 - **Composizione di tool** in azioni multi-step atomiche.
-- **Framework: deciso** — registry e tool-use su misura; la libreria di astrazione provider copre solo il layer LLM ([ADR-0009](adr/0009-reasoning-backend-own-loop.md), [ADR-0010](adr/0010-provider-aggregation-sdk-openai-compatible.md)). Resta da progettare l'esposizione dei tool via **MCP** per il futuro `LocalAgentBackend`.
+- **Framework: deciso** — registry e tool-use su misura; la libreria di astrazione provider copre solo il layer LLM ([ADR-0009](adr/0009-reasoning-backend-own-loop.md), [ADR-0010](adr/0010-provider-aggregation-sdk-openai-compatible.md)). L'esposizione via **MCP** è definita nella sezione *Interoperabilità MCP* sopra.
+- **Schema esatto delle capability MCP** (mapping tool nativi → verbi `search`/`execute`) e granularità della discovery — da dettagliare in fase di implementazione.
