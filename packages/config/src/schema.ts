@@ -1,0 +1,56 @@
+import { z } from 'zod';
+
+/** Provider LLM e modello (vedi docs/07, ADR-0007/0010). */
+export const providerSchema = z.object({
+  name: z.enum(['anthropic', 'openai-compatible']).default('anthropic'),
+  model: z.string().default('claude-sonnet-4-5'),
+  /** Base URL per provider OpenAI-compatible (Ollama/LiteLLM/OpenRouter). */
+  baseURL: z.string().url().optional(),
+});
+
+/** Budget di un ciclo cognitivo (anti loop-runaway, vedi docs/02). */
+export const budgetSchema = z.object({
+  maxSteps: z.number().int().positive().default(12),
+  maxTokens: z.number().int().positive().optional(),
+  wallClockMs: z.number().int().positive().default(120_000),
+});
+
+/** Policy di autonomia: cosa l'agente può fare senza chiedere (vedi docs/06). */
+export const autonomySchema = z.object({
+  shell: z
+    .object({
+      allow: z.array(z.string()).default([]),
+      deny: z.array(z.string()).default([]),
+    })
+    .default({ allow: [], deny: [] }),
+  files: z
+    .object({
+      allow: z.array(z.string()).default([]),
+    })
+    .default({ allow: [] }),
+});
+
+/** Heartbeat + cron (vedi docs/02). */
+export const heartbeatSchema = z.object({
+  intervalMs: z.number().int().positive().default(300_000),
+  cron: z.array(z.string()).default([]),
+});
+
+export const storageSchema = z.object({
+  /** Root local-first dello storage (openmate.db, memory/). */
+  root: z.string().default('.'),
+});
+
+export const configSchema = z.object({
+  provider: providerSchema.default({}),
+  heartbeat: heartbeatSchema.default({}),
+  autonomy: autonomySchema.default({}),
+  budget: budgetSchema.default({}),
+  storage: storageSchema.default({}),
+});
+
+export type ProviderConfig = z.infer<typeof providerSchema>;
+export type BudgetConfig = z.infer<typeof budgetSchema>;
+export type AutonomyConfig = z.infer<typeof autonomySchema>;
+export type HeartbeatConfig = z.infer<typeof heartbeatSchema>;
+export type OpenMateConfig = z.infer<typeof configSchema>;

@@ -1,3 +1,15 @@
-export const PACKAGE_NAME = '@openmate/config';
-
-// TODO(MVP): schema config (zod), segreti/chiavi, policy autonomia — vedi docs/11-mvp-implementation-plan.md
+export { loadConfig, defaultConfig, type LoadOptions } from './config.js';
+export { resolveSecrets, type Secrets } from './secrets.js';
+export {
+  configSchema,
+  providerSchema,
+  budgetSchema,
+  autonomySchema,
+  heartbeatSchema,
+  storageSchema,
+  type OpenMateConfig,
+  type ProviderConfig,
+  type BudgetConfig,
+  type AutonomyConfig,
+  type HeartbeatConfig,
+} from './schema.js';
