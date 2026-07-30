@@ -6,9 +6,15 @@ settings:
 
 catalogs:
   default:
+    '@ai-sdk/anthropic':
+      specifier: ^2.0.0
+      version: 2.0.92
     '@types/node':
       specifier: ^22.10.0
       version: 22.20.1
+    ai:
+      specifier: ^5.0.0
+      version: 5.0.223
     tsup:
       specifier: ^8.3.0
       version: 8.5.1
@@ -109,10 +115,10 @@ importers:
   packages/llm:
     dependencies:
       '@ai-sdk/anthropic':
-        specifier: ^2.0.0
+        specifier: 'catalog:'
         version: 2.0.92(zod@3.25.76)
       ai:
-        specifier: ^5.0.0
+        specifier: 'catalog:'
         version: 5.0.223(zod@3.25.76)
     devDependencies:
       '@types/node':
@@ -172,6 +178,16 @@ importers:
         version: 2.1.9(@types/node@22.20.1)
 
   packages/tools:
+    dependencies:
+      '@openmate/memory':
+        specifier: workspace:*
+        version: link:../memory
+      ai:
+        specifier: 'catalog:'
+        version: 5.0.223(zod@3.25.76)
+      zod:
+        specifier: 'catalog:'
+        version: 3.25.76
     devDependencies:
       '@types/node':
         specifier: 'catalog:'

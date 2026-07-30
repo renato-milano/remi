@@ -17,3 +17,5 @@ catalog:
   tsx: ^4.19.2
   "@types/node": ^22.10.0
   zod: ^3.23.8
+  ai: ^5.0.0
+  "@ai-sdk/anthropic": ^2.0.0

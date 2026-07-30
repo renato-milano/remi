@@ -18,8 +18,8 @@
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {
-    "ai": "^5.0.0",
-    "@ai-sdk/anthropic": "^2.0.0"
+    "ai": "catalog:",
+    "@ai-sdk/anthropic": "catalog:"
   },
   "devDependencies": {
     "typescript": "catalog:",
