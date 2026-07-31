@@ -7,6 +7,8 @@ const {
   Menu,
   safeStorage,
   shell,
+  systemPreferences,
+  desktopCapturer,
 } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
@@ -274,14 +276,27 @@ ipcMain.on('settings-close', () => {
   }
 });
 
-// Apre i pannelli Privacy di macOS per i permessi del computer-use.
-ipcMain.on('open-permission', (_e, which) => {
+// Richiede i permessi del computer-use. Su macOS usa le API di sistema per
+// FAR COMPARIRE l'app nella lista con un prompt (niente aggiunta manuale col +).
+ipcMain.on('open-permission', async (_e, which) => {
   if (process.platform !== 'darwin') return;
-  const url =
-    which === 'accessibility'
-      ? 'x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility'
-      : 'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture';
-  shell.openExternal(url);
+  if (which === 'accessibility') {
+    // Mostra il prompt e aggiunge l'app alla lista Accessibilità.
+    const trusted = systemPreferences.isTrustedAccessibilityClient(true);
+    if (trusted) return; // già concesso
+    // apri comunque il pannello per completare l'attivazione
+    shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility');
+  } else {
+    // Registrazione schermo: se non concesso, una cattura innesca il prompt/entry.
+    if (systemPreferences.getMediaAccessStatus('screen') !== 'granted') {
+      try {
+        await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 1, height: 1 } });
+      } catch {
+        /* ignora: serve solo a innescare il prompt */
+      }
+      shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture');
+    }
+  }
 });
 
 /* ---------------- IPC companion ---------------- */
