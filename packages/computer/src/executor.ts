@@ -19,8 +19,9 @@ function loadNut(): Promise<Nut> {
 /** Risolve un nome di tasto ("cmd", "enter"…) nel valore Key di nut.js. */
 function resolveKey(K: Record<string, number>, name: string): number | undefined {
   const table: Record<string, string[]> = {
-    cmd: ['LeftCmd', 'LeftSuper', 'LeftWin'],
-    command: ['LeftCmd', 'LeftSuper', 'LeftWin'],
+    cmd: ['LeftSuper', 'LeftCmd', 'LeftWin'],
+    command: ['LeftSuper', 'LeftCmd', 'LeftWin'],
+    meta: ['LeftSuper', 'LeftCmd', 'LeftWin'],
     win: ['LeftSuper', 'LeftWin'],
     super: ['LeftSuper', 'LeftWin'],
     ctrl: ['LeftControl'],
@@ -111,7 +112,7 @@ export class NutExecutor implements Executor {
     const resolved = keys.map((k) => resolveKey(K, k)).filter((v): v is number => v !== undefined);
     if (!resolved.length) return;
     await nut.keyboard.pressKey(...resolved);
-    await nut.keyboard.releaseKey(...resolved.reverse());
+    await nut.keyboard.releaseKey(...[...resolved].reverse()); // copia: non mutare resolved
   }
 
   async scroll(dx: number, dy: number): Promise<void> {

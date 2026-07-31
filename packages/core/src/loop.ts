@@ -53,7 +53,8 @@ export class CognitiveLoop {
     this.setState({ status: 'thinking', activeTaskId: task?.id, activeGoalId: task?.goalId });
 
     const core = this.opts.memory.coreBlocks();
-    const system = buildSystem(core.persona, core.user, task);
+    const hasComputer = Boolean(this.opts.registry.get('computer.screenshot'));
+    const system = buildSystem(core.persona, core.user, task, hasComputer);
     const messages: ModelMessage[] = [{ role: 'user', content: userContent(trigger, task) }];
 
     // 2. tool context: l'approval segna lo stato waiting_approval; il signal è il kill-switch
@@ -132,8 +133,19 @@ const STYLE =
   'Rispondi in modo BREVE e naturale, come in una chat con un amico: di norma 1-2 frasi. ' +
   'Vai dritto al punto, niente elenchi lunghi o preamboli. Approfondisci solo se te lo chiede.';
 
-function buildSystem(persona: string, user: string, task?: Task): string {
-  const base = `Sei un agente personale autonomo che vive sul dispositivo dell'utente.\n\n## Persona\n${persona}\n\n## Utente\n${user}\n\n## Stile\n${STYLE}`;
+const COMPUTER_GUIDE = `## Controllo del computer (vision)
+Puoi VEDERE e USARE lo schermo con i tool computer.*. Ogni azione ti restituisce un nuovo screenshot: guardalo davvero prima di decidere la mossa successiva.
+
+Regole:
+- Le coordinate (x,y) sono nei PIXEL dell'ultimo screenshot che hai ricevuto. Non inventarle: individua l'elemento nell'immagine. Se non riesci a vedere bene lo schermo, dillo invece di cliccare a caso.
+- Lavora a piccoli passi: uno screenshot per vedere → una azione → verifica sul nuovo screenshot che sia andata come previsto; solo allora prosegui.
+- Per aprire un'app: usa la scorciatoia e POI DIGITA. Su macOS: computer.key(["cmd","space"]) apre Spotlight → computer.type("Google Chrome") → computer.key(["enter"]). Non fermarti dopo aver aperto il launcher.
+- Scegli la via più semplice: per aprire un sito nel browser spesso basta shell.run (macOS: open -a "Google Chrome" "https://..."). Usa i click GUI solo quando serve davvero. Non mischiare tentativi a caso di shell/curl con i click.
+- Sii deciso e concludi: quando l'obiettivo è raggiunto, fermati e riferisci in breve. Non ripetere la stessa azione in loop.`;
+
+function buildSystem(persona: string, user: string, task?: Task, computerUse = false): string {
+  let base = `Sei un agente personale autonomo che vive sul dispositivo dell'utente.\n\n## Persona\n${persona}\n\n## Utente\n${user}\n\n## Stile\n${STYLE}`;
+  if (computerUse) base += `\n\n${COMPUTER_GUIDE}`;
   return task ? `${base}\n\n## Task attivo\n${task.title}` : base;
 }
 
