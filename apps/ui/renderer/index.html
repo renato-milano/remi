@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app">
+    <div id="bubble" class="bubble hidden interactive"></div>
+
+    <div id="approval" class="approval hidden interactive">
+      <div class="approval-text" id="approvalText"></div>
+      <div class="approval-btns">
+        <button id="approveNo" class="no no-drag">Nega</button>
+        <button id="approveYes" class="yes no-drag">Consenti</button>
+      </div>
+    </div>
+
+    <div id="stage" class="stage interactive"></div>
+
+    <div id="dock" class="dock interactive">
+      <input id="input" class="no-drag" type="text" placeholder="scrivi ad OpenMate…" />
+      <span id="status" class="status">●</span>
+    </div>
+  </div>
+
+  <!-- Per abilitare Rive: aggiungi @rive-app/canvas e scommenta:
+  <script src="../node_modules/@rive-app/canvas/rive.js"></script>
+  -->
+  <script src="character.js"></script>
+  <script src="character-rive.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

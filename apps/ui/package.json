@@ -1,0 +1,15 @@
+{
+  "name": "@openmate/ui",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Overlay tamagotchi (Electron) — companion 'senza finestra'",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "dev": "electron .",
+    "start": "electron .",
+    "demo": "node demo/demo-daemon.mjs"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0"
+  }
+}

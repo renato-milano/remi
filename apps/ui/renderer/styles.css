@@ -1,0 +1,115 @@
+:root{
+  --alive:#5ef2a0; --alive-glow:rgba(94,242,160,.45);
+  --amber:#ffbf5c; --amber-glow:rgba(255,191,92,.4);
+  --bubble-bg:rgba(16,22,19,.94); --bubble-ink:#eaf1ec;
+  --font:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;background:transparent;overflow:hidden;
+  font-family:var(--font);-webkit-user-select:none;user-select:none;cursor:default}
+#app{position:relative;width:100%;height:100%;display:flex;flex-direction:column;
+  align-items:center;justify-content:flex-end;padding-bottom:6px}
+
+/* il personaggio: la parte trascinabile della finestra */
+.stage{position:relative;width:210px;height:210px;-webkit-app-region:drag;
+  filter:drop-shadow(0 12px 20px rgba(0,0,0,.35))}
+.stage svg{width:100%;height:100%;overflow:visible}
+
+/* movimenti globali */
+#bob{animation:bob 3.6s ease-in-out infinite;transform-origin:100px 176px}
+#breathe{animation:breathe 4.6s ease-in-out infinite;transform-origin:100px 168px}
+#shadow{animation:shadow 3.6s ease-in-out infinite}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
+@keyframes breathe{0%,100%{transform:scaleY(1) scaleX(1)}50%{transform:scaleY(1.035) scaleX(.99)}}
+@keyframes shadow{0%,100%{transform:scale(1);opacity:.28}50%{transform:scale(.9);opacity:.2}}
+[data-state="acting"] #bob{animation-duration:1.5s}
+[data-state="acting"] #breathe{animation-duration:1.6s}
+[data-state="sleeping"] #bob{animation-duration:6.5s}
+[data-state="sleeping"] #breathe{animation-duration:6.8s}
+
+/* reazione al cambio di stato (squash & stretch) */
+.react #body{animation:squash .42s cubic-bezier(.3,.8,.3,1)}
+@keyframes squash{0%{transform:scale(1,1)}30%{transform:scale(1.12,.9)}60%{transform:scale(.96,1.05)}100%{transform:scale(1,1)}}
+#body{transform-origin:100px 150px}
+
+/* occhi / blink / sonno */
+.eyes-open{transform-box:fill-box;transform-origin:center;transition:transform .18s ease}
+.eyes-closed{opacity:0;transition:opacity .2s}
+[data-state="sleeping"] .eyes-open{opacity:0}
+[data-state="sleeping"] .eyes-closed{opacity:1}
+[data-state="waiting_approval"] .eyes-open{transform:scale(1.09)}
+.blink .eyes-open{transform:scaleY(.1)!important}
+
+/* sopracciglia per emozione */
+.brow{transform-box:fill-box;transform-origin:center;transition:transform .2s ease}
+[data-state="thinking"] .brow-l{transform:translateY(-4px) rotate(-14deg)}
+[data-state="thinking"] .brow-r{transform:translateY(-1px)}
+[data-state="acting"] .brow-l{transform:translateY(3px) rotate(13deg)}
+[data-state="acting"] .brow-r{transform:translateY(3px) rotate(-13deg)}
+[data-state="waiting_approval"] .brow-l,[data-state="waiting_approval"] .brow-r{transform:translateY(-5px)}
+[data-state="sleeping"] .brow-l,[data-state="sleeping"] .brow-r{transform:translateY(2px)}
+
+.cheek{fill:#ff9ec7;opacity:.28;transition:opacity .3s}
+[data-state="acting"] .cheek{opacity:.5}
+[data-state="sleeping"] .cheek{opacity:.16}
+
+/* aura per stato */
+.aura{opacity:0;transition:fill .4s,opacity .4s;fill:var(--alive)}
+[data-state="idle"] .aura{opacity:.28}
+[data-state="thinking"] .aura{opacity:.42}
+[data-state="acting"] .aura{opacity:.6}
+[data-state="waiting_approval"] .aura{opacity:.62;fill:var(--amber)}
+[data-state="sleeping"] .aura{opacity:.14;fill:#7f8f9a}
+
+/* indicatori */
+.ind{opacity:0;transition:opacity .3s}
+[data-state="thinking"] .ind-think{opacity:1}
+[data-state="acting"] .ind-act{opacity:1}
+[data-state="sleeping"] .ind-sleep{opacity:1}
+[data-state="waiting_approval"] .ind-ask{opacity:1}
+.dot{animation:bobdot 1.1s ease-in-out infinite}
+.dot:nth-child(2){animation-delay:.15s}.dot:nth-child(3){animation-delay:.3s}
+@keyframes bobdot{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
+.spark{transform-origin:center;animation:spin 1.2s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.zz{animation:drift 3s ease-in-out infinite}
+.zz2{animation-delay:1.4s}
+@keyframes drift{0%{opacity:0;transform:translate(0,0)}30%{opacity:1}100%{opacity:0;transform:translate(8px,-14px)}}
+.ind-ask{animation:asky 1.6s ease-in-out infinite}
+@keyframes asky{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
+
+/* fumetto */
+.bubble{position:absolute;bottom:214px;max-width:260px;background:var(--bubble-bg);
+  color:var(--bubble-ink);font-size:13px;line-height:1.5;padding:12px 14px;border-radius:14px;
+  border:1px solid rgba(255,255,255,.08);backdrop-filter:blur(8px);
+  box-shadow:0 10px 30px rgba(0,0,0,.4);animation:pop .25s ease}
+.bubble::after{content:"";position:absolute;bottom:-7px;left:50%;transform:translateX(-50%) rotate(45deg);
+  width:14px;height:14px;background:var(--bubble-bg);border-right:1px solid rgba(255,255,255,.08);
+  border-bottom:1px solid rgba(255,255,255,.08)}
+.bubble.action{color:var(--alive);font-size:12px;opacity:.95}
+@keyframes pop{from{opacity:0;transform:translateY(6px) scale(.96)}to{opacity:1;transform:none}}
+
+/* approvazione */
+.approval{position:absolute;bottom:214px;width:270px;background:var(--bubble-bg);
+  border:1px solid var(--amber-glow);border-radius:14px;padding:14px;
+  box-shadow:0 0 26px var(--amber-glow),0 10px 30px rgba(0,0,0,.4)}
+.approval-text{color:#f6ead2;font-size:12.5px;line-height:1.55;margin-bottom:12px;word-break:break-word}
+.approval-text b{color:var(--amber)}
+.approval-btns{display:flex;gap:10px;justify-content:flex-end}
+.approval-btns button{font-family:var(--font);font-size:12px;border-radius:8px;padding:7px 14px;cursor:pointer;border:1px solid transparent}
+.approval-btns .no{background:transparent;border-color:rgba(255,255,255,.2);color:#cdd4cd}
+.approval-btns .yes{background:var(--amber);color:#241800;font-weight:600}
+.approval-btns button:hover{filter:brightness(1.1)}
+
+/* dock input */
+.dock{display:flex;align-items:center;gap:8px;background:var(--bubble-bg);border:1px solid rgba(255,255,255,.08);
+  border-radius:999px;padding:6px 8px 6px 14px;backdrop-filter:blur(8px);opacity:0;transform:translateY(6px);
+  transition:.2s;pointer-events:none}
+#app:hover .dock{opacity:1;transform:none;pointer-events:auto}
+.dock input{background:transparent;border:none;outline:none;color:var(--bubble-ink);font-family:var(--font);
+  font-size:12.5px;width:170px}
+.dock .status{color:#5c665e;font-size:12px}
+.dock .status.on{color:var(--alive);text-shadow:0 0 8px var(--alive-glow)}
+
+.hidden{display:none!important}
+.no-drag{-webkit-app-region:no-drag}

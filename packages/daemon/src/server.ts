@@ -1,5 +1,6 @@
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
+import { cors } from 'hono/cors';
 import { streamSSE } from 'hono/streaming';
 import type { Daemon } from './daemon.js';
 
@@ -11,6 +12,9 @@ export type ClientCommand =
 /** Wrapper HTTP locale: SSE per gli eventi + POST per i comandi (docs/08). */
 export function startHttpServer(daemon: Daemon, port: number) {
   const app = new Hono();
+
+  // L'overlay UI gira da file:// (origin nullo): CORS aperto in locale.
+  app.use('*', cors());
 
   app.get('/health', (c) => c.json({ ok: true }));
 
