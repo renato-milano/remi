@@ -1,14 +1,14 @@
 /**
  * Spiegatore di comandi shell in linguaggio semplice, per utenti non tecnici.
- * Deterministico: legge il comando REALE (non ingannabile), lo descrive in
- * italiano e ne classifica il rischio. Per i comandi non riconosciuti segnala
- * "non riconosciuto" (known:false) → il fallback LLM li spiegherà (step futuro).
+ * Deterministico: legge il comando REALE (non ingannabile). Restituisce l'azione
+ * all'INFINITO, così la UI la incornicia come domanda ("Posso …?").
+ * I comandi non riconosciuti hanno known:false → li spiegherà il fallback LLM.
  */
 
 export type RiskLevel = 'read' | 'network' | 'write' | 'dangerous' | 'unknown';
 
 export interface CommandExplanation {
-  /** Riassunto in italiano, comprensibile a un non-esperto. */
+  /** Azione all'infinito, es. "leggere le ultime righe" → "Posso leggere le ultime righe?". */
   text: string;
   level: RiskLevel;
   /** true se tutti i segmenti sono stati riconosciuti dalle regole. */
@@ -41,100 +41,100 @@ function explainSegment(segment: string): Segment {
   let r: Segment;
   switch (prog) {
     case 'ls':
-      r = { text: `Elenca i file${hasFlag('a') ? ' (anche nascosti)' : ''}${files.length ? ` in ${files.join(', ')}` : ''}`, level: 'read', known: true };
+      r = { text: `elencare i file${hasFlag('a') ? ' (anche nascosti)' : ''}${files.length ? ` in ${files.join(', ')}` : ''}`, level: 'read', known: true };
       break;
     case 'cat':
     case 'less':
     case 'more':
-      r = { text: `Legge il contenuto${inFiles}`, level: 'read', known: true };
+      r = { text: `leggere il contenuto${inFiles}`, level: 'read', known: true };
       break;
     case 'head':
-      r = { text: `Legge le prime righe${inFiles}`, level: 'read', known: true };
+      r = { text: `leggere le prime righe${inFiles}`, level: 'read', known: true };
       break;
     case 'tail':
-      r = { text: `Legge le ultime righe${inFiles}`, level: 'read', known: true };
+      r = { text: `leggere le ultime righe${inFiles}`, level: 'read', known: true };
       break;
     case 'pwd':
-      r = { text: 'Mostra la cartella corrente', level: 'read', known: true };
+      r = { text: 'vedere la cartella corrente', level: 'read', known: true };
       break;
     case 'echo':
     case 'printf':
-      r = { text: 'Stampa un testo', level: 'read', known: true };
+      r = { text: 'stampare un testo', level: 'read', known: true };
       break;
     case 'grep':
     case 'rg':
     case 'ag':
-      r = { text: 'Cerca del testo nei file', level: 'read', known: true };
+      r = { text: 'cercare del testo nei file', level: 'read', known: true };
       break;
     case 'find':
-      r = { text: 'Cerca file nel sistema', level: 'read', known: true };
+      r = { text: 'cercare file nel sistema', level: 'read', known: true };
       break;
     case 'which':
     case 'whereis':
-      r = { text: 'Trova dove si trova un programma', level: 'read', known: true };
+      r = { text: 'trovare dove si trova un programma', level: 'read', known: true };
       break;
     case 'ps':
     case 'top':
     case 'htop':
-      r = { text: 'Elenca i processi in esecuzione', level: 'read', known: true };
+      r = { text: 'vedere i processi in esecuzione', level: 'read', known: true };
       break;
     case 'df':
     case 'du':
-      r = { text: 'Controlla lo spazio su disco', level: 'read', known: true };
+      r = { text: 'controllare lo spazio su disco', level: 'read', known: true };
       break;
     case 'wc':
-      r = { text: 'Conta righe o parole', level: 'read', known: true };
+      r = { text: 'contare righe o parole', level: 'read', known: true };
       break;
     case 'date':
     case 'whoami':
     case 'uname':
     case 'env':
     case 'hostname':
-      r = { text: 'Mostra informazioni di sistema', level: 'read', known: true };
+      r = { text: 'vedere informazioni di sistema', level: 'read', known: true };
       break;
     case 'mkdir':
-      r = { text: `Crea una cartella${inFiles}`, level: 'write', known: true };
+      r = { text: `creare una cartella${inFiles}`, level: 'write', known: true };
       break;
     case 'touch':
-      r = { text: `Crea o aggiorna un file${inFiles}`, level: 'write', known: true };
+      r = { text: `creare o aggiornare un file${inFiles}`, level: 'write', known: true };
       break;
     case 'cp':
-      r = { text: 'Copia file', level: 'write', known: true };
+      r = { text: 'copiare dei file', level: 'write', known: true };
       break;
     case 'mv':
-      r = { text: 'Sposta o rinomina file', level: 'write', known: true };
+      r = { text: 'spostare o rinominare dei file', level: 'write', known: true };
       break;
     case 'ln':
-      r = { text: 'Crea un collegamento', level: 'write', known: true };
+      r = { text: 'creare un collegamento', level: 'write', known: true };
       break;
     case 'rmdir':
-      r = { text: 'Elimina una cartella vuota', level: 'write', known: true };
+      r = { text: 'eliminare una cartella vuota', level: 'write', known: true };
       break;
     case 'rm':
-      r = { text: `Elimina file${hasFlag('r') ? ' e cartelle intere' : ''}${inFiles}`, level: 'dangerous', known: true };
+      r = { text: `eliminare dei file${hasFlag('r') ? ' e cartelle intere' : ''}${inFiles}`, level: 'dangerous', known: true };
       break;
     case 'chmod':
-      r = { text: 'Cambia i permessi di un file', level: args.includes('777') ? 'dangerous' : 'write', known: true };
+      r = { text: 'cambiare i permessi di un file', level: args.includes('777') ? 'dangerous' : 'write', known: true };
       break;
     case 'chown':
-      r = { text: 'Cambia il proprietario di un file', level: 'dangerous', known: true };
+      r = { text: 'cambiare il proprietario di un file', level: 'dangerous', known: true };
       break;
     case 'kill':
     case 'pkill':
     case 'killall':
-      r = { text: 'Termina un processo', level: 'dangerous', known: true };
+      r = { text: 'terminare un processo', level: 'dangerous', known: true };
       break;
     case 'curl':
     case 'wget':
-      r = { text: 'Scarica qualcosa da internet', level: 'network', known: true };
+      r = { text: 'scaricare qualcosa da internet', level: 'network', known: true };
       break;
     case 'ping':
-      r = { text: 'Verifica la connessione di rete', level: 'network', known: true };
+      r = { text: 'verificare la connessione di rete', level: 'network', known: true };
       break;
     case 'git': {
       const sub = files[0] ?? '';
       const readSubs = ['status', 'log', 'diff', 'show', 'branch', 'remote'];
-      r = { text: `Esegue git ${sub}`.trim(), level: readSubs.includes(sub) ? 'read' : 'write', known: true };
+      r = { text: `eseguire git ${sub}`.trim(), level: readSubs.includes(sub) ? 'read' : 'write', known: true };
       break;
     }
     case 'npm':
@@ -142,7 +142,7 @@ function explainSegment(segment: string): Segment {
     case 'yarn': {
       const sub = files[0] ?? '';
       const net = ['install', 'i', 'add', 'update', 'ci'].includes(sub);
-      r = { text: `Gestisce dipendenze o script (${sub || '…'})`, level: net ? 'network' : 'write', known: true };
+      r = { text: `gestire dipendenze o script (${sub || '…'})`, level: net ? 'network' : 'write', known: true };
       break;
     }
     case 'node':
@@ -151,17 +151,17 @@ function explainSegment(segment: string): Segment {
     case 'sh':
     case 'bash':
     case 'zsh':
-      r = { text: `Esegue uno script (${prog})`, level: 'dangerous', known: true };
+      r = { text: `eseguire uno script (${prog})`, level: 'dangerous', known: true };
       break;
     case 'open':
-      r = { text: `Apre un file o un'app${inFiles}`, level: 'write', known: true };
+      r = { text: `aprire un file o un'app${inFiles}`, level: 'write', known: true };
       break;
     case 'dd':
     case 'mkfs':
-      r = { text: 'Operazione sul disco a basso livello', level: 'dangerous', known: true };
+      r = { text: 'fare un\'operazione sul disco a basso livello', level: 'dangerous', known: true };
       break;
     default:
-      r = { text: prog ? `Comando "${prog}" non riconosciuto` : 'Comando vuoto', level: 'unknown', known: false };
+      r = { text: prog ? `eseguire "${prog}", che non riconosco` : 'eseguire un comando vuoto', level: 'unknown', known: false };
   }
 
   if (admin) return { text: `${r.text} (come amministratore)`, level: 'dangerous', known: r.known };
@@ -190,6 +190,5 @@ export function explainCommand(command: string): CommandExplanation {
     'read',
   );
   if (looksDangerous(cmd)) level = 'dangerous';
-  const joined = segs.map((s) => s.text).join(', poi ');
-  return { text: joined.charAt(0).toUpperCase() + joined.slice(1), level, known };
+  return { text: segs.map((s) => s.text).join(' e poi '), level, known };
 }

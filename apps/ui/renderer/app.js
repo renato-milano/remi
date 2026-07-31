@@ -71,9 +71,9 @@ function showApproval(evt) {
   const risk = ex
     ? RISK[ex.level] || RISK.unknown
     : { label: req.risk === 'dangerous' ? '🔴 Azione pericolosa' : '🟡 Azione', cls: req.risk === 'dangerous' ? 'danger' : 'mid' };
-  const plain = ex ? ex.text : cmd || req.toolName || "un'azione";
+  const action = ex ? ex.text : 'eseguire questa azione';
   const caution = ex && !ex.known
-    ? '<div class="caution">Non riconosco questo comando — procedi con cautela.</div>'
+    ? '<div class="caution">Non riconosco bene questo comando — decidi con cautela.</div>'
     : '';
   const cmdBlock = cmd
     ? `<details class="cmd-details no-drag"><summary>mostra comando</summary><div class="cmd">${escapeHtml(cmd)}</div></details>`
@@ -81,7 +81,7 @@ function showApproval(evt) {
 
   approval.innerHTML = `
     <div class="approval-head"><span class="risk-badge ${risk.cls}">${risk.label}</span></div>
-    <div class="approval-plain">OpenMate vuole: ${escapeHtml(plain)}</div>
+    <div class="approval-plain">Posso ${escapeHtml(action)}?</div>
     ${caution}
     ${cmdBlock}
     <div class="approval-count" id="apCount"></div>
