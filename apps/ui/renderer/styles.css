@@ -38,6 +38,18 @@ html,body{width:100%;height:100%;background:transparent;overflow:hidden;
 #mouth{fill:none;stroke:var(--eye);stroke-width:6;stroke-linecap:round;
   transition:d .22s ease;filter:drop-shadow(0 0 5px var(--eye))}
 
+/* effetto schermo catodico (CRT) */
+#crt{pointer-events:none;animation:crtFlicker 4.5s steps(30,end) infinite}
+#crt-scan{fill:var(--eye);opacity:.05;animation:crtSweep 5.5s linear infinite}
+@keyframes crtSweep{
+  0%{transform:translateY(0)}
+  100%{transform:translateY(112px)}
+}
+@keyframes crtFlicker{
+  0%,7%,9%,55%,57%,100%{opacity:1}
+  8%,56%{opacity:.86}
+}
+
 /* piccole animazioni dei glifi */
 .tw{animation:twinkle 1.3s ease-in-out infinite;transform-box:fill-box;transform-origin:center}
 .tw2{animation-delay:.4s}
@@ -122,14 +134,33 @@ html,body{width:100%;height:100%;background:transparent;overflow:hidden;
 .act-t{color:#5c665e;margin-right:6px}
 .act-empty{color:#5c665e}
 
+/* pannello chat con storico */
+.chat{position:absolute;bottom:96px;width:262px;height:360px;background:var(--bubble-bg);
+  border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:10px 12px;display:flex;flex-direction:column;
+  box-shadow:0 12px 32px rgba(0,0,0,.5);backdrop-filter:blur(8px)}
+.chat-head{display:flex;justify-content:space-between;align-items:center;font-size:11px;letter-spacing:.1em;
+  text-transform:uppercase;color:#8b958c;margin-bottom:8px}
+.chat-head button{background:transparent;border:none;color:#8b958c;cursor:pointer;font-size:13px}
+.chat-log{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:7px;padding-right:3px}
+.chat-log::-webkit-scrollbar{width:6px}
+.chat-log::-webkit-scrollbar-thumb{background:rgba(255,255,255,.16);border-radius:3px}
+.chat-msg{max-width:86%;padding:8px 11px;border-radius:12px;font-size:12.5px;line-height:1.45;
+  white-space:pre-wrap;word-break:break-word}
+.chat-msg.user{align-self:flex-end;background:rgba(92,200,255,.14);color:#dff2ff;border:1px solid rgba(92,200,255,.22)}
+.chat-msg.agent{align-self:flex-start;background:rgba(255,255,255,.06);color:var(--bubble-ink)}
+.chat-foot{margin-top:8px}
+.chat-foot input{width:100%;background:#0c100e;border:1px solid rgba(255,255,255,.1);border-radius:10px;
+  padding:8px 11px;color:var(--bubble-ink);font-family:var(--font);font-size:12.5px;outline:none}
+.chat-foot input:focus{border-color:var(--alive)}
+
 /* dock evocato dall'hotkey */
 body.summoned .dock{opacity:1;transform:none;pointer-events:auto}
 
 /* posizione laterale: robot vicino al bordo, fumetto/card verso il centro */
 .robot-right .stage{right:10px;left:auto}
 .robot-left .stage{left:10px;right:auto}
-.robot-right .bubble,.robot-right .approval,.robot-right .activity{right:215px;left:auto}
-.robot-left .bubble,.robot-left .approval,.robot-left .activity{left:215px;right:auto}
+.robot-right .bubble,.robot-right .approval,.robot-right .activity,.robot-right .chat{right:215px;left:auto}
+.robot-left .bubble,.robot-left .approval,.robot-left .activity,.robot-left .chat{left:215px;right:auto}
 .robot-right .dock{right:14px;left:auto}
 .robot-left .dock{left:14px;right:auto}
 .robot-right .bubble::after{right:-6px;border-top:1px solid rgba(255,255,255,.08);border-right:1px solid rgba(255,255,255,.08)}

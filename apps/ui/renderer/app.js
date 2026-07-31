@@ -20,6 +20,10 @@ const activity = document.getElementById('activity');
 const activityBody = document.getElementById('activityBody');
 const input = document.getElementById('input');
 const statusDot = document.getElementById('status');
+const chat = document.getElementById('chat');
+const chatLog = document.getElementById('chatLog');
+const chatInput = document.getElementById('chatInput');
+const chatClose = document.getElementById('chatClose');
 
 const character =
   (bridge.riveAsset && window.createRiveCharacter?.(stage, bridge.riveAsset)) ||
@@ -40,6 +44,47 @@ function say(text, { action = false, ms = 5200 } = {}) {
 function cleanMarkdown(t) {
   return t.replace(/\*\*(.*?)\*\*/g, '$1').replace(/__(.*?)__/g, '$1').replace(/^#{1,6}\s*/gm, '');
 }
+
+/* --- chat con storico --- */
+let chatOpen = false;
+function appendChat(role, content) {
+  const row = document.createElement('div');
+  row.className = `chat-msg ${role}`;
+  row.textContent = content;
+  chatLog.appendChild(row);
+  chatLog.scrollTop = chatLog.scrollHeight;
+}
+function openChat() {
+  chatOpen = true;
+  chat.classList.remove('hidden');
+  bubble.classList.add('hidden');
+  bridge.setInteractive(true);
+  chatLog.scrollTop = chatLog.scrollHeight;
+  setTimeout(() => chatInput.focus(), 40);
+}
+function closeChat() {
+  chatOpen = false;
+  chat.classList.add('hidden');
+}
+function toggleChat() {
+  if (chatOpen) closeChat();
+  else openChat();
+}
+function sendUserMessage(raw) {
+  const text = raw.trim();
+  if (!text) return;
+  appendChat('user', text);
+  postCommand({ kind: 'user_message', content: text });
+}
+chatClose.onclick = closeChat;
+chatInput.addEventListener('keydown', (ev) => {
+  if (ev.key === 'Enter') {
+    sendUserMessage(chatInput.value);
+    chatInput.value = '';
+  } else if (ev.key === 'Escape') {
+    closeChat();
+  }
+});
 
 /* --- registro attività ("Cosa stai facendo?") --- */
 const recentLog = [];
@@ -137,8 +182,11 @@ function handleEvent(e) {
       break;
     case 'message': {
       const content = cleanMarkdown(e.content);
-      const ms = Math.min(26000, 4500 + content.length * 35); // durata ∝ lunghezza
-      say(content, { ms });
+      appendChat('agent', content);
+      if (!chatOpen) {
+        const ms = Math.min(26000, 4500 + content.length * 35); // durata ∝ lunghezza
+        say(content, { ms });
+      }
       character.flash?.('happy', 1400);
       pushLog(`💬 ${e.content}`);
       break;
@@ -187,20 +235,14 @@ connect();
 /* --- input + summon --- */
 input.addEventListener('keydown', (ev) => {
   if (ev.key === 'Enter') {
-    const text = input.value.trim();
-    if (text) postCommand({ kind: 'user_message', content: text });
+    sendUserMessage(input.value);
     input.value = '';
   } else if (ev.key === 'Escape') {
-    document.body.classList.remove('summoned');
     input.blur();
     bridge.setInteractive(false);
   }
 });
-bridge.onSummon(() => {
-  document.body.classList.add('summoned');
-  input.focus();
-  bridge.setInteractive(true);
-});
+bridge.onSummon(() => openChat());
 bridge.onShowActivity(showActivity);
 bridge.onLayout((side) => {
   const app = document.getElementById('app');
@@ -225,18 +267,28 @@ document.addEventListener('mouseleave', () => {
   if (!dragging && !document.body.classList.contains('summoned')) bridge.setInteractive(false);
 });
 
-/* --- drag & drop: trascina il robot per spostare la finestra --- */
+/* --- drag per spostare · tap (senza trascinare) per aprire/chiudere la chat --- */
 let dragging = false;
+let downX = 0;
+let downY = 0;
+let moved = false;
 stage.addEventListener('mousedown', (ev) => {
   if (ev.button !== 0) return;
   dragging = true;
+  moved = false;
+  downX = ev.screenX;
+  downY = ev.screenY;
   bridge.dragStart();
   ev.preventDefault();
+});
+window.addEventListener('mousemove', (ev) => {
+  if (dragging && (Math.abs(ev.screenX - downX) > 5 || Math.abs(ev.screenY - downY) > 5)) moved = true;
 });
 window.addEventListener('mouseup', () => {
   if (dragging) {
     dragging = false;
     bridge.dragEnd();
+    if (!moved) toggleChat(); // click senza trascinare
   }
 });
 

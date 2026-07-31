@@ -372,6 +372,9 @@ app.on('will-quit', () => {
   globalShortcut.unregisterAll();
   stopDaemon();
 });
+// chiusura pulita (spegne anche il daemon) anche via segnale
+process.on('SIGTERM', () => app.quit());
+process.on('SIGINT', () => app.quit());
 app.on('activate', () => {
   if (!win && !onbWin && (EXTERNAL || isOnboarded())) createCompanion();
 });

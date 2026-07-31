@@ -16,6 +16,17 @@ function createSvgCharacter(mount) {
       <radialGradient id="screen-g" cx="0.5" cy="0.3" r="0.95">
         <stop offset="0" stop-color="#17212f"/><stop offset="1" stop-color="#04070c"/>
       </radialGradient>
+      <!-- effetto catodico (CRT) -->
+      <clipPath id="screen-clip">
+        <rect x="35" y="45" width="130" height="110" rx="28"/>
+      </clipPath>
+      <pattern id="scanlines" width="3" height="3" patternUnits="userSpaceOnUse">
+        <rect y="0" width="3" height="1.3" fill="#000" opacity="0.28"/>
+      </pattern>
+      <radialGradient id="crt-vignette" cx="0.5" cy="0.45" r="0.72">
+        <stop offset="0.55" stop-color="#000" stop-opacity="0"/>
+        <stop offset="1" stop-color="#000" stop-opacity="0.5"/>
+      </radialGradient>
     </defs>
 
     <ellipse id="shadow" cx="100" cy="178" rx="62" ry="8" fill="#000" opacity="0.22"></ellipse>
@@ -28,7 +39,7 @@ function createSvgCharacter(mount) {
       <rect x="28" y="38" width="144" height="124" rx="34" fill="url(#head-g)"/>
       <!-- schermo (ampio, bordo sottile) -->
       <rect x="35" y="45" width="130" height="110" rx="28" fill="url(#screen-g)"/>
-      <rect x="35" y="45" width="130" height="110" rx="28" fill="none" stroke="#000" stroke-width="1.5" opacity="0.45"/>
+      <rect x="35" y="45" width="130" height="110" rx="28" fill="none" stroke="#000" stroke-width="1.5" opacity="0.65"/>
       <path d="M43 52 L84 52 L56 92 L43 92 Z" fill="#ffffff" opacity="0.05"/>
 
       <g id="screenEyes">
@@ -69,6 +80,13 @@ function createSvgCharacter(mount) {
         </g>
 
         <path id="mouth" class="mouth" d="M86 120 Q100 129 114 120"/>
+      </g>
+
+      <!-- overlay catodico: scanline + vignette + banda che scorre -->
+      <g id="crt" clip-path="url(#screen-clip)">
+        <rect x="35" y="45" width="130" height="110" fill="url(#scanlines)"/>
+        <rect x="35" y="45" width="130" height="110" fill="url(#crt-vignette)"/>
+        <rect id="crt-scan" x="35" y="43" width="130" height="16"/>
       </g>
     </g>
   </svg>`;
