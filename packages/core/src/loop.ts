@@ -152,11 +152,16 @@ const COMPUTER_GUIDE = `## Controllo del computer (vision)
 Puoi VEDERE e USARE lo schermo con i tool computer.*. Ogni azione ti restituisce un nuovo screenshot: guardalo davvero prima di decidere la mossa successiva.
 
 Regole:
-- Le coordinate (x,y) sono nei PIXEL dell'ultimo screenshot che hai ricevuto. Non inventarle: individua l'elemento nell'immagine. Se non riesci a vedere bene lo schermo, dillo invece di cliccare a caso.
-- Lavora a piccoli passi: uno screenshot per vedere → una azione → verifica sul nuovo screenshot che sia andata come previsto; solo allora prosegui.
-- Per aprire un'app: usa la scorciatoia e POI DIGITA. Su macOS: computer.key(["cmd","space"]) apre Spotlight → computer.type("Google Chrome") → computer.key(["enter"]). Non fermarti dopo aver aperto il launcher.
-- Scegli la via più semplice: per aprire un sito nel browser spesso basta shell.run (macOS: open -a "Google Chrome" "https://..."). Usa i click GUI solo quando serve davvero. Non mischiare tentativi a caso di shell/curl con i click.
-- Sii deciso e concludi: quando l'obiettivo è raggiunto, fermati e riferisci in breve. Non ripetere la stessa azione in loop.`;
+- Le coordinate (x,y) sono nei PIXEL dell'ultimo screenshot. Non inventarle: individua l'elemento nell'immagine. Se non vedi bene, dillo invece di cliccare a caso.
+- Lavora a piccoli passi: screenshot per vedere → una azione → verifica sul nuovo screenshot che sia andata come previsto; solo allora prosegui.
+- PREFERISCI i deep-link/URL invece dei click, sono molto più affidabili. Esempi (macOS, shell.run):
+  · Spotify: open "spotify:search:NOME CANZONE" (apre l'app E cerca in un colpo solo)
+  · Sito/ricerca web: open "https://www.google.com/search?q=..." oppure open -a "Google Chrome" "https://..."
+  · Aprire un'app: open -a "NomeApp"
+- Dopo aver aperto un'app aspetta che sia PRONTA: fai uno screenshot e controlla che sia caricata prima di interagire (appena aperta non ha ancora il focus).
+- Per cercare dentro un'app senza deep-link: (1) metti a fuoco il campo di ricerca cliccandolo, (2) computer.type("query"), (3) computer.key(["enter"]) per confermare. NON dimenticare Invio.
+- Non mischiare tentativi a caso di shell/curl con i click. Scegli una strategia e portala a termine.
+- Vai avanti finché l'obiettivo è DAVVERO raggiunto (il risultato è visibile nello screenshot). Non fermarti a metà; ma non ripetere all'infinito la stessa azione che non funziona: cambia approccio o chiedi.`;
 
 function buildSystem(persona: string, user: string, task?: Task, computerUse = false): string {
   let base = `Sei un agente personale autonomo che vive sul dispositivo dell'utente.\n\n## Persona\n${persona}\n\n## Utente\n${user}\n\n## Stile\n${STYLE}`;
