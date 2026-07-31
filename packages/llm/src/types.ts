@@ -25,6 +25,8 @@ export interface ReasoningInput {
   messages: ModelMessage[];
   tools?: ToolSet;
   budget: Budget;
+  /** Consente di annullare il ciclo in corso (kill-switch). */
+  signal?: AbortSignal;
 }
 
 export interface TokenUsage {

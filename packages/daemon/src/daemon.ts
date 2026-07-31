@@ -50,8 +50,14 @@ export class Daemon {
   readonly scheduler: Scheduler;
   private readonly registry: ToolRegistry;
   private readonly audit: SqliteAuditSink;
+  private readonly policy: AutonomyPolicy;
   private readonly subscribers = new Set<(event: DaemonEvent) => void>();
-  private readonly pendingApprovals = new Map<string, (approved: boolean) => void>();
+  private readonly pendingApprovals = new Map<
+    string,
+    { resolve: (approved: boolean) => void; request: ApprovalRequest }
+  >();
+  private currentAbort?: AbortController;
+  private paused = false;
 
   constructor(opts: DaemonOptions) {
     const root = opts.config.storage.root;
@@ -66,7 +72,7 @@ export class Daemon {
       .registerAll(createMemoryTools(this.memory));
 
     const backend = opts.backend ?? buildBackend(opts.config, opts.secrets);
-    const policy: AutonomyPolicy = opts.config.autonomy;
+    this.policy = opts.config.autonomy;
     const budget: Budget = opts.config.budget;
 
     this.loop = new CognitiveLoop({
@@ -74,7 +80,7 @@ export class Daemon {
       registry: this.registry,
       memory: this.memory,
       tasks: this.tasks,
-      policy,
+      policy: this.policy,
       budget,
       audit: this.audit,
       requestApproval: (req) => this.requestApproval(req),
@@ -84,9 +90,14 @@ export class Daemon {
     this.scheduler = new Scheduler({
       intervalMs: opts.config.heartbeat.intervalMs,
       cron: opts.config.heartbeat.cron,
-      shouldRun: () => this.tasks.nextPendingTask() !== undefined,
+      shouldRun: () => !this.paused && this.tasks.nextPendingTask() !== undefined,
       onCycle: async (trigger) => {
-        await this.loop.runCycle(trigger as Trigger);
+        this.currentAbort = new AbortController();
+        try {
+          await this.loop.runCycle(trigger as Trigger, { signal: this.currentAbort.signal });
+        } finally {
+          this.currentAbort = undefined;
+        }
       },
     });
   }
@@ -104,17 +115,48 @@ export class Daemon {
   private requestApproval(request: ApprovalRequest): Promise<boolean> {
     return new Promise((resolve) => {
       const requestId = randomUUID();
-      this.pendingApprovals.set(requestId, resolve);
+      this.pendingApprovals.set(requestId, { resolve, request });
       this.emit({ kind: 'approval_request', requestId, request });
     });
   }
 
-  resolveApproval(requestId: string, approved: boolean): void {
-    const resolve = this.pendingApprovals.get(requestId);
-    if (resolve) {
-      this.pendingApprovals.delete(requestId);
-      resolve(approved);
+  resolveApproval(requestId: string, approved: boolean, always = false): void {
+    const entry = this.pendingApprovals.get(requestId);
+    if (!entry) return;
+    this.pendingApprovals.delete(requestId);
+    if (approved && always) this.addAllowRule(entry.request);
+    entry.resolve(approved);
+  }
+
+  /** "Consenti sempre questo tipo": aggiunge una regola alla policy (sessione). */
+  private addAllowRule(request: ApprovalRequest): void {
+    if (request.toolName !== 'shell.run') return;
+    const details = request.details as { command?: string };
+    const program = details.command?.trim().split(/\s+/)[0];
+    if (program && !this.policy.shell.allow.includes(program)) {
+      this.policy.shell.allow.push(program);
     }
+  }
+
+  /** Kill-switch: annulla il ciclo in corso. */
+  interrupt(): void {
+    this.currentAbort?.abort();
+  }
+
+  /** Dormi: ferma gli heartbeat autonomi. */
+  pause(): void {
+    if (this.paused) return;
+    this.paused = true;
+    this.scheduler.stop();
+    this.emit({ kind: 'state', state: { status: 'sleeping' } });
+  }
+
+  /** Sveglia: riprende gli heartbeat. */
+  resume(): void {
+    if (!this.paused) return;
+    this.paused = false;
+    this.scheduler.start();
+    this.emit({ kind: 'state', state: { status: 'idle' } });
   }
 
   async submitUserMessage(content: string): Promise<void> {
@@ -139,9 +181,9 @@ export class Daemon {
 
   stop(): void {
     this.scheduler.stop();
-    for (const [id, resolve] of this.pendingApprovals) {
+    for (const [id, entry] of this.pendingApprovals) {
       this.pendingApprovals.delete(id);
-      resolve(false);
+      entry.resolve(false);
     }
     this.audit.close();
     this.tasks.close();

@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { FakeReasoningBackend } from '@openmate/llm';
+import type { ReasoningBackend, ReasoningEvent, ReasoningInput } from '@openmate/llm';
 import { type MemorySystem, createMemory } from '@openmate/memory';
 import { type AutonomyPolicy, ToolRegistry, createMemoryTools, shellRunTool } from '@openmate/tools';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -27,6 +28,19 @@ afterEach(() => {
 
 function registry(): ToolRegistry {
   return new ToolRegistry().register(shellRunTool).registerAll(createMemoryTools(mem));
+}
+
+/** Backend che resta in attesa finché non viene abortito (per testare l'interrupt). */
+class BlockingBackend implements ReasoningBackend {
+  id = 'blocking';
+  async *run(input: ReasoningInput): AsyncIterable<ReasoningEvent> {
+    yield { type: 'tool-call', toolCallId: 'c1', toolName: 'noop', input: {} };
+    await new Promise<void>((resolve) => {
+      if (input.signal?.aborted) return resolve();
+      input.signal?.addEventListener('abort', () => resolve(), { once: true });
+    });
+    yield { type: 'finish', finishReason: 'aborted', usage: {} };
+  }
 }
 
 describe('@openmate/core — CognitiveLoop', () => {
@@ -83,5 +97,24 @@ describe('@openmate/core — CognitiveLoop', () => {
     const result = await loop.runCycle({ kind: 'user_message', content: 'ciao' });
     expect(result.text).toBe('ab'); // solo 2 step consumati
     expect(loop.getState().status).toBe('idle');
+  });
+
+  it("l'interrupt annulla il ciclo e torna idle", async () => {
+    const controller = new AbortController();
+    const loop = new CognitiveLoop({
+      backend: new BlockingBackend(),
+      registry: registry(),
+      memory: mem,
+      tasks,
+      policy,
+      budget: { maxSteps: 10 },
+      requestApproval: async () => true,
+    });
+    const p = loop.runCycle({ kind: 'user_message', content: 'vai' }, { signal: controller.signal });
+    await new Promise((r) => setTimeout(r, 20));
+    controller.abort();
+    await p;
+    expect(loop.getState().status).toBe('idle');
+    expect(mem.search('interrotto', { scope: 'episodic' }).length).toBeGreaterThan(0);
   });
 });

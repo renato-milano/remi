@@ -19,6 +19,7 @@ export class DirectProviderBackend implements ReasoningBackend {
       messages: input.messages,
       tools: input.tools,
       stopWhen: stepCountIs(input.budget.maxSteps),
+      abortSignal: input.signal,
     });
 
     for await (const part of result.fullStream) {

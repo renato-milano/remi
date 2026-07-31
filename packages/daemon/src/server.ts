@@ -6,8 +6,10 @@ import type { Daemon } from './daemon.js';
 
 export type ClientCommand =
   | { kind: 'user_message'; content: string }
-  | { kind: 'approval_decision'; requestId: string; approved: boolean }
-  | { kind: 'interrupt' };
+  | { kind: 'approval_decision'; requestId: string; approved: boolean; always?: boolean }
+  | { kind: 'interrupt' }
+  | { kind: 'pause' }
+  | { kind: 'resume' };
 
 /** Wrapper HTTP locale: SSE per gli eventi + POST per i comandi (docs/08). */
 export function startHttpServer(daemon: Daemon, port: number) {
@@ -37,9 +39,16 @@ export function startHttpServer(daemon: Daemon, port: number) {
         void daemon.submitUserMessage(cmd.content);
         return c.json({ ok: true });
       case 'approval_decision':
-        daemon.resolveApproval(cmd.requestId, cmd.approved);
+        daemon.resolveApproval(cmd.requestId, cmd.approved, cmd.always ?? false);
         return c.json({ ok: true });
       case 'interrupt':
+        daemon.interrupt();
+        return c.json({ ok: true });
+      case 'pause':
+        daemon.pause();
+        return c.json({ ok: true });
+      case 'resume':
+        daemon.resume();
         return c.json({ ok: true });
       default:
         return c.json({ ok: false, error: 'comando sconosciuto' }, 400);

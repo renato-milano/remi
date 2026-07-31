@@ -46,7 +46,7 @@ export class CognitiveLoop {
     this.opts.onEvent?.({ kind: 'state', state: this.state });
   }
 
-  async runCycle(trigger: Trigger): Promise<CycleResult> {
+  async runCycle(trigger: Trigger, opts: { signal?: AbortSignal } = {}): Promise<CycleResult> {
     // 1. perceive: attiva un task (heartbeat/cron); un messaggio utente non lo richiede
     const task = trigger.kind === 'user_message' ? undefined : this.opts.tasks.nextPendingTask();
     if (task) this.opts.tasks.updateTaskStatus(task.id, 'in_progress');
@@ -56,9 +56,10 @@ export class CognitiveLoop {
     const system = buildSystem(core.persona, core.user, task);
     const messages: ModelMessage[] = [{ role: 'user', content: userContent(trigger, task) }];
 
-    // 2. tool context: l'approval segna lo stato waiting_approval
+    // 2. tool context: l'approval segna lo stato waiting_approval; il signal è il kill-switch
     const ctx = createToolContext({
       audit: this.audit,
+      signal: opts.signal,
       requestApproval: async (req) => {
         this.setState({ status: 'waiting_approval' });
         const approved = await this.opts.requestApproval(req);
@@ -72,30 +73,48 @@ export class CognitiveLoop {
     let text = '';
     let actions = 0;
     let usage: TokenUsage = {};
-    for await (const ev of this.opts.backend.run({ system, messages, tools, budget: this.opts.budget })) {
-      switch (ev.type) {
-        case 'text-delta':
-          text += ev.text;
-          break;
-        case 'tool-call':
-          actions += 1;
-          this.setState({ status: 'acting' });
-          this.opts.onEvent?.({ kind: 'action', summary: ev.toolName });
-          break;
-        case 'tool-result':
-          this.setState({ status: 'thinking' });
-          break;
-        case 'finish':
-          usage = ev.usage;
-          break;
+    let interrupted = false;
+    try {
+      for await (const ev of this.opts.backend.run({
+        system,
+        messages,
+        tools,
+        budget: this.opts.budget,
+        signal: opts.signal,
+      })) {
+        switch (ev.type) {
+          case 'text-delta':
+            text += ev.text;
+            break;
+          case 'tool-call':
+            actions += 1;
+            this.setState({ status: 'acting' });
+            this.opts.onEvent?.({ kind: 'action', summary: ev.toolName });
+            break;
+          case 'tool-result':
+            this.setState({ status: 'thinking' });
+            break;
+          case 'finish':
+            usage = ev.usage;
+            break;
+        }
       }
+    } catch (err) {
+      if (!opts.signal?.aborted) throw err;
     }
-    const finalText = text.trim();
-    if (finalText) this.opts.onEvent?.({ kind: 'message', role: 'agent', content: finalText });
+    if (opts.signal?.aborted) interrupted = true;
 
-    // 4. reflect: episodic + chiusura del task
-    this.opts.memory.log({ kind: 'reflection', actor: 'agent', content: reflection(trigger, actions, finalText) });
-    if (task) this.opts.tasks.updateTaskStatus(task.id, 'done');
+    const finalText = text.trim();
+
+    // 4. reflect
+    if (interrupted) {
+      this.opts.memory.log({ kind: 'reflection', actor: 'agent', content: "Ciclo interrotto dall'utente." });
+      if (task) this.opts.tasks.updateTaskStatus(task.id, 'pending'); // ritentabile
+    } else {
+      if (finalText) this.opts.onEvent?.({ kind: 'message', role: 'agent', content: finalText });
+      this.opts.memory.log({ kind: 'reflection', actor: 'agent', content: reflection(trigger, actions, finalText) });
+      if (task) this.opts.tasks.updateTaskStatus(task.id, 'done');
+    }
 
     this.setState({ status: 'idle', activeTaskId: undefined, activeGoalId: undefined });
     return { taskId: task?.id, actions, text: finalText, usage };

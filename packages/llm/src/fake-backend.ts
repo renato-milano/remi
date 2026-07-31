@@ -17,7 +17,7 @@ export class FakeReasoningBackend implements ReasoningBackend {
     let steps = 0;
     let callSeq = 0;
     for (const step of this.script) {
-      if (steps >= input.budget.maxSteps) break;
+      if (steps >= input.budget.maxSteps || input.signal?.aborted) break;
       steps += 1;
 
       if ('text' in step) {
