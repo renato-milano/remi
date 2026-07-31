@@ -1,5 +1,12 @@
 /* Overlay glue: SSE del daemon → personaggio + fumetto + approvazione + input. */
-const overlay = window.overlay;
+const bridge = window.overlay || {
+  daemonUrl: 'http://127.0.0.1:8787',
+  riveAsset: null,
+  setInteractive() {},
+  dragStart() {},
+  dragEnd() {},
+  quit() {},
+};
 const stage = document.getElementById('stage');
 const bubble = document.getElementById('bubble');
 const approval = document.getElementById('approval');
@@ -9,7 +16,7 @@ const statusDot = document.getElementById('status');
 
 // Personaggio: Rive se c'è un asset, altrimenti il placeholder SVG.
 const character =
-  (overlay.riveAsset && window.createRiveCharacter?.(stage, overlay.riveAsset)) ||
+  (bridge.riveAsset && window.createRiveCharacter?.(stage, bridge.riveAsset)) ||
   window.createSvgCharacter(stage);
 
 let bubbleTimer = null;
@@ -44,6 +51,7 @@ function handleEvent(e) {
       break;
     case 'message':
       say(e.content, { ms: 7000 });
+      character.flash?.('happy', 1400);
       break;
     case 'approval_request':
       showApproval(e);
@@ -56,7 +64,7 @@ function handleEvent(e) {
 /* --- trasporto --- */
 async function postCommand(cmd) {
   try {
-    await fetch(`${overlay.daemonUrl}/command`, {
+    await fetch(`${bridge.daemonUrl}/command`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(cmd),
@@ -67,7 +75,7 @@ async function postCommand(cmd) {
 }
 
 function connect() {
-  const es = new EventSource(`${overlay.daemonUrl}/events`);
+  const es = new EventSource(`${bridge.daemonUrl}/events`);
   es.onopen = () => statusDot.classList.add('on');
   es.onmessage = (m) => {
     try {
@@ -99,10 +107,28 @@ input.addEventListener('keydown', (ev) => {
 
 /* --- click-through: interattivo solo quando il mouse è sugli elementi .interactive --- */
 document.addEventListener('mousemove', (ev) => {
+  if (dragging) return;
   const el = document.elementFromPoint(ev.clientX, ev.clientY);
-  overlay.setInteractive(Boolean(el && el.closest('.interactive')));
+  bridge.setInteractive(Boolean(el && el.closest('.interactive')));
 });
-document.addEventListener('mouseleave', () => overlay.setInteractive(false));
+document.addEventListener('mouseleave', () => {
+  if (!dragging) bridge.setInteractive(false);
+});
+
+/* --- drag & drop: trascina il robot per spostare la finestra --- */
+let dragging = false;
+stage.addEventListener('mousedown', (ev) => {
+  if (ev.button !== 0) return;
+  dragging = true;
+  bridge.dragStart();
+  ev.preventDefault();
+});
+window.addEventListener('mouseup', () => {
+  if (dragging) {
+    dragging = false;
+    bridge.dragEnd();
+  }
+});
 
 function escapeHtml(s) {
   return s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
