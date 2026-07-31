@@ -120,6 +120,7 @@ function saveOnboarding(data) {
     },
     budget: { maxSteps: 12, wallClockMs: 120000 },
     storage: { root: storageRoot },
+    computerUse: { enabled: Boolean(data.computerUse) },
   };
   fs.writeFileSync(configFile, JSON.stringify(config, null, 2), 'utf8');
   saveKey(data.apiKey);

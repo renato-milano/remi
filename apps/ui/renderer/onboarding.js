@@ -1,5 +1,5 @@
-/* Wizard di onboarding: 4 step → schiusa → onboarding.complete(data). */
-const bridge = window.onboarding || { complete() {}, quit() {} };
+/* Wizard di onboarding: step → schiusa → onboarding.complete(data). */
+const bridge = window.onboarding || { platform: 'darwin', complete() {}, openPermission() {}, quit() {} };
 
 const steps = [...document.querySelectorAll('.step')];
 const dotsEl = document.getElementById('dots');
@@ -36,6 +36,33 @@ function wireChips(containerId) {
 wireChips('tones');
 wireChips('beat');
 wireChips('trust');
+
+// --- computer-use (opt-in) + permessi per-OS ---
+const computerUseEl = document.getElementById('computerUse');
+const cuPerms = document.getElementById('cuPerms');
+function renderCuPerms() {
+  if (!computerUseEl.checked) {
+    cuPerms.classList.add('hidden');
+    return;
+  }
+  cuPerms.classList.remove('hidden');
+  const p = bridge.platform || 'darwin';
+  if (p === 'darwin') {
+    cuPerms.innerHTML = `
+      <p class="perm-title">Concedi i permessi a “OpenMate”:</p>
+      <button class="chip" data-perm="screen">Registrazione schermo…</button>
+      <button class="chip" data-perm="accessibility">Accessibilità…</button>`;
+  } else if (p === 'win32') {
+    cuPerms.innerHTML = '<p class="perm-title">Su Windows non servono permessi speciali.</p>';
+  } else {
+    cuPerms.innerHTML = '<p class="perm-title">Su Linux è supportata solo la sessione X11 (non Wayland).</p>';
+  }
+}
+computerUseEl.addEventListener('change', renderCuPerms);
+cuPerms.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-perm]');
+  if (b) bridge.openPermission(b.dataset.perm);
+});
 
 // --- provider (menu a tendina) ---
 const PROVIDERS = {
@@ -84,7 +111,8 @@ function collect() {
   const P = PROVIDERS[provKey];
   const model = modelEl.value.trim() || P.model || 'claude-sonnet-4-5';
   const baseURL = P.showBase ? baseURLEl.value.trim() || P.base || undefined : P.base || undefined;
-  return { name, tone, apiKey, heartbeatMinutes, autoApprove, provider: { name: P.name, model, baseURL } };
+  const computerUse = computerUseEl.checked;
+  return { name, tone, apiKey, heartbeatMinutes, autoApprove, computerUse, provider: { name: P.name, model, baseURL } };
 }
 
 function hatch() {
