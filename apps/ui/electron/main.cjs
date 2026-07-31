@@ -21,6 +21,7 @@ const ROBOT_MARGIN = 10;
 let currentSide = 'right';
 const HOTKEY = process.env.OPENMATE_HOTKEY || 'CommandOrControl+Shift+O';
 const PORT = Number(process.env.OPENMATE_PORT || 8787);
+const SHOT_PORT = PORT + 1; // mini-server screenshot (Electron desktopCapturer)
 const DAEMON_URL = process.env.OPENMATE_URL || `http://127.0.0.1:${PORT}`;
 // Modalità demo/dev: non gestire il daemon né l'onboarding (daemon esterno).
 const EXTERNAL = Boolean(process.env.OPENMATE_EXTERNAL);
@@ -129,9 +130,41 @@ function saveOnboarding(data) {
   writePersona(data.name || 'OpenMate', data.tone || 'curioso');
 }
 
+/* --------- screenshot via Electron (desktopCapturer) ---------
+   Catturare dentro Electron lega la Registrazione schermo all'app (identità
+   pulita, concedibile e affidabile), invece del node figlio con TCC ambigua. */
+const http = require('node:http');
+let shotServer;
+function startShotServer() {
+  if (shotServer || EXTERNAL) return;
+  shotServer = http.createServer(async (req, res) => {
+    if (!req.url || !req.url.startsWith('/shot')) {
+      res.writeHead(404);
+      res.end();
+      return;
+    }
+    try {
+      const display = screen.getPrimaryDisplay();
+      const sf = display.scaleFactor || 1;
+      const size = { width: Math.round(display.size.width * sf), height: Math.round(display.size.height * sf) };
+      const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: size });
+      const src = sources.find((s) => String(s.display_id) === String(display.id)) || sources[0];
+      const png = src.thumbnail.toPNG();
+      res.writeHead(200, { 'content-type': 'image/png' });
+      res.end(png);
+    } catch (e) {
+      res.writeHead(500);
+      res.end(String((e && e.message) || e));
+    }
+  });
+  shotServer.on('error', (e) => console.log('[shot] server error', e.message));
+  shotServer.listen(SHOT_PORT, '127.0.0.1');
+}
+
 /* ---------------- lifecycle del daemon ---------------- */
 function startDaemon() {
   if (EXTERNAL || daemonProc) return;
+  startShotServer();
   const node = process.env.OPENMATE_NODE || 'node';
   daemonProc = spawn(node, [daemonEntry], {
     env: {
@@ -139,6 +172,7 @@ function startDaemon() {
       OPENMATE_CONFIG: configFile,
       OPENMATE_API_KEY: loadKey(),
       OPENMATE_PORT: String(PORT),
+      OPENMATE_SHOT_URL: `http://127.0.0.1:${SHOT_PORT}/shot`,
     },
     stdio: 'inherit',
   });

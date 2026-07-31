@@ -58,12 +58,24 @@ export class NutExecutor implements Executor {
   async screenshot(): Promise<Screenshot> {
     const nut = await loadNut();
     const { Jimp } = await import('jimp');
+    // lo spazio coordinate di input resta quello di nut.js (per mouse/tastiera)
     const nutW = await nut.screen.width();
     const nutH = await nut.screen.height();
-    const path = await nut.screen.capture(`openmate-${Date.now()}`, nut.FileType.PNG, tmpdir());
-    const fullPath = path.endsWith('.png') ? path : join(tmpdir(), `openmate-${Date.now()}.png`);
-    const buf = await readFile(path.endsWith('.png') ? path : fullPath);
-    void rm(path, { force: true }).catch(() => {});
+
+    // Sorgente immagine: preferisci Electron (Registrazione schermo affidabile),
+    // altrimenti nut.js (cross-platform / non-Electron).
+    let buf: Buffer;
+    const shotUrl = process.env.OPENMATE_SHOT_URL;
+    if (shotUrl) {
+      const res = await fetch(shotUrl);
+      if (!res.ok) throw new Error(`screenshot server ${res.status}`);
+      buf = Buffer.from(await res.arrayBuffer());
+    } else {
+      const path = await nut.screen.capture(`openmate-${Date.now()}`, nut.FileType.PNG, tmpdir());
+      const fullPath = path.endsWith('.png') ? path : join(tmpdir(), `openmate-${Date.now()}.png`);
+      buf = await readFile(path.endsWith('.png') ? path : fullPath);
+      void rm(path, { force: true }).catch(() => {});
+    }
 
     const image = await Jimp.read(buf);
     if (image.bitmap.width > MAX_WIDTH) image.resize({ w: MAX_WIDTH });
