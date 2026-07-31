@@ -17,10 +17,12 @@ import {
   type Trigger,
 } from '@openmate/core';
 import { Scheduler } from '@openmate/scheduler';
+import { createExecutor } from '@openmate/computer';
 import {
   type ApprovalRequest,
   type AutonomyPolicy,
   ToolRegistry,
+  createComputerTools,
   createMemoryTools,
   fileTools,
   shellRunTool,
@@ -61,6 +63,8 @@ export class Daemon {
   >();
   private currentAbort?: AbortController;
   private paused = false;
+  /** Stato del computer-use (per l'overlay). */
+  readonly computerUse: { enabled: boolean; reason?: string };
 
   constructor(opts: DaemonOptions) {
     const root = opts.config.storage.root;
@@ -73,6 +77,15 @@ export class Daemon {
       .register(shellRunTool)
       .registerAll(fileTools)
       .registerAll(createMemoryTools(this.memory));
+
+    // Computer-use: solo se abilitato in config e supportato dalla piattaforma.
+    this.computerUse = { enabled: false };
+    if (opts.config.computerUse.enabled) {
+      const executor = createExecutor();
+      const caps = executor.capabilities();
+      this.computerUse = { enabled: caps.supported, reason: caps.reason };
+      if (caps.supported) this.registry.registerAll(createComputerTools(executor));
+    }
 
     const backend = opts.backend ?? buildBackend(opts.config, opts.secrets);
     this.policy = opts.config.autonomy;

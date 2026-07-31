@@ -43,12 +43,18 @@ export const storageSchema = z.object({
   root: z.string().default('.'),
 });
 
+/** Controllo del computer (vision + mouse/tastiera). Default off. */
+export const computerUseSchema = z.object({
+  enabled: z.boolean().default(false),
+});
+
 export const configSchema = z.object({
   provider: providerSchema.default({}),
   heartbeat: heartbeatSchema.default({}),
   autonomy: autonomySchema.default({}),
   budget: budgetSchema.default({}),
   storage: storageSchema.default({}),
+  computerUse: computerUseSchema.default({}),
 });
 
 export type ProviderConfig = z.infer<typeof providerSchema>;

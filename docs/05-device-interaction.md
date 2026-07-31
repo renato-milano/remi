@@ -1,5 +1,7 @@
 # 05 — Interazione col Dispositivo (Computer-Use Vision)
 
+> **Stato: implementato (Fase 2).** Realizzazione con *vision generica model-agnostic* + **nut.js** (cross-platform). Vedi la sezione "Realizzazione" in fondo.
+
 ## Scopo
 
 Definire come OpenMate interagisce con il sistema a livello di GUI: muove mouse e tastiera, legge lo schermo. La scelta è **computer-use basato su vision**, non automazione scriptata.
@@ -73,3 +75,29 @@ Il vision-only è costoso su cicli frequenti. Mitigazioni di default:
 - **Privacy degli screenshot**: se e quanto conservarli nell'audit; redazione di contenuti sensibili.
 - **Latenza percepita** per task interattivi: l'esperienza tamagotchi deve comunicare che l'agente "sta guardando/agendo" ([08](08-ui-tamagotchi.md)).
 - **Portabilità** dei backend di cattura/input oltre macOS.
+
+---
+
+## Realizzazione (Fase 2)
+
+**Approccio: vision generica model-agnostic + nut.js.** Scartata la via del tool "computer" nativo di Anthropic per non legarsi a un singolo provider (avrebbe richiesto provider Anthropic + modello Claude). I tool `computer.*` restituiscono lo **screenshot come immagine** (content-part via AI SDK `toModelOutput`) → qualsiasi modello vision "vede"; risponde con coordinate; l'executor esegue e rimanda un nuovo screenshot.
+
+### Componenti
+- **`packages/computer`** — executor cross-platform su **nut.js** (fork MIT `@nut-tree-fork/nut-js`): `screenshot()` (cattura + downscale a ~1366px via `jimp`), `move/click/doubleClick/type/key/scroll`, `toLogical()` (mappa pixel-immagine → coordinate di puntamento, gestisce retina/HiDPI e downscale), `detectCapabilities()` (rileva Wayland).
+- **`packages/tools`** — `createComputerTools(executor)`: `computer.screenshot/click/type/key/scroll/move/double_click`; `Tool.toModelOutput` per i risultati-immagine; **gate di sessione** in `executeGated` (i `computer.*` chiedono l'approvazione **una volta per ciclo**, poi le successive dello stesso ciclo partono da sole, tutte auditate).
+- **`packages/config`** — `computerUse.enabled` (default **off**).
+- **`packages/daemon`** — monta i tool solo se `enabled` **e** `capabilities().supported`; espone lo stato su `GET /status`.
+- **`apps/ui`** — toggle in Impostazioni + sezione permessi per-OS (macOS apre i pannelli Privacy) + indicatore "🖥️ controllo schermo attivo" nell'overlay; il kill-switch **Interrompi** ferma tra un'azione e l'altra.
+
+### Matrice di supporto
+| OS | Screenshot | Input | Setup |
+|---|---|---|---|
+| macOS | ✅ | ✅ | Permessi: Registrazione schermo + Accessibilità (guida in Impostazioni) |
+| Windows | ✅ | ✅ | Nessuno (nota: alcuni antivirus segnalano l'input sintetico) |
+| Linux / X11 | ✅ | ✅ | Sessione X11 |
+| Linux / Wayland | ⚠️ | ❌ | Iniezione input non supportata → rilevato e disabilitato con messaggio |
+
+### Vincoli
+- Serve un **modello con vision** (es. `gpt-4o`); i modelli senza vision non possono usare il computer-use (l'agente lo segnala invece di bloccarsi).
+- **Grounding** meno preciso rispetto al tool Claude nativo → mitigato con downscale + screenshot di verifica.
+- **Privacy**: gli screenshot vengono inviati al modello (cloud) → opt-in, default off, approvazione di sessione.

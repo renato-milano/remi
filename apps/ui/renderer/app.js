@@ -170,15 +170,30 @@ function showApproval(evt) {
   }, 1000);
 }
 
+/* --- indicatore "controllo schermo attivo" --- */
+const cuBanner = document.getElementById('cuBanner');
+let cuTimer = null;
+function showComputerBanner() {
+  cuBanner.classList.remove('hidden');
+  clearTimeout(cuTimer);
+  cuTimer = setTimeout(hideComputerBanner, 8000); // auto-nascondi se non arrivano altre azioni
+}
+function hideComputerBanner() {
+  clearTimeout(cuTimer);
+  cuBanner.classList.add('hidden');
+}
+
 /* --- eventi dal daemon --- */
 function handleEvent(e) {
   switch (e.kind) {
     case 'state':
       character.setState(e.state?.status ?? 'idle');
+      if (e.state?.status === 'idle') hideComputerBanner();
       break;
     case 'action':
       say(`· ${e.summary}`, { action: true, ms: 2600 });
       pushLog(`▸ ${e.summary}`);
+      if (typeof e.summary === 'string' && e.summary.startsWith('computer.')) showComputerBanner();
       break;
     case 'message': {
       const content = cleanMarkdown(e.content);

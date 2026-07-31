@@ -39,6 +39,9 @@ export interface ToolContext {
   requestApproval(req: ApprovalRequest): Promise<boolean>;
   audit(entry: AuditEntry): void;
   signal?: AbortSignal;
+  /** Concede l'approvazione a un namespace per il resto del ciclo (es. 'computer'). */
+  grantSession?(namespace: string): void;
+  isSessionGranted?(namespace: string): boolean;
 }
 
 /**
@@ -53,6 +56,8 @@ export interface Tool<I = unknown, O = unknown> {
   needsApproval?(input: I, policy: AutonomyPolicy): boolean;
   /** Spiegazione in linguaggio semplice dell'azione, per la card di approvazione. */
   explain?(input: I): CommandExplanation;
+  /** Mappa l'output a content-parts per il modello (es. immagine per gli screenshot). */
+  toModelOutput?(output: O): unknown;
   execute(input: I, ctx: ToolContext): Promise<O>;
 }
 

@@ -61,6 +61,35 @@ function setChip(id, attr, value) {
   if (!found) c.querySelector('.chip')?.classList.add('active');
 }
 
+// --- computer-use: toggle + permessi per-OS ---
+const computerUseEl = document.getElementById('computerUse');
+const cuPerms = document.getElementById('cuPerms');
+const platform = api.platform || 'darwin';
+
+function renderPerms() {
+  if (!computerUseEl.checked) {
+    cuPerms.classList.add('hidden');
+    return;
+  }
+  cuPerms.classList.remove('hidden');
+  if (platform === 'darwin') {
+    cuPerms.innerHTML = `
+      <p class="perm-title">Concedi i permessi macOS a “OpenMate”:</p>
+      <button class="btn ghost small" data-perm="screen">Registrazione schermo…</button>
+      <button class="btn ghost small" data-perm="accessibility">Accessibilità…</button>
+      <p class="note">Dopo averli concessi potrebbe servire riavviare OpenMate.</p>`;
+  } else if (platform === 'win32') {
+    cuPerms.innerHTML = '<p class="note">Su Windows non servono permessi speciali. Alcuni antivirus potrebbero segnalare l’input automatico.</p>';
+  } else {
+    cuPerms.innerHTML = '<p class="note">Su Linux è supportata solo la sessione X11 (non Wayland).</p>';
+  }
+}
+computerUseEl.addEventListener('change', renderPerms);
+cuPerms.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-perm]');
+  if (b) api.openPermission(b.dataset.perm);
+});
+
 function configToPreset(pv) {
   if (!pv) return 'anthropic';
   if (pv.name === 'anthropic') return 'anthropic';
@@ -83,6 +112,8 @@ api.onData(({ config, hasKey }) => {
   setChip('trust', 'trust', config.autonomy?.autoApprove || 'read');
   const min = Math.round((config.heartbeat?.intervalMs || 900000) / 60000);
   setChip('beat', 'min', min >= 1000 ? '100000' : String(min));
+  computerUseEl.checked = Boolean(config.computerUse?.enabled);
+  renderPerms();
 });
 
 function collect() {
@@ -95,6 +126,7 @@ function collect() {
     provider: { name: P.name, model, baseURL },
     autoApprove,
     heartbeatMinutes,
+    computerUse: computerUseEl.checked,
     apiKey: apiKeyEl.value.trim(), // vuoto = non cambiare
   };
 }

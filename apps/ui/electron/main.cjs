@@ -6,6 +6,7 @@ const {
   globalShortcut,
   Menu,
   safeStorage,
+  shell,
 } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
@@ -63,6 +64,7 @@ function saveSettings(data) {
   const minutes = Number(data.heartbeatMinutes) || 15;
   config.heartbeat = config.heartbeat || { cron: [] };
   config.heartbeat.intervalMs = minutes * 60000;
+  config.computerUse = { enabled: Boolean(data.computerUse) };
   if (!config.storage) config.storage = { root: storageRoot };
   if (!config.budget) config.budget = { maxSteps: 12, wallClockMs: 120000 };
   fs.writeFileSync(configFile, JSON.stringify(config, null, 2), 'utf8');
@@ -269,6 +271,16 @@ ipcMain.on('settings-close', () => {
     settingsWin.close();
     settingsWin = undefined;
   }
+});
+
+// Apre i pannelli Privacy di macOS per i permessi del computer-use.
+ipcMain.on('open-permission', (_e, which) => {
+  if (process.platform !== 'darwin') return;
+  const url =
+    which === 'accessibility'
+      ? 'x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility'
+      : 'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture';
+  shell.openExternal(url);
 });
 
 /* ---------------- IPC companion ---------------- */

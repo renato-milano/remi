@@ -3,10 +3,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createMemory } from '@openmate/memory';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import type { Executor } from '@openmate/computer';
 import {
   type AutonomyPolicy,
   InMemoryAuditSink,
   ToolRegistry,
+  createComputerTools,
   createMemoryTools,
   createToolContext,
   explainCommand,
@@ -175,5 +177,68 @@ describe('@openmate/tools — AI SDK adapter', () => {
     const ctx = createToolContext({ audit: new InMemoryAuditSink(), requestApproval: async () => true });
     const set = registry.toAiToolSet(ctx, policy);
     expect(Object.keys(set)).toContain('shell.run');
+  });
+});
+
+describe('@openmate/tools — computer.* gate di sessione', () => {
+  const fakeExecutor = (): Executor => ({
+    capabilities: () => ({ supported: true, platform: 'darwin' }),
+    screenshot: async () => ({ pngBase64: 'AAAA', width: 100, height: 80 }),
+    move: async () => {},
+    click: async () => {},
+    doubleClick: async () => {},
+    type: async () => {},
+    key: async () => {},
+    scroll: async () => {},
+  });
+
+  it('chiede l\'approvazione una sola volta per ciclo, poi auto-approva', async () => {
+    const audit = new InMemoryAuditSink();
+    let asked = 0;
+    const ctx = createToolContext({
+      audit,
+      requestApproval: async () => {
+        asked += 1;
+        return true;
+      },
+    });
+    const registry = new ToolRegistry().registerAll(createComputerTools(fakeExecutor()));
+
+    await registry.execute('computer.screenshot', {}, ctx, policy);
+    await registry.execute('computer.click', { x: 10, y: 20 }, ctx, policy);
+    await registry.execute('computer.type', { text: 'ciao' }, ctx, policy);
+
+    expect(asked).toBe(1); // una sola richiesta per l'intera sessione
+    expect(audit.entries.filter((e) => e.tool.startsWith('computer.'))).toHaveLength(3);
+  });
+
+  it('se l\'utente nega, non esegue e non concede la sessione', async () => {
+    let asked = 0;
+    const ctx = createToolContext({
+      audit: new InMemoryAuditSink(),
+      requestApproval: async () => {
+        asked += 1;
+        return false;
+      },
+    });
+    const registry = new ToolRegistry().registerAll(createComputerTools(fakeExecutor()));
+    const out = (await registry.execute('computer.click', { x: 1, y: 1 }, ctx, policy)) as { denied?: boolean };
+    expect(out.denied).toBe(true);
+    // seconda azione → chiede di nuovo (sessione non concessa)
+    await registry.execute('computer.click', { x: 2, y: 2 }, ctx, policy);
+    expect(asked).toBe(2);
+  });
+
+  it('espone toModelOutput per gli screenshot (content immagine)', () => {
+    const ctx = createToolContext({ audit: new InMemoryAuditSink(), requestApproval: async () => true });
+    const registry2 = new ToolRegistry().registerAll(createComputerTools(fakeExecutor()));
+    const set2 = registry2.toAiToolSet(ctx, policy);
+    expect(typeof set2['computer.screenshot']?.toModelOutput).toBe('function');
+    // biome-ignore lint/suspicious/noExplicitAny: firma AI SDK
+    const tmo = set2['computer.screenshot']?.toModelOutput as any;
+    const mapped = tmo({ output: { screenshot: 'AAAA', width: 100, height: 80 } }) as {
+      value: { type: string }[];
+    };
+    expect(mapped.value.some((p) => p.type === 'file')).toBe(true);
   });
 });

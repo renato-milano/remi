@@ -8,14 +8,19 @@ function createSvgCharacter(mount) {
   <svg viewBox="0 0 200 200" id="creatureRoot" data-state="idle" data-tint="cyan">
     <defs>
       <linearGradient id="head-g" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#c6d0dc"/>
+        <stop offset="0" stop-color="#2b3037"/><stop offset="1" stop-color="#0c0f13"/>
       </linearGradient>
       <linearGradient id="ear-g" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stop-color="#eef2f7"/><stop offset="1" stop-color="#b3bfcc"/>
+        <stop offset="0" stop-color="#31363d"/><stop offset="1" stop-color="#12161b"/>
       </linearGradient>
       <radialGradient id="screen-g" cx="0.5" cy="0.3" r="0.95">
         <stop offset="0" stop-color="#17212f"/><stop offset="1" stop-color="#04070c"/>
       </radialGradient>
+      <linearGradient id="rim-g" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#ffffff" stop-opacity="0.32"/>
+        <stop offset="0.5" stop-color="#ffffff" stop-opacity="0.08"/>
+        <stop offset="1" stop-color="#ffffff" stop-opacity="0.03"/>
+      </linearGradient>
       <!-- effetto catodico (CRT) -->
       <clipPath id="screen-clip">
         <rect x="35" y="45" width="130" height="110" rx="28"/>
@@ -37,9 +42,13 @@ function createSvgCharacter(mount) {
       <rect x="170" y="92" width="12" height="34" rx="6" fill="url(#ear-g)"/>
       <!-- testa -->
       <rect x="28" y="38" width="144" height="124" rx="34" fill="url(#head-g)"/>
-      <!-- schermo (ampio, bordo sottile) -->
+      <!-- rim-light: riflesso chiaro sul bordo della scocca -->
+      <rect x="28.8" y="38.8" width="142.4" height="122.4" rx="33.4" fill="none" stroke="url(#rim-g)" stroke-width="1.6"/>
+      <!-- schermo (ampio) -->
       <rect x="35" y="45" width="130" height="110" rx="28" fill="url(#screen-g)"/>
-      <rect x="35" y="45" width="130" height="110" rx="28" fill="none" stroke="#000" stroke-width="1.5" opacity="0.65"/>
+      <!-- bevel: ombra interna scura + sottile filo chiaro attorno allo schermo -->
+      <rect x="35" y="45" width="130" height="110" rx="28" fill="none" stroke="#000" stroke-width="2.5" opacity="1"/>
+      <rect x="33.4" y="43.4" width="133.2" height="113.2" rx="29.4" fill="none" stroke="rgba(255,255,255,.14)" stroke-width="1"/>
       <path d="M43 52 L84 52 L56 92 L43 92 Z" fill="#ffffff" opacity="0.05"/>
 
       <g id="screenEyes">

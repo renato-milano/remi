@@ -20,7 +20,8 @@
   "dependencies": {
     "ai": "catalog:",
     "zod": "catalog:",
-    "@openmate/memory": "workspace:*"
+    "@openmate/memory": "workspace:*",
+    "@openmate/computer": "workspace:*"
   },
   "devDependencies": {
     "typescript": "catalog:",

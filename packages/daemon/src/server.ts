@@ -20,6 +20,9 @@ export function startHttpServer(daemon: Daemon, port: number) {
 
   app.get('/health', (c) => c.json({ ok: true }));
 
+  // Stato del computer-use (per l'overlay: abilitato/supportato + motivo).
+  app.get('/status', (c) => c.json({ computerUse: daemon.computerUse }));
+
   app.get('/events', (c) =>
     streamSSE(c, async (stream) => {
       const unsubscribe = daemon.onEvent((event) => {

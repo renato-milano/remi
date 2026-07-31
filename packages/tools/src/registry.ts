@@ -33,10 +33,13 @@ export interface ToolContextOptions {
 }
 
 export function createToolContext(opts: ToolContextOptions): ToolContext {
+  const granted = new Set<string>();
   return {
     requestApproval: opts.requestApproval,
     audit: (entry) => opts.audit.write({ ts: entry.ts ?? new Date().toISOString(), ...entry }),
     signal: opts.signal,
+    grantSession: (ns) => granted.add(ns),
+    isSessionGranted: (ns) => granted.has(ns),
   };
 }
 
@@ -73,11 +76,16 @@ export class ToolRegistry {
   toAiToolSet(ctx: ToolContext, policy: AutonomyPolicy): ToolSet {
     const set: ToolSet = {};
     for (const t of this.list()) {
-      set[t.name] = tool({
+      // biome-ignore lint/suspicious/noExplicitAny: config AI SDK costruita dinamicamente
+      const cfg: any = {
         description: t.description,
         inputSchema: t.parameters,
         execute: (input: unknown) => executeGated(t, input, ctx, policy),
-      });
+      };
+      if (t.toModelOutput) {
+        cfg.toModelOutput = ({ output }: { output: unknown }) => t.toModelOutput?.(output);
+      }
+      set[t.name] = tool(cfg);
     }
     return set;
   }
@@ -93,25 +101,35 @@ export async function executeGated(
   const input = t.parameters.parse(rawInput);
   const ts = new Date().toISOString();
   const explanation = t.explain?.(input);
-  let requiresApproval = t.permission === 'dangerous' || (t.needsApproval?.(input, policy) ?? false);
-  // auto-approvazione per rischio basso, secondo il livello di fiducia
-  if (requiresApproval && explanation && autoApproves(policy.autoApprove, explanation.level)) {
-    requiresApproval = false;
+  const isComputer = t.name.startsWith('computer.');
+
+  let requiresApproval: boolean;
+  if (isComputer) {
+    // computer-use: approvazione UNA volta per ciclo (gate di sessione), mai auto per rischio
+    requiresApproval = !(ctx.isSessionGranted?.('computer') ?? false);
+  } else {
+    requiresApproval = t.permission === 'dangerous' || (t.needsApproval?.(input, policy) ?? false);
+    if (requiresApproval && explanation && autoApproves(policy.autoApprove, explanation.level)) {
+      requiresApproval = false;
+    }
   }
 
   let decision: AuditEntry['decision'] = 'auto';
   if (requiresApproval) {
     const approved = await ctx.requestApproval({
       toolName: t.name,
-      summary: `Eseguire ${t.name}`,
+      summary: isComputer ? 'Controllare il computer' : `Eseguire ${t.name}`,
       details: input,
-      risk: t.permission === 'dangerous' ? 'dangerous' : 'guarded',
-      explanation,
+      risk: isComputer || t.permission === 'dangerous' ? 'dangerous' : 'guarded',
+      explanation: isComputer
+        ? { text: 'controllare lo schermo, il mouse e la tastiera', level: 'dangerous', known: true }
+        : explanation,
     });
     if (!approved) {
       ctx.audit({ ts, tool: t.name, input, decision: 'denied', outcome: 'skipped' });
       return { denied: true, reason: 'approvazione negata' };
     }
+    if (isComputer) ctx.grantSession?.('computer'); // concedi per il resto del ciclo
     decision = 'approved';
   }
 
