@@ -45,9 +45,13 @@ function createSvgCharacter(mount) {
           <path class="arc" d="M111 96 Q122 78 133 96"/>
         </g>
         <g class="expr" data-expr="thinking">
-          <rect class="glyph" x="70" y="76" width="16" height="22" rx="8"/>
-          <rect class="glyph" x="114" y="76" width="16" height="22" rx="8"/>
-          <text class="q qmove" x="134" y="72">?</text>
+          <rect class="glyph" x="70" y="78" width="16" height="18" rx="8"/>
+          <rect class="glyph" x="114" y="78" width="16" height="18" rx="8"/>
+          <g class="think-dots" transform="translate(126,60)">
+            <circle class="glyph td" cx="0" cy="0" r="3.2"/>
+            <circle class="glyph td td2" cx="9" cy="0" r="3.2"/>
+            <circle class="glyph td td3" cx="18" cy="0" r="3.2"/>
+          </g>
         </g>
         <g class="expr" data-expr="focused">
           <path class="glyph tw" transform="translate(78,90)" d="M0 -13 L3.4 -3.4 L13 0 L3.4 3.4 L0 13 L-3.4 3.4 L-13 0 L-3.4 -3.4 Z"/>
