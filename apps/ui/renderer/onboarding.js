@@ -36,41 +36,43 @@ function wireChips(containerId) {
 wireChips('tones');
 wireChips('beat');
 
-// --- provider ---
+// --- provider (menu a tendina) ---
 const PROVIDERS = {
-  anthropic: { name: 'anthropic', key: 'sk-ant-…', model: 'claude-sonnet-4-5', help: 'https://console.anthropic.com/settings/keys', base: null, showBase: false, showModel: false },
-  openai: { name: 'openai', key: 'sk-…', model: 'gpt-4o', help: 'https://platform.openai.com/api-keys', base: null, showBase: false, showModel: true },
-  openrouter: { name: 'openai-compatible', key: 'sk-or-…', model: 'anthropic/claude-3.5-sonnet', help: 'https://openrouter.ai/keys', base: 'https://openrouter.ai/api/v1', showBase: false, showModel: true },
-  custom: { name: 'openai-compatible', key: 'chiave API', model: '', help: null, base: '', showBase: true, showModel: true },
+  anthropic: { name: 'anthropic', key: 'sk-ant-…', model: 'claude-sonnet-4-5', help: 'https://console.anthropic.com/settings/keys', models: 'https://docs.anthropic.com/en/docs/about-claude/models', base: null, showBase: false },
+  openai: { name: 'openai', key: 'sk-…', model: 'gpt-4o', help: 'https://platform.openai.com/api-keys', models: 'https://platform.openai.com/docs/models', base: null, showBase: false },
+  openrouter: { name: 'openai-compatible', key: 'sk-or-…', model: 'anthropic/claude-3.5-sonnet', help: 'https://openrouter.ai/keys', models: 'https://openrouter.ai/models', base: 'https://openrouter.ai/api/v1', showBase: true },
+  vercel: { name: 'openai-compatible', key: 'chiave Vercel AI Gateway', model: 'anthropic/claude-3.5-sonnet', help: 'https://vercel.com/docs/ai-gateway', models: 'https://vercel.com/ai-gateway/models', base: 'https://ai-gateway.vercel.sh/v1', showBase: true },
+  ollama: { name: 'openai-compatible', key: '(nessuna chiave)', model: 'llama3.2', help: null, models: 'https://ollama.com/library', base: 'http://localhost:11434/v1', showBase: true },
+  custom: { name: 'openai-compatible', key: 'chiave API', model: '', help: null, models: null, base: '', showBase: true },
 };
 let provKey = 'anthropic';
+const providerEl = document.getElementById('provider');
 const apiKeyEl = document.getElementById('apiKey');
 const baseURLEl = document.getElementById('baseURL');
 const modelEl = document.getElementById('model');
 const provHelp = document.getElementById('provHelp');
+const modelsLink = document.getElementById('modelsLink');
 
 function selectProvider(key) {
   provKey = key;
   const P = PROVIDERS[key];
-  for (const b of document.querySelectorAll('#providers .chip')) {
-    b.classList.toggle('active', b.dataset.prov === key);
-  }
   apiKeyEl.placeholder = P.key;
-  modelEl.classList.toggle('hidden', !P.showModel);
   modelEl.value = P.model || '';
   baseURLEl.classList.toggle('hidden', !P.showBase);
   baseURLEl.value = P.base || '';
-  if (P.help) {
-    provHelp.href = P.help;
-    provHelp.classList.remove('hidden');
+  toggleLink(provHelp, P.help);
+  toggleLink(modelsLink, P.models);
+}
+function toggleLink(el, href) {
+  if (href) {
+    el.href = href;
+    el.classList.remove('hidden');
   } else {
-    provHelp.classList.add('hidden');
+    el.classList.add('hidden');
   }
 }
-document.getElementById('providers').addEventListener('click', (e) => {
-  const chip = e.target.closest('.chip');
-  if (chip) selectProvider(chip.dataset.prov);
-});
+providerEl.addEventListener('change', (e) => selectProvider(e.target.value));
+selectProvider('anthropic');
 
 function collect() {
   const name = document.getElementById('name').value.trim() || 'OpenMate';
@@ -79,7 +81,7 @@ function collect() {
   const heartbeatMinutes = Number(document.querySelector('#beat .chip.active')?.dataset.min) || 15;
   const P = PROVIDERS[provKey];
   const model = modelEl.value.trim() || P.model || 'claude-sonnet-4-5';
-  const baseURL = P.showBase ? baseURLEl.value.trim() || undefined : P.base || undefined;
+  const baseURL = P.showBase ? baseURLEl.value.trim() || P.base || undefined : P.base || undefined;
   return { name, tone, apiKey, heartbeatMinutes, provider: { name: P.name, model, baseURL } };
 }
 

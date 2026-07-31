@@ -30,17 +30,22 @@
         <div class="glyph">🧠</div>
         <h1>Collega il mio cervello</h1>
         <p class="sub">Scegli il provider e incolla la chiave — resta <b>cifrata sul tuo dispositivo</b>.</p>
-        <div class="chips" id="providers">
-          <button class="chip active" data-prov="anthropic">Claude</button>
-          <button class="chip" data-prov="openai">OpenAI</button>
-          <button class="chip" data-prov="openrouter">OpenRouter</button>
-          <button class="chip" data-prov="custom">Altro</button>
-        </div>
+        <select id="provider" class="field select">
+          <option value="anthropic">Claude (Anthropic)</option>
+          <option value="openai">OpenAI</option>
+          <option value="openrouter">OpenRouter</option>
+          <option value="vercel">Vercel AI Gateway</option>
+          <option value="ollama">Ollama (locale)</option>
+          <option value="custom">Altro (OpenAI-compatible)</option>
+        </select>
         <input id="apiKey" class="field mono" type="password" placeholder="sk-ant-…" />
         <input id="baseURL" class="field mono hidden" type="text" placeholder="https://… (base URL)" />
-        <input id="model" class="field mono hidden" type="text" placeholder="modello" />
+        <div class="model-row">
+          <input id="model" class="field mono" type="text" placeholder="modello" />
+          <a class="link" id="modelsLink" href="#" target="_blank" rel="noreferrer">Modelli ↗</a>
+        </div>
         <a class="link" id="provHelp" href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer">Dove trovo la chiave?</a>
-        <p class="hint" id="provHint">“Altro” = qualsiasi endpoint OpenAI-compatible (Vercel, Ollama, LiteLLM, Groq…). Puoi anche saltare.</p>
+        <p class="hint">La chiave resta cifrata in locale. Puoi anche saltare e inserirla dopo.</p>
       </section>
 
       <!-- 3: autonomia -->
