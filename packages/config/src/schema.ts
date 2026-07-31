@@ -2,9 +2,9 @@ import { z } from 'zod';
 
 /** Provider LLM e modello (vedi docs/07, ADR-0007/0010). */
 export const providerSchema = z.object({
-  name: z.enum(['anthropic', 'openai-compatible']).default('anthropic'),
+  name: z.enum(['anthropic', 'openai', 'openai-compatible']).default('anthropic'),
   model: z.string().default('claude-sonnet-4-5'),
-  /** Base URL per provider OpenAI-compatible (Ollama/LiteLLM/OpenRouter). */
+  /** Base URL per provider OpenAI-compatible (OpenRouter/Vercel/Ollama/LiteLLM…). */
   baseURL: z.string().url().optional(),
 });
 

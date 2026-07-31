@@ -12,8 +12,13 @@ export function resolveSecrets(
   config: OpenMateConfig,
   env: NodeJS.ProcessEnv = process.env,
 ): Secrets {
-  if (config.provider.name === 'anthropic') {
-    return { apiKey: env.OPENMATE_ANTHROPIC_API_KEY ?? env.ANTHROPIC_API_KEY };
-  }
-  return { apiKey: env.OPENMATE_API_KEY };
+  // Chiave generica valida per qualsiasi provider, con fallback specifici.
+  void config;
+  return {
+    apiKey:
+      env.OPENMATE_API_KEY ??
+      env.OPENMATE_ANTHROPIC_API_KEY ??
+      env.ANTHROPIC_API_KEY ??
+      env.OPENAI_API_KEY,
+  };
 }

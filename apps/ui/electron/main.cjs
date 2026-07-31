@@ -71,8 +71,11 @@ function writePersona(name, tone) {
 function saveOnboarding(data) {
   fs.mkdirSync(storageRoot, { recursive: true });
   const minutes = Number(data.heartbeatMinutes) || 15;
+  const p = data.provider || { name: 'anthropic', model: 'claude-sonnet-4-5' };
+  const provider = { name: p.name || 'anthropic', model: p.model || 'claude-sonnet-4-5' };
+  if (p.baseURL) provider.baseURL = p.baseURL;
   const config = {
-    provider: { name: 'anthropic', model: data.model || 'claude-sonnet-4-5' },
+    provider,
     heartbeat: { intervalMs: minutes * 60000, cron: [] },
     autonomy: { shell: { allow: [], deny: [] }, files: { allow: [] } },
     budget: { maxSteps: 12, wallClockMs: 120000 },
@@ -91,7 +94,7 @@ function startDaemon() {
     env: {
       ...process.env,
       OPENMATE_CONFIG: configFile,
-      OPENMATE_ANTHROPIC_API_KEY: loadKey(),
+      OPENMATE_API_KEY: loadKey(),
       OPENMATE_PORT: String(PORT),
     },
     stdio: 'inherit',

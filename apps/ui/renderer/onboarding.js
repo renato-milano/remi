@@ -36,12 +36,51 @@ function wireChips(containerId) {
 wireChips('tones');
 wireChips('beat');
 
+// --- provider ---
+const PROVIDERS = {
+  anthropic: { name: 'anthropic', key: 'sk-ant-…', model: 'claude-sonnet-4-5', help: 'https://console.anthropic.com/settings/keys', base: null, showBase: false, showModel: false },
+  openai: { name: 'openai', key: 'sk-…', model: 'gpt-4o', help: 'https://platform.openai.com/api-keys', base: null, showBase: false, showModel: true },
+  openrouter: { name: 'openai-compatible', key: 'sk-or-…', model: 'anthropic/claude-3.5-sonnet', help: 'https://openrouter.ai/keys', base: 'https://openrouter.ai/api/v1', showBase: false, showModel: true },
+  custom: { name: 'openai-compatible', key: 'chiave API', model: '', help: null, base: '', showBase: true, showModel: true },
+};
+let provKey = 'anthropic';
+const apiKeyEl = document.getElementById('apiKey');
+const baseURLEl = document.getElementById('baseURL');
+const modelEl = document.getElementById('model');
+const provHelp = document.getElementById('provHelp');
+
+function selectProvider(key) {
+  provKey = key;
+  const P = PROVIDERS[key];
+  for (const b of document.querySelectorAll('#providers .chip')) {
+    b.classList.toggle('active', b.dataset.prov === key);
+  }
+  apiKeyEl.placeholder = P.key;
+  modelEl.classList.toggle('hidden', !P.showModel);
+  modelEl.value = P.model || '';
+  baseURLEl.classList.toggle('hidden', !P.showBase);
+  baseURLEl.value = P.base || '';
+  if (P.help) {
+    provHelp.href = P.help;
+    provHelp.classList.remove('hidden');
+  } else {
+    provHelp.classList.add('hidden');
+  }
+}
+document.getElementById('providers').addEventListener('click', (e) => {
+  const chip = e.target.closest('.chip');
+  if (chip) selectProvider(chip.dataset.prov);
+});
+
 function collect() {
   const name = document.getElementById('name').value.trim() || 'OpenMate';
   const tone = document.querySelector('#tones .chip.active')?.dataset.tone || 'curioso';
-  const apiKey = document.getElementById('apiKey').value.trim();
+  const apiKey = apiKeyEl.value.trim();
   const heartbeatMinutes = Number(document.querySelector('#beat .chip.active')?.dataset.min) || 15;
-  return { name, tone, apiKey, heartbeatMinutes };
+  const P = PROVIDERS[provKey];
+  const model = modelEl.value.trim() || P.model || 'claude-sonnet-4-5';
+  const baseURL = P.showBase ? baseURLEl.value.trim() || undefined : P.base || undefined;
+  return { name, tone, apiKey, heartbeatMinutes, provider: { name: P.name, model, baseURL } };
 }
 
 function hatch() {

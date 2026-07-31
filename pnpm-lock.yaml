@@ -9,6 +9,12 @@ catalogs:
     '@ai-sdk/anthropic':
       specifier: ^2.0.0
       version: 2.0.92
+    '@ai-sdk/openai':
+      specifier: ^2.0.0
+      version: 2.0.117
+    '@ai-sdk/openai-compatible':
+      specifier: ^1.0.0
+      version: 1.0.47
     '@types/node':
       specifier: ^22.10.0
       version: 22.20.1
@@ -173,6 +179,12 @@ importers:
       '@ai-sdk/anthropic':
         specifier: 'catalog:'
         version: 2.0.92(zod@3.25.76)
+      '@ai-sdk/openai':
+        specifier: 'catalog:'
+        version: 2.0.117(zod@3.25.76)
+      '@ai-sdk/openai-compatible':
+        specifier: 'catalog:'
+        version: 1.0.47(zod@3.25.76)
       ai:
         specifier: 'catalog:'
         version: 5.0.223(zod@3.25.76)
@@ -272,6 +284,18 @@ packages:
 
   '@ai-sdk/gateway@2.0.122':
     resolution: {integrity: sha512-cA6VJaaBRkb9/s5P7jpA2NgxB/Kq5V+c1jrwQ95KJOyJTkHlmquuMV8zV9w5Tb2mEQ8tdwn9rymvB1UjvA/mxw==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      zod: ^3.25.76 || ^4.1.8
+
+  '@ai-sdk/openai-compatible@1.0.47':
+    resolution: {integrity: sha512-6Esz5WZmm1YckHEHUtDurGEjoTbEI1CkcfUkL2Fu1rngWhrnW98hhaj3bnjuqwkG4U1SNwVEIfucMS3ZGADEiQ==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      zod: ^3.25.76 || ^4.1.8
+
+  '@ai-sdk/openai@2.0.117':
+    resolution: {integrity: sha512-fqr2OwpegPlS58NUAat4+6cAOR/x1askt5dXKY1rCjDyhHJYxm2OZM9fZnG9I717ny4uRSp2mhsMio2uthA0Pg==}
     engines: {node: '>=18'}
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
@@ -1822,6 +1846,18 @@ snapshots:
       '@ai-sdk/provider': 2.0.3
       '@ai-sdk/provider-utils': 3.0.31(zod@3.25.76)
       '@vercel/oidc': 3.1.0
+      zod: 3.25.76
+
+  '@ai-sdk/openai-compatible@1.0.47(zod@3.25.76)':
+    dependencies:
+      '@ai-sdk/provider': 2.0.3
+      '@ai-sdk/provider-utils': 3.0.31(zod@3.25.76)
+      zod: 3.25.76
+
+  '@ai-sdk/openai@2.0.117(zod@3.25.76)':
+    dependencies:
+      '@ai-sdk/provider': 2.0.3
+      '@ai-sdk/provider-utils': 3.0.31(zod@3.25.76)
       zod: 3.25.76
 
   '@ai-sdk/provider-utils@3.0.31(zod@3.25.76)':

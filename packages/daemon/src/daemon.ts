@@ -5,7 +5,7 @@ import {
   type Budget,
   DirectProviderBackend,
   type ReasoningBackend,
-  createAnthropicProvider,
+  createProvider,
 } from '@openmate/llm';
 import { type Memory, createMemory } from '@openmate/memory';
 import {
@@ -192,9 +192,10 @@ export class Daemon {
 }
 
 function buildBackend(config: OpenMateConfig, secrets?: Secrets): ReasoningBackend {
-  const provider = createAnthropicProvider({
-    apiKey: secrets?.apiKey,
+  const provider = createProvider({
+    name: config.provider.name,
     baseURL: config.provider.baseURL,
+    apiKey: secrets?.apiKey,
   });
   return new DirectProviderBackend(provider.languageModel(config.provider.model));
 }

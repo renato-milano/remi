@@ -19,7 +19,9 @@
   },
   "dependencies": {
     "ai": "catalog:",
-    "@ai-sdk/anthropic": "catalog:"
+    "@ai-sdk/anthropic": "catalog:",
+    "@ai-sdk/openai": "catalog:",
+    "@ai-sdk/openai-compatible": "catalog:"
   },
   "devDependencies": {
     "typescript": "catalog:",
