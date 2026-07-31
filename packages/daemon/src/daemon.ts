@@ -27,6 +27,9 @@ import {
 } from '@openmate/tools';
 import { SqliteAuditSink } from './audit-sqlite.js';
 
+/** Auto-nega di un'approvazione senza risposta (evita blocchi della coda). */
+const APPROVAL_TIMEOUT_MS = 120_000;
+
 /** Evento sul filo verso i client: eventi del loop + approval_request con id. */
 export type DaemonEvent =
   | AgentEvent
@@ -115,7 +118,17 @@ export class Daemon {
   private requestApproval(request: ApprovalRequest): Promise<boolean> {
     return new Promise((resolve) => {
       const requestId = randomUUID();
-      this.pendingApprovals.set(requestId, { resolve, request });
+      // auto-nega se nessuno risponde entro il timeout (non blocca la coda)
+      const timer = setTimeout(() => {
+        if (this.pendingApprovals.delete(requestId)) resolve(false);
+      }, APPROVAL_TIMEOUT_MS);
+      this.pendingApprovals.set(requestId, {
+        resolve: (approved) => {
+          clearTimeout(timer);
+          resolve(approved);
+        },
+        request,
+      });
       this.emit({ kind: 'approval_request', requestId, request });
     });
   }
