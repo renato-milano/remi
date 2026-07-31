@@ -128,8 +128,12 @@ export class CognitiveLoop {
   }
 }
 
+const STYLE =
+  'Rispondi in modo BREVE e naturale, come in una chat con un amico: di norma 1-2 frasi. ' +
+  'Vai dritto al punto, niente elenchi lunghi o preamboli. Approfondisci solo se te lo chiede.';
+
 function buildSystem(persona: string, user: string, task?: Task): string {
-  const base = `Sei OpenMate, un agente personale autonomo.\n\n## Persona\n${persona}\n\n## Utente\n${user}`;
+  const base = `Sei un agente personale autonomo che vive sul dispositivo dell'utente.\n\n## Persona\n${persona}\n\n## Utente\n${user}\n\n## Stile\n${STYLE}`;
   return task ? `${base}\n\n## Task attivo\n${task.title}` : base;
 }
 
