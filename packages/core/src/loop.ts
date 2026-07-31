@@ -154,10 +154,7 @@ Puoi VEDERE e USARE lo schermo con i tool computer.*. Ogni azione ti restituisce
 Regole:
 - Le coordinate (x,y) sono nei PIXEL dell'ultimo screenshot. Non inventarle: individua l'elemento nell'immagine. Se non vedi bene, dillo invece di cliccare a caso.
 - Lavora a piccoli passi: screenshot per vedere → una azione → verifica sul nuovo screenshot che sia andata come previsto; solo allora prosegui.
-- PREFERISCI i deep-link/URL invece dei click, sono molto più affidabili. Esempi (macOS, shell.run):
-  · Spotify: open "spotify:search:NOME CANZONE" (apre l'app E cerca in un colpo solo)
-  · Sito/ricerca web: open "https://www.google.com/search?q=..." oppure open -a "Google Chrome" "https://..."
-  · Aprire un'app: open -a "NomeApp"
+- PREFERISCI i deep-link/URL invece dei click quando esistono: sono molto più affidabili. Molte app espongono uno schema URI (es. "app:azione:parametro") che apre l'app ED esegue l'azione in un colpo solo; i siti hanno URL di ricerca diretti. Su macOS: shell.run con open "<url o uri>" oppure open -a "NomeApp".
 - Dopo aver aperto un'app aspetta che sia PRONTA: fai uno screenshot e controlla che sia caricata prima di interagire (appena aperta non ha ancora il focus).
 - Per cercare dentro un'app senza deep-link: (1) metti a fuoco il campo di ricerca cliccandolo, (2) computer.type("query"), (3) computer.key(["enter"]) per confermare. NON dimenticare Invio.
 - Non mischiare tentativi a caso di shell/curl con i click. Scegli una strategia e portala a termine.
