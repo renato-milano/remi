@@ -13,6 +13,7 @@ const bridge = window.overlay || {
 
 const stage = document.getElementById('stage');
 const bubble = document.getElementById('bubble');
+const bubbleContent = document.getElementById('bubbleContent');
 const approval = document.getElementById('approval');
 const activity = document.getElementById('activity');
 const activityBody = document.getElementById('activityBody');
@@ -26,11 +27,17 @@ const character =
 /* --- fumetto --- */
 let bubbleTimer = null;
 function say(text, { action = false, ms = 5200 } = {}) {
-  bubble.textContent = text;
+  bubbleContent.textContent = text;
   bubble.classList.toggle('action', action);
   bubble.classList.remove('hidden');
+  bubbleContent.scrollTop = 0;
   clearTimeout(bubbleTimer);
   bubbleTimer = setTimeout(() => bubble.classList.add('hidden'), ms);
+}
+
+// pulizia leggera del markdown per il fumetto (grassetti/heading)
+function cleanMarkdown(t) {
+  return t.replace(/\*\*(.*?)\*\*/g, '$1').replace(/__(.*?)__/g, '$1').replace(/^#{1,6}\s*/gm, '');
 }
 
 /* --- registro attività ("Cosa stai facendo?") --- */
@@ -127,11 +134,14 @@ function handleEvent(e) {
       say(`· ${e.summary}`, { action: true, ms: 2600 });
       pushLog(`▸ ${e.summary}`);
       break;
-    case 'message':
-      say(e.content, { ms: 7000 });
+    case 'message': {
+      const content = cleanMarkdown(e.content);
+      const ms = Math.min(26000, 4500 + content.length * 35); // durata ∝ lunghezza
+      say(content, { ms });
       character.flash?.('happy', 1400);
       pushLog(`💬 ${e.content}`);
       break;
+    }
     case 'approval_request':
       showApproval(e);
       pushLog(`⚠ approvazione: ${e.request?.toolName ?? ''}`);
