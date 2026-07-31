@@ -1,5 +1,5 @@
 import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
-import { resolve, sep } from 'node:path';
+import { basename, resolve, sep } from 'node:path';
 import { z } from 'zod';
 import { type AutonomyPolicy, type Tool, defineTool } from './types.js';
 
@@ -22,6 +22,7 @@ export const fileReadTool: Tool<{ path: string }, { content: string }> = defineT
   parameters: z.object({ path: z.string() }),
   permission: 'guarded',
   needsApproval: (input, policy) => fileNeedsApproval(input.path, policy),
+  explain: (input) => ({ text: `leggere il file ${basename(input.path)}`, level: 'read', known: true }),
   execute: async (input) => ({ content: readFileSync(input.path, 'utf8') }),
 });
 
@@ -31,6 +32,7 @@ export const fileWriteTool: Tool<{ path: string; content: string }, { bytes: num
   parameters: z.object({ path: z.string(), content: z.string() }),
   permission: 'guarded',
   needsApproval: (input, policy) => fileNeedsApproval(input.path, policy),
+  explain: (input) => ({ text: `scrivere nel file ${basename(input.path)}`, level: 'write', known: true }),
   execute: async (input) => {
     writeFileSync(input.path, input.content, 'utf8');
     return { bytes: Buffer.byteLength(input.content, 'utf8') };
@@ -43,6 +45,7 @@ export const fileListTool: Tool<{ path: string }, { entries: string[] }> = defin
   parameters: z.object({ path: z.string() }),
   permission: 'guarded',
   needsApproval: (input, policy) => fileNeedsApproval(input.path, policy),
+  explain: (input) => ({ text: `guardare i file nella cartella ${basename(input.path) || input.path}`, level: 'read', known: true }),
   execute: async (input) => ({ entries: readdirSync(input.path) }),
 });
 

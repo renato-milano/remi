@@ -115,22 +115,33 @@ describe('@openmate/tools — memory tools', () => {
 });
 
 describe('@openmate/tools — explainCommand', () => {
-  it('spiega un comando di lettura', () => {
+  it('spiega un comando di lettura in modo breve', () => {
     const e = explainCommand('ls -la /tmp');
     expect(e.level).toBe('read');
     expect(e.known).toBe(true);
-    expect(e.text.toLowerCase()).toContain('elenca');
+    expect(e.text.toLowerCase()).toContain('guardare i file');
   });
 
   it('classifica come pericoloso rm -rf e sudo', () => {
     expect(explainCommand('rm -rf /tmp/x').level).toBe('dangerous');
+    expect(explainCommand('rm -rf /tmp/x').text.toLowerCase()).toContain('eliminare');
     expect(explainCommand('sudo rm -rf /').level).toBe('dangerous');
   });
 
-  it('gestisce le pipe e i comandi sconosciuti', () => {
+  it('riassume una pipe con l\'azione principale (niente elenchi)', () => {
     const pipe = explainCommand('grep -i error app.log | tail -1');
     expect(pipe.level).toBe('read');
-    expect(pipe.text).toContain('poi');
+    expect(pipe.text.toLowerCase()).toContain('cercare');
+    expect(pipe.text).not.toContain('poi');
+  });
+
+  it('descrive l\'azione a rischio più alto in un fallback', () => {
+    const e = explainCommand('ls ~/Desktop || rm -rf /tmp/x');
+    expect(e.level).toBe('dangerous');
+    expect(e.text.toLowerCase()).toContain('eliminare');
+  });
+
+  it('segnala i comandi sconosciuti', () => {
     const unknown = explainCommand('frobnicate --xyz');
     expect(unknown.known).toBe(false);
     expect(unknown.level).toBe('unknown');
