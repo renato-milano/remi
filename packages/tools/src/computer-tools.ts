@@ -16,10 +16,14 @@ export function createComputerTools(executor: Executor): Tool[] {
     return { ok: true, width: s.width, height: s.height };
   };
 
+  // nota: schema con un campo opzionale (non vuoto) → l'input è sempre un oggetto,
+  // così Anthropic non rifiuta il tool_use ("Input should be a valid dictionary").
+  const noArgs = z.object({ note: z.string().optional().describe('facoltativo, ignorato') });
+
   const screenshot = defineTool({
     name: 'computer.screenshot',
     description: 'Cattura uno screenshot dello schermo per vedere cosa c’è. Lo vedrai nel messaggio successivo.',
-    parameters: z.object({}),
+    parameters: noArgs,
     permission: 'guarded',
     explain: () => ({ text: 'guardare lo schermo', level: 'read', known: true }),
     execute: async (_i, ctx) => capture(ctx),
@@ -114,7 +118,7 @@ export function createComputerTools(executor: Executor): Tool[] {
     name: 'computer.list_elements',
     description:
       'Elenca gli elementi cliccabili della finestra attiva (pulsanti, campi…) con un indice. Poi usa computer.click_element(index) per cliccarli con precisione, invece di indovinare le coordinate.',
-    parameters: z.object({}),
+    parameters: noArgs,
     permission: 'guarded',
     explain: () => ({ text: 'leggere gli elementi sullo schermo', level: 'read', known: true }),
     execute: async (_i, ctx) => {

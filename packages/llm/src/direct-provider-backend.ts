@@ -1,5 +1,28 @@
-import { type LanguageModel, stepCountIs, streamText } from 'ai';
+import { type LanguageModel, type ModelMessage, stepCountIs, streamText } from 'ai';
 import type { ReasoningBackend, ReasoningEvent, ReasoningInput } from './types.js';
+
+/**
+ * Alcuni provider (Anthropic via gateway) rifiutano un tool_use.input che non
+ * sia un oggetto: i tool senza parametri possono serializzarsi come "" → errore
+ * "Input should be a valid dictionary". Qui forziamo ogni input a un oggetto.
+ */
+function sanitizeToolInputs(messages: ModelMessage[]): ModelMessage[] {
+  return messages.map((m) => {
+    if (m.role !== 'assistant' || !Array.isArray(m.content)) return m;
+    const content = m.content.map((p) => {
+      // biome-ignore lint/suspicious/noExplicitAny: parte content AI SDK
+      const part = p as any;
+      if (part?.type === 'tool-call') {
+        const input = part.input ?? part.args;
+        if (input === null || input === undefined || typeof input !== 'object') {
+          return { ...part, input: {} };
+        }
+      }
+      return p;
+    });
+    return { ...m, content } as ModelMessage;
+  });
+}
 
 /**
  * DirectProviderBackend: OpenMate esegue il proprio loop chiamando gli endpoint
@@ -25,11 +48,12 @@ export class DirectProviderBackend implements ReasoningBackend {
       // nei tool result non raggiungono il modello su OpenAI-compatible.
       prepareStep: takeImage
         ? ({ messages }) => {
+            const msgs = sanitizeToolInputs(messages);
             const img = takeImage();
-            if (!img) return {};
+            if (!img) return { messages: msgs };
             return {
               messages: [
-                ...messages,
+                ...msgs,
                 {
                   role: 'user',
                   content: [
