@@ -24,6 +24,7 @@ const EXTERNAL = Boolean(process.env.OPENMATE_EXTERNAL);
 
 let win; // companion
 let onbWin; // onboarding
+let settingsWin; // impostazioni
 let daemonProc;
 let paused = false;
 
@@ -36,6 +37,36 @@ const daemonEntry = path.join(__dirname, '..', '..', '..', 'packages', 'daemon',
 /* ---------------- persistenza config + chiave (safeStorage) ---------------- */
 function isOnboarded() {
   return fs.existsSync(configFile);
+}
+
+function readConfig() {
+  try {
+    return JSON.parse(fs.readFileSync(configFile, 'utf8'));
+  } catch {
+    return {};
+  }
+}
+
+/** Aggiorna la config esistente dai valori delle Impostazioni. */
+function saveSettings(data) {
+  const config = readConfig();
+  config.provider = config.provider || {};
+  const p = data.provider || {};
+  config.provider.name = p.name || config.provider.name || 'anthropic';
+  if (p.model) config.provider.model = p.model;
+  if (p.baseURL) config.provider.baseURL = p.baseURL;
+  else delete config.provider.baseURL;
+  config.autonomy = config.autonomy || { shell: { allow: [], deny: [] }, files: { allow: [] } };
+  config.autonomy.autoApprove = ['none', 'read', 'write'].includes(data.autoApprove)
+    ? data.autoApprove
+    : config.autonomy.autoApprove || 'read';
+  const minutes = Number(data.heartbeatMinutes) || 15;
+  config.heartbeat = config.heartbeat || { cron: [] };
+  config.heartbeat.intervalMs = minutes * 60000;
+  if (!config.storage) config.storage = { root: storageRoot };
+  if (!config.budget) config.budget = { maxSteps: 12, wallClockMs: 120000 };
+  fs.writeFileSync(configFile, JSON.stringify(config, null, 2), 'utf8');
+  if (data.apiKey) saveKey(data.apiKey);
 }
 
 function saveKey(key) {
@@ -196,6 +227,50 @@ ipcMain.on('onboarding-complete', (_e, data) => {
   }
 });
 
+/* ---------------- finestra impostazioni ---------------- */
+function openSettings() {
+  if (settingsWin) {
+    settingsWin.focus();
+    return;
+  }
+  settingsWin = new BrowserWindow({
+    width: 520,
+    height: 660,
+    resizable: false,
+    title: 'OpenMate — Impostazioni',
+    backgroundColor: '#0a0c0b',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload-settings.cjs'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
+    },
+  });
+  settingsWin.loadFile(path.join(__dirname, '..', 'renderer', 'settings.html'));
+  settingsWin.webContents.on('did-finish-load', () => {
+    settingsWin.webContents.send('settings-data', { config: readConfig(), hasKey: fs.existsSync(keyFile) });
+  });
+  settingsWin.on('closed', () => {
+    settingsWin = undefined;
+  });
+}
+
+ipcMain.on('settings-save', (_e, data) => {
+  saveSettings(data);
+  stopDaemon();
+  startDaemon(); // riparte con la nuova config/chiave
+  if (settingsWin) {
+    settingsWin.close();
+    settingsWin = undefined;
+  }
+});
+ipcMain.on('settings-close', () => {
+  if (settingsWin) {
+    settingsWin.close();
+    settingsWin = undefined;
+  }
+});
+
 /* ---------------- IPC companion ---------------- */
 ipcMain.on('set-interactive', (_e, interactive) => {
   if (win) win.setIgnoreMouseEvents(!interactive, { forward: true });
@@ -275,6 +350,7 @@ function showContextMenu() {
     { label: '⏹  Interrompi', click: () => postDaemon('interrupt') },
     { type: 'separator' },
     { label: 'Cosa stai facendo?', click: () => win?.webContents.send('show-activity') },
+    { label: 'Impostazioni…', click: () => openSettings() },
     { type: 'separator' },
     { label: 'Esci', role: 'quit' },
   ]);

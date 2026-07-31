@@ -1,0 +1,12 @@
+.settings{padding:26px 32px;height:100vh;overflow-y:auto;display:flex;flex-direction:column;gap:6px}
+.settings h1{font-family:var(--serif);font-weight:400;font-size:28px;margin-bottom:10px}
+.settings section{margin-bottom:14px}
+.settings label{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;
+  color:#8b958c;display:block;margin-bottom:8px}
+/* override: campi a tutta larghezza, allineati a sinistra */
+.settings .field{width:100%;text-align:left;margin-bottom:8px}
+.settings .field.select{text-align:left}
+.settings .model-row{width:100%;margin-bottom:8px}
+.settings .chips.col{width:100%}
+.settings .link{display:inline-block;margin-top:2px}
+.settings .nav{margin-top:auto;padding-top:14px;display:flex;justify-content:space-between;gap:12px}

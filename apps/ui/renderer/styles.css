@@ -16,7 +16,7 @@ html,body{width:100%;height:100%;background:transparent;overflow:hidden;
 .stage svg{width:100%;height:100%;overflow:visible}
 
 /* colore dei glifi dello schermo */
-#creatureRoot{--eye:#5cc8ff}
+#creatureRoot{--eye:#5ef2a0}
 #creatureRoot[data-tint="amber"]{--eye:#ffd27a}
 
 /* movimenti */

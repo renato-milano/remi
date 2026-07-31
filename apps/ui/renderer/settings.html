@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="onboarding.css" />
+  <link rel="stylesheet" href="settings.css" />
+</head>
+<body>
+  <div class="settings">
+    <h1>Impostazioni</h1>
+
+    <section>
+      <label>Cervello (provider)</label>
+      <select id="provider" class="field select">
+        <option value="anthropic">Claude (Anthropic)</option>
+        <option value="openai">OpenAI</option>
+        <option value="openrouter">OpenRouter</option>
+        <option value="vercel">Vercel AI Gateway</option>
+        <option value="ollama">Ollama (locale)</option>
+        <option value="custom">Altro (OpenAI-compatible)</option>
+      </select>
+      <input id="apiKey" class="field mono" type="password" placeholder="chiave API" />
+      <input id="baseURL" class="field mono hidden" type="text" placeholder="https://… (base URL)" />
+      <div class="model-row">
+        <input id="model" class="field mono" type="text" placeholder="modello" />
+        <a class="link" id="modelsLink" href="#" target="_blank" rel="noreferrer">Modelli ↗</a>
+      </div>
+      <a class="link" id="provHelp" href="#" target="_blank" rel="noreferrer">Dove trovo la chiave?</a>
+    </section>
+
+    <section>
+      <label>Fiducia (cosa faccio senza chiederti)</label>
+      <div class="chips col" id="trust">
+        <button class="chip" data-trust="none">Chiedimi sempre</button>
+        <button class="chip active" data-trust="read">Equilibrato · leggo da solo, chiedo per il resto</button>
+        <button class="chip" data-trust="write">Autonomo · chiedo solo per le cose pericolose</button>
+      </div>
+    </section>
+
+    <section>
+      <label>Heartbeat (ogni quanto mi sveglio)</label>
+      <div class="chips col" id="beat">
+        <button class="chip" data-min="5">Ogni 5 min</button>
+        <button class="chip active" data-min="15">Ogni 15 min</button>
+        <button class="chip" data-min="60">Ogni ora</button>
+        <button class="chip" data-min="100000">Solo su richiesta</button>
+      </div>
+    </section>
+
+    <div class="nav">
+      <button id="cancel" class="btn ghost">Annulla</button>
+      <button id="save" class="btn primary">Salva e riavvia</button>
+    </div>
+  </div>
+
+  <script src="settings.js"></script>
+</body>
+</html>
