@@ -188,10 +188,7 @@ connect();
 input.addEventListener('keydown', (ev) => {
   if (ev.key === 'Enter') {
     const text = input.value.trim();
-    if (text) {
-      postCommand({ kind: 'user_message', content: text });
-      say('…', { ms: 1500 });
-    }
+    if (text) postCommand({ kind: 'user_message', content: text });
     input.value = '';
   } else if (ev.key === 'Escape') {
     document.body.classList.remove('summoned');
