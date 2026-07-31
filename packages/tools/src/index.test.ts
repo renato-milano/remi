@@ -201,6 +201,8 @@ function fakeComputerExecutor(): Executor {
     type: async () => {},
     key: async () => {},
     scroll: async () => {},
+    describeUi: async () => [],
+    clickElement: async () => {},
   };
 }
 
@@ -214,6 +216,8 @@ describe('@openmate/tools — computer.* gate di sessione', () => {
     type: async () => {},
     key: async () => {},
     scroll: async () => {},
+    describeUi: async () => [],
+    clickElement: async () => {},
   });
 
   it('chiede l\'approvazione una sola volta per ciclo, poi auto-approva', async () => {

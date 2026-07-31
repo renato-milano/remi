@@ -156,7 +156,8 @@ Regole:
 - Lavora a piccoli passi: screenshot per vedere → una azione → verifica sul nuovo screenshot che sia andata come previsto; solo allora prosegui.
 - PREFERISCI i deep-link/URL invece dei click quando esistono: sono molto più affidabili. Molte app espongono uno schema URI (es. "app:azione:parametro") che apre l'app ED esegue l'azione in un colpo solo; i siti hanno URL di ricerca diretti. Su macOS: per un URI/URL usa shell.run open "<url o uri>" (SENZA -a); per aprire un'app per nome usa open -a "NomeApp".
 - Dopo aver aperto un'app NON agire subito: non è ancora pronta né a fuoco. Usa computer.wait(2-3) e guarda lo screenshot che restituisce; ripeti l'attesa finché è caricata, poi interagisci.
-- Per cercare dentro un'app senza deep-link: (1) attendi che sia pronta, (2) metti a fuoco il campo di ricerca cliccandolo, (3) computer.type("query"), (4) computer.key(["enter"]). NON dimenticare Invio, e verifica con uno screenshot che la ricerca sia partita.
+- Per CLICCARE un pulsante o un campo, PREFERISCI computer.list_elements (ti dà la lista numerata degli elementi con etichetta) e poi computer.click_element(indice): è preciso. Usa il click a coordinate (computer.click) solo se l'elemento non compare nella lista.
+- Per cercare dentro un'app senza deep-link: (1) attendi che sia pronta, (2) metti a fuoco il campo di ricerca (list_elements + click_element, o un click), (3) computer.type("query"), (4) computer.key(["enter"]). NON dimenticare Invio, e verifica con uno screenshot che la ricerca sia partita.
 - Non mischiare tentativi a caso di shell/curl con i click. Scegli una strategia e portala a termine.
 - Vai avanti finché l'obiettivo è DAVVERO raggiunto (il risultato è visibile nello screenshot). Non fermarti a metà; ma non ripetere all'infinito la stessa azione che non funziona: cambia approccio o chiedi.`;
 

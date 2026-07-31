@@ -110,5 +110,37 @@ export function createComputerTools(executor: Executor): Tool[] {
     },
   });
 
-  return [screenshot, wait, move, click, doubleClick, type, key, scroll];
+  const listElements = defineTool({
+    name: 'computer.list_elements',
+    description:
+      'Elenca gli elementi cliccabili della finestra attiva (pulsanti, campi…) con un indice. Poi usa computer.click_element(index) per cliccarli con precisione, invece di indovinare le coordinate.',
+    parameters: z.object({}),
+    permission: 'guarded',
+    explain: () => ({ text: 'leggere gli elementi sullo schermo', level: 'read', known: true }),
+    execute: async (_i, ctx) => {
+      const els = await executor.describeUi();
+      await capture(ctx); // manda anche lo screenshot aggiornato
+      return {
+        count: els.length,
+        elements: els.map((e, i) => ({ index: i, role: e.role, name: e.name })),
+        hint: els.length
+          ? 'Usa computer.click_element({index}) per cliccare uno di questi.'
+          : 'Nessun elemento accessibile trovato (app senza albero AX): usa il click a coordinate guardando lo screenshot.',
+      };
+    },
+  });
+
+  const clickElement = defineTool({
+    name: 'computer.click_element',
+    description: 'Clicca l’elemento all’indice ottenuto da computer.list_elements (click preciso).',
+    parameters: z.object({ index: z.number().int().min(0) }),
+    permission: 'dangerous',
+    explain: () => ({ text: 'cliccare un elemento sullo schermo', level: 'dangerous', known: true }),
+    execute: async (i, ctx) => {
+      await executor.clickElement(i.index);
+      return capture(ctx);
+    },
+  });
+
+  return [screenshot, wait, listElements, clickElement, move, click, doubleClick, type, key, scroll];
 }

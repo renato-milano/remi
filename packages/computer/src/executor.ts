@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { detectCapabilities } from './capabilities.js';
 import { type ShotMapping, toLogical } from './scaling.js';
 import type { Capabilities, Executor, MouseButton, Screenshot } from './types.js';
+import { type UiElement, inspectUi } from './ui-inspect.js';
 
 /** Larghezza massima dell'immagine inviata al modello (grounding + token). */
 const MAX_WIDTH = 1366;
@@ -50,9 +51,26 @@ function resolveKey(K: Record<string, number>, name: string): number | undefined
 export class NutExecutor implements Executor {
   private mapping: ShotMapping = { sentW: 1, sentH: 1, nutW: 1, nutH: 1 };
   private caps: Capabilities = detectCapabilities();
+  private lastElements: UiElement[] = [];
 
   capabilities(): Capabilities {
     return this.caps;
+  }
+
+  async describeUi(): Promise<UiElement[]> {
+    this.lastElements = await inspectUi();
+    return this.lastElements;
+  }
+
+  async clickElement(index: number): Promise<void> {
+    const el = this.lastElements[index];
+    if (!el) throw new Error(`elemento ${index} non trovato (usa prima list_elements)`);
+    const nut = await loadNut();
+    // le coordinate AX sono già nello spazio del sistema di puntamento (nut.js)
+    const cx = Math.round(el.x + el.w / 2);
+    const cy = Math.round(el.y + el.h / 2);
+    await nut.mouse.setPosition(new nut.Point(cx, cy));
+    await nut.mouse.click(nut.Button.LEFT);
   }
 
   async screenshot(): Promise<Screenshot> {

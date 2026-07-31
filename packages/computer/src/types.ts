@@ -1,5 +1,8 @@
 export type MouseButton = 'left' | 'right' | 'middle';
 
+export type { UiElement } from './ui-inspect.js';
+import type { UiElement } from './ui-inspect.js';
+
 export interface Screenshot {
   /** PNG in base64 (eventualmente ridotto per grounding/token). */
   pngBase64: string;
@@ -30,4 +33,8 @@ export interface Executor {
   /** Combinazione di tasti, es. ["cmd","space"]. */
   key(keys: string[]): Promise<void>;
   scroll(dx: number, dy: number): Promise<void>;
+  /** Elenca gli elementi UI cliccabili (accessibilità); li memorizza per clickElement. */
+  describeUi(): Promise<UiElement[]>;
+  /** Clicca l'elemento all'indice dell'ultimo describeUi (coordinate AX esatte). */
+  clickElement(index: number): Promise<void>;
 }
