@@ -9,6 +9,7 @@ import {
   ToolRegistry,
   createMemoryTools,
   createToolContext,
+  explainCommand,
   shellRunTool,
 } from './index.js';
 
@@ -110,6 +111,29 @@ describe('@openmate/tools — memory tools', () => {
     )) as { hits: { ref: unknown }[] };
     expect(res.hits.length).toBeGreaterThan(0);
     expect(res.hits[0]?.ref).toEqual({ kind: 'semantic', name: 'nota-tool' });
+  });
+});
+
+describe('@openmate/tools — explainCommand', () => {
+  it('spiega un comando di lettura', () => {
+    const e = explainCommand('ls -la /tmp');
+    expect(e.level).toBe('read');
+    expect(e.known).toBe(true);
+    expect(e.text.toLowerCase()).toContain('elenca');
+  });
+
+  it('classifica come pericoloso rm -rf e sudo', () => {
+    expect(explainCommand('rm -rf /tmp/x').level).toBe('dangerous');
+    expect(explainCommand('sudo rm -rf /').level).toBe('dangerous');
+  });
+
+  it('gestisce le pipe e i comandi sconosciuti', () => {
+    const pipe = explainCommand('grep -i error app.log | tail -1');
+    expect(pipe.level).toBe('read');
+    expect(pipe.text).toContain('poi');
+    const unknown = explainCommand('frobnicate --xyz');
+    expect(unknown.known).toBe(false);
+    expect(unknown.level).toBe('unknown');
   });
 });
 

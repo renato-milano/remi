@@ -91,6 +91,7 @@ export async function executeGated(
       summary: `Eseguire ${t.name}`,
       details: input,
       risk: t.permission === 'dangerous' ? 'dangerous' : 'guarded',
+      explanation: t.explain?.(input),
     });
     if (!approved) {
       ctx.audit({ ts, tool: t.name, input, decision: 'denied', outcome: 'skipped' });

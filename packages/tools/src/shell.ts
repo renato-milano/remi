@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { z } from 'zod';
+import { explainCommand } from './explain.js';
 import { type Tool, defineTool } from './types.js';
 
 export interface ShellResult {
@@ -58,6 +59,7 @@ export const shellRunTool: Tool<{ command: string; cwd?: string }, ShellResult> 
   parameters: z.object({ command: z.string(), cwd: z.string().optional() }),
   permission: 'guarded',
   needsApproval: (input, policy) => shellNeedsApproval(input.command, policy),
+  explain: (input) => explainCommand(input.command),
   execute: (input, ctx) =>
     runShell(input.command, { cwd: input.cwd, timeoutMs: DEFAULT_TIMEOUT_MS, signal: ctx.signal }),
 });

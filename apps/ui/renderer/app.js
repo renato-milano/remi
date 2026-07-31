@@ -53,20 +53,37 @@ function showActivity() {
 }
 document.getElementById('activityClose').onclick = () => activity.classList.add('hidden');
 
-/* --- approvazione avanzata (comando + rischio + "consenti sempre" + auto-nega) --- */
+/* --- approvazione: linguaggio semplice + rischio + "consenti sempre" + auto-nega --- */
+const RISK = {
+  read: { label: '🟢 Leggere dei file', cls: 'ok' },
+  network: { label: '🟡 Accedere a internet', cls: 'mid' },
+  write: { label: '🟡 Modificare file', cls: 'mid' },
+  dangerous: { label: '🔴 Azione pericolosa', cls: 'danger' },
+  unknown: { label: '⚠️ Non riconosciuto', cls: 'warn' },
+};
 let approvalCountdown = null;
 function showApproval(evt) {
   clearInterval(approvalCountdown);
   const req = evt.request || {};
   const cmd = req.details?.command ? String(req.details.command) : '';
   const prog = cmd ? cmd.trim().split(/\s+/)[0] : '';
-  const risk = req.risk === 'dangerous' ? 'pericoloso' : 'guarded';
+  const ex = req.explanation;
+  const risk = ex
+    ? RISK[ex.level] || RISK.unknown
+    : { label: req.risk === 'dangerous' ? '🔴 Azione pericolosa' : '🟡 Azione', cls: req.risk === 'dangerous' ? 'danger' : 'mid' };
+  const plain = ex ? ex.text : cmd || req.toolName || "un'azione";
+  const caution = ex && !ex.known
+    ? '<div class="caution">Non riconosco questo comando — procedi con cautela.</div>'
+    : '';
+  const cmdBlock = cmd
+    ? `<details class="cmd-details no-drag"><summary>mostra comando</summary><div class="cmd">${escapeHtml(cmd)}</div></details>`
+    : '';
 
   approval.innerHTML = `
-    <div class="approval-text">Vuole eseguire <b>${escapeHtml(req.toolName || "un'azione")}</b>
-      <span class="risk ${req.risk === 'dangerous' ? 'danger' : ''}">${risk}</span>
-      ${cmd ? `<div class="cmd">${escapeHtml(cmd)}</div>` : ''}
-    </div>
+    <div class="approval-head"><span class="risk-badge ${risk.cls}">${risk.label}</span></div>
+    <div class="approval-plain">OpenMate vuole: ${escapeHtml(plain)}</div>
+    ${caution}
+    ${cmdBlock}
     <div class="approval-count" id="apCount"></div>
     <div class="approval-btns">
       <button class="no no-drag" id="apNo">Nega</button>

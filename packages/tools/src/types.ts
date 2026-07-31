@@ -1,4 +1,5 @@
 import type { ZodType } from 'zod';
+import type { CommandExplanation } from './explain.js';
 
 export type Permission = 'safe' | 'guarded' | 'dangerous';
 
@@ -13,6 +14,8 @@ export interface ApprovalRequest {
   summary: string;
   details: unknown;
   risk: 'guarded' | 'dangerous';
+  /** Spiegazione in linguaggio semplice per l'utente (se il tool la fornisce). */
+  explanation?: CommandExplanation;
 }
 
 export type AuditDecision = 'auto' | 'approved' | 'denied';
@@ -46,6 +49,8 @@ export interface Tool<I = unknown, O = unknown> {
   parameters: ZodType<I>;
   permission: Permission;
   needsApproval?(input: I, policy: AutonomyPolicy): boolean;
+  /** Spiegazione in linguaggio semplice dell'azione, per la card di approvazione. */
+  explain?(input: I): CommandExplanation;
   execute(input: I, ctx: ToolContext): Promise<O>;
 }
 
