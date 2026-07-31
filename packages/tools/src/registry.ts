@@ -85,10 +85,17 @@ export class ToolRegistry {
       if (t.toModelOutput) {
         cfg.toModelOutput = ({ output }: { output: unknown }) => t.toModelOutput?.(output);
       }
-      set[t.name] = tool(cfg);
+      // Alcuni provider (Anthropic) accettano solo [A-Za-z0-9_-] nei nomi tool:
+      // sul filo usiamo il nome sanificato, internamente resta col punto (audit/gate).
+      set[wireName(t.name)] = tool(cfg);
     }
     return set;
   }
+}
+
+/** Nome tool compatibile con tutti i provider (niente punti). */
+export function wireName(name: string): string {
+  return name.replace(/\./g, '_');
 }
 
 /** Applica validazione, gate dei permessi (approval) e audit attorno a un tool. */

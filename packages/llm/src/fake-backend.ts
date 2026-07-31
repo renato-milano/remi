@@ -27,7 +27,8 @@ export class FakeReasoningBackend implements ReasoningBackend {
 
       const toolCallId = `call_${(callSeq += 1)}`;
       yield { type: 'tool-call', toolCallId, toolName: step.callTool, input: step.input };
-      const tool = input.tools?.[step.callTool];
+      // i tool sono registrati col nome sanificato (niente punti); accetta entrambi
+      const tool = input.tools?.[step.callTool] ?? input.tools?.[step.callTool.replace(/\./g, '_')];
       const output = tool?.execute
         ? await tool.execute(step.input, { toolCallId, messages: input.messages })
         : undefined;

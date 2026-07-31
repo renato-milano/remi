@@ -193,7 +193,7 @@ function handleEvent(e) {
     case 'action':
       say(`· ${e.summary}`, { action: true, ms: 2600 });
       pushLog(`▸ ${e.summary}`);
-      if (typeof e.summary === 'string' && e.summary.startsWith('computer.')) showComputerBanner();
+      if (typeof e.summary === 'string' && /^computer[._]/.test(e.summary)) showComputerBanner();
       break;
     case 'message': {
       const content = cleanMarkdown(e.content);

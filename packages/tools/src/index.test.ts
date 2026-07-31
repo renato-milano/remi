@@ -176,9 +176,33 @@ describe('@openmate/tools — AI SDK adapter', () => {
     const registry = new ToolRegistry().register(shellRunTool);
     const ctx = createToolContext({ audit: new InMemoryAuditSink(), requestApproval: async () => true });
     const set = registry.toAiToolSet(ctx, policy);
-    expect(Object.keys(set)).toContain('shell.run');
+    // nome sul filo sanificato (niente punti): compatibile con Anthropic
+    expect(Object.keys(set)).toContain('shell_run');
+    expect(Object.keys(set)).not.toContain('shell.run');
+  });
+
+  it('i nomi sul filo rispettano il pattern dei provider (^[A-Za-z0-9_-]+$)', () => {
+    const registry = new ToolRegistry()
+      .register(shellRunTool)
+      .registerAll(createComputerTools(fakeComputerExecutor()));
+    const ctx = createToolContext({ audit: new InMemoryAuditSink(), requestApproval: async () => true });
+    const set = registry.toAiToolSet(ctx, policy);
+    for (const name of Object.keys(set)) expect(name).toMatch(/^[a-zA-Z0-9_-]{1,128}$/);
   });
 });
+
+function fakeComputerExecutor(): Executor {
+  return {
+    capabilities: () => ({ supported: true, platform: 'darwin' }),
+    screenshot: async () => ({ pngBase64: 'AAAA', width: 100, height: 80 }),
+    move: async () => {},
+    click: async () => {},
+    doubleClick: async () => {},
+    type: async () => {},
+    key: async () => {},
+    scroll: async () => {},
+  };
+}
 
 describe('@openmate/tools — computer.* gate di sessione', () => {
   const fakeExecutor = (): Executor => ({
@@ -233,9 +257,9 @@ describe('@openmate/tools — computer.* gate di sessione', () => {
     const ctx = createToolContext({ audit: new InMemoryAuditSink(), requestApproval: async () => true });
     const registry2 = new ToolRegistry().registerAll(createComputerTools(fakeExecutor()));
     const set2 = registry2.toAiToolSet(ctx, policy);
-    expect(typeof set2['computer.screenshot']?.toModelOutput).toBe('function');
+    expect(typeof set2.computer_screenshot?.toModelOutput).toBe('function');
     // biome-ignore lint/suspicious/noExplicitAny: firma AI SDK
-    const tmo = set2['computer.screenshot']?.toModelOutput as any;
+    const tmo = set2.computer_screenshot?.toModelOutput as any;
     const mapped = tmo({ output: { screenshot: 'AAAA', width: 100, height: 80 } }) as {
       value: { type: string }[];
     };
