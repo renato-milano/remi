@@ -2,7 +2,7 @@ const { app, BrowserWindow, ipcMain, screen, globalShortcut, Menu } = require('e
 const path = require('node:path');
 
 const WIDTH = 300;
-const HEIGHT = 360;
+const HEIGHT = 540; // spazio sopra il robot per fumetti/card (finestra trasparente)
 const DAEMON_URL = process.env.OPENMATE_URL || 'http://127.0.0.1:8787';
 const HOTKEY = process.env.OPENMATE_HOTKEY || 'CommandOrControl+Shift+O';
 let win;

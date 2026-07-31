@@ -60,7 +60,7 @@ html,body{width:100%;height:100%;background:transparent;overflow:hidden;
 @keyframes pop{from{opacity:0;transform:translateY(6px) scale(.96)}to{opacity:1;transform:none}}
 
 /* approvazione */
-.approval{position:absolute;bottom:214px;width:270px;background:var(--bubble-bg);
+.approval{position:absolute;bottom:214px;width:270px;max-height:300px;overflow:auto;background:var(--bubble-bg);
   border:1px solid var(--amber-glow);border-radius:14px;padding:14px;
   box-shadow:0 0 26px var(--amber-glow),0 10px 30px rgba(0,0,0,.4)}
 .approval-text{color:#f6ead2;font-size:12.5px;line-height:1.55;margin-bottom:12px;word-break:break-word}
