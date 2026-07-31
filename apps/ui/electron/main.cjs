@@ -1,9 +1,12 @@
-const { app, BrowserWindow, ipcMain, screen } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, globalShortcut, Menu } = require('electron');
 const path = require('node:path');
 
 const WIDTH = 300;
 const HEIGHT = 360;
+const DAEMON_URL = process.env.OPENMATE_URL || 'http://127.0.0.1:8787';
+const HOTKEY = process.env.OPENMATE_HOTKEY || 'CommandOrControl+Shift+O';
 let win;
+let paused = false;
 
 function createWindow() {
   const { workArea } = screen.getPrimaryDisplay();
@@ -87,7 +90,53 @@ ipcMain.on('drag-end', () => {
 
 ipcMain.on('quit', () => app.quit());
 
-app.whenReady().then(createWindow);
+// Hotkey globale: richiama il robot e mette il focus sull'input.
+function summon() {
+  if (!win) return;
+  win.show();
+  win.focus();
+  win.setIgnoreMouseEvents(false);
+  win.webContents.send('summon');
+}
+
+// POST di un comando al daemon (pause/resume/interrupt).
+async function postDaemon(kind) {
+  try {
+    await fetch(`${DAEMON_URL}/command`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ kind }),
+    });
+  } catch (err) {
+    console.error('postDaemon', err);
+  }
+}
+
+// Menu contestuale (tasto destro sul robot).
+function showContextMenu() {
+  const menu = Menu.buildFromTemplate([
+    {
+      label: paused ? '☀  Sveglia' : '☾  Dormi',
+      click: () => {
+        postDaemon(paused ? 'resume' : 'pause');
+        paused = !paused;
+      },
+    },
+    { label: '⏹  Interrompi', click: () => postDaemon('interrupt') },
+    { type: 'separator' },
+    { label: 'Cosa stai facendo?', click: () => win?.webContents.send('show-activity') },
+    { type: 'separator' },
+    { label: 'Esci', role: 'quit' },
+  ]);
+  menu.popup({ window: win });
+}
+ipcMain.on('context-menu', showContextMenu);
+
+app.whenReady().then(() => {
+  createWindow();
+  globalShortcut.register(HOTKEY, summon);
+});
+app.on('will-quit', () => globalShortcut.unregisterAll());
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) createWindow();
 });

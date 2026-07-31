@@ -1,6 +1,6 @@
 :root{
   --alive:#5ef2a0; --alive-glow:rgba(94,242,160,.45);
-  --amber:#ffbf5c; --amber-glow:rgba(255,191,92,.4);
+  --amber:#ffbf5c; --amber-glow:rgba(255,191,92,.4); --danger:#ff7a6b;
   --bubble-bg:rgba(16,22,19,.94); --bubble-ink:#eaf1ec;
   --font:"IBM Plex Mono",ui-monospace,Menlo,monospace;
 }
@@ -80,6 +80,31 @@ html,body{width:100%;height:100%;background:transparent;overflow:hidden;
   font-size:12.5px;width:170px}
 .dock .status{color:#5c665e;font-size:12px}
 .dock .status.on{color:var(--alive);text-shadow:0 0 8px var(--alive-glow)}
+
+/* approvazione avanzata */
+.approval-text .risk{display:inline-block;font-size:10px;padding:2px 7px;border-radius:6px;
+  border:1px solid var(--amber-glow);color:var(--amber);margin-left:6px;vertical-align:middle}
+.approval-text .risk.danger{color:var(--danger);border-color:#7a2f28}
+.approval-text .cmd{margin-top:8px;font-size:11.5px;color:#cdd6cd;background:#0c100e;
+  border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:7px 9px;word-break:break-all}
+.approval-count{font-size:11px;color:#8b958c;margin:8px 0}
+.approval-btns{flex-wrap:wrap}
+.approval-btns .always{background:transparent;border-color:var(--amber-glow);color:var(--amber)}
+
+/* pannello attività */
+.activity{position:absolute;bottom:214px;width:252px;max-height:236px;background:var(--bubble-bg);
+  border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:10px 12px;
+  box-shadow:0 10px 30px rgba(0,0,0,.4);display:flex;flex-direction:column}
+.activity-head{display:flex;justify-content:space-between;align-items:center;font-size:11px;
+  letter-spacing:.1em;text-transform:uppercase;color:#8b958c;margin-bottom:8px}
+.activity-head button{background:transparent;border:none;color:#8b958c;cursor:pointer;font-size:12px}
+.activity-body{overflow:auto;font-size:11.5px;line-height:1.5;color:#c8d0c8}
+.act-row{padding:4px 0;border-bottom:1px solid rgba(255,255,255,.05);word-break:break-word}
+.act-t{color:#5c665e;margin-right:6px}
+.act-empty{color:#5c665e}
+
+/* dock evocato dall'hotkey */
+body.summoned .dock{opacity:1;transform:none;pointer-events:auto}
 
 .hidden{display:none!important}
 .no-drag{-webkit-app-region:no-drag}
