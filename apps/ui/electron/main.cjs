@@ -1,14 +1,117 @@
-const { app, BrowserWindow, ipcMain, screen, globalShortcut, Menu } = require('electron');
+const {
+  app,
+  BrowserWindow,
+  ipcMain,
+  screen,
+  globalShortcut,
+  Menu,
+  safeStorage,
+} = require('electron');
 const path = require('node:path');
+const fs = require('node:fs');
+const { spawn } = require('node:child_process');
 
 const WIDTH = 300;
 const HEIGHT = 540; // spazio sopra il robot per fumetti/card (finestra trasparente)
-const DAEMON_URL = process.env.OPENMATE_URL || 'http://127.0.0.1:8787';
 const HOTKEY = process.env.OPENMATE_HOTKEY || 'CommandOrControl+Shift+O';
-let win;
+const PORT = Number(process.env.OPENMATE_PORT || 8787);
+const DAEMON_URL = process.env.OPENMATE_URL || `http://127.0.0.1:${PORT}`;
+// Modalità demo/dev: non gestire il daemon né l'onboarding (daemon esterno).
+const EXTERNAL = Boolean(process.env.OPENMATE_EXTERNAL);
+
+let win; // companion
+let onbWin; // onboarding
+let daemonProc;
 let paused = false;
 
-function createWindow() {
+const userData = app.getPath('userData');
+const configFile = path.join(userData, 'openmate.config.json');
+const keyFile = path.join(userData, 'openmate.key');
+const storageRoot = path.join(userData, 'data');
+const daemonEntry = path.join(__dirname, '..', '..', '..', 'packages', 'daemon', 'dist', 'index.js');
+
+/* ---------------- persistenza config + chiave (safeStorage) ---------------- */
+function isOnboarded() {
+  return fs.existsSync(configFile);
+}
+
+function saveKey(key) {
+  if (!key) return;
+  const data = safeStorage.isEncryptionAvailable()
+    ? safeStorage.encryptString(key)
+    : Buffer.from(key, 'utf8');
+  fs.writeFileSync(keyFile, data);
+}
+function loadKey() {
+  if (!fs.existsSync(keyFile)) return '';
+  const buf = fs.readFileSync(keyFile);
+  try {
+    return safeStorage.isEncryptionAvailable() ? safeStorage.decryptString(buf) : buf.toString('utf8');
+  } catch {
+    return '';
+  }
+}
+
+function writePersona(name, tone) {
+  const memDir = path.join(storageRoot, 'memory');
+  fs.mkdirSync(memDir, { recursive: true });
+  const toneLine =
+    { conciso: 'Sono conciso e diretto.', curioso: 'Sono curioso e amichevole.', formale: 'Sono cortese e formale.' }[
+      tone
+    ] || 'Sono amichevole.';
+  fs.writeFileSync(
+    path.join(memDir, 'persona.md'),
+    `# ${name}\n\nSono ${name}, il compagno AI personale su questo dispositivo. ${toneLine}\n`,
+    'utf8',
+  );
+  const up = path.join(memDir, 'user-profile.md');
+  if (!fs.existsSync(up)) fs.writeFileSync(up, '# Profilo utente\n\n(Ancora da conoscere.)\n', 'utf8');
+}
+
+function saveOnboarding(data) {
+  fs.mkdirSync(storageRoot, { recursive: true });
+  const minutes = Number(data.heartbeatMinutes) || 15;
+  const config = {
+    provider: { name: 'anthropic', model: data.model || 'claude-sonnet-4-5' },
+    heartbeat: { intervalMs: minutes * 60000, cron: [] },
+    autonomy: { shell: { allow: [], deny: [] }, files: { allow: [] } },
+    budget: { maxSteps: 12, wallClockMs: 120000 },
+    storage: { root: storageRoot },
+  };
+  fs.writeFileSync(configFile, JSON.stringify(config, null, 2), 'utf8');
+  saveKey(data.apiKey);
+  writePersona(data.name || 'OpenMate', data.tone || 'curioso');
+}
+
+/* ---------------- lifecycle del daemon ---------------- */
+function startDaemon() {
+  if (EXTERNAL || daemonProc) return;
+  const node = process.env.OPENMATE_NODE || 'node';
+  daemonProc = spawn(node, [daemonEntry], {
+    env: {
+      ...process.env,
+      OPENMATE_CONFIG: configFile,
+      OPENMATE_ANTHROPIC_API_KEY: loadKey(),
+      OPENMATE_PORT: String(PORT),
+    },
+    stdio: 'inherit',
+  });
+  daemonProc.on('exit', (code) => {
+    console.log('[daemon] exit', code);
+    daemonProc = undefined;
+  });
+}
+function stopDaemon() {
+  if (daemonProc) daemonProc.kill();
+  daemonProc = undefined;
+}
+
+/* ---------------- finestra companion (overlay) ---------------- */
+function createCompanion() {
+  if (win) {
+    win.show();
+    return;
+  }
   const { workArea } = screen.getPrimaryDisplay();
   win = new BrowserWindow({
     width: WIDTH,
@@ -29,44 +132,64 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
-      // sandbox off: il preload usa node:fs/path per rilevare l'asset Rive
-      sandbox: false,
+      sandbox: false, // il preload usa node:fs/path per l'asset Rive
     },
   });
-
-  // Overlay sopra tutto, su tutti i desktop virtuali.
   win.setAlwaysOnTop(true, 'screen-saver');
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-
-  // Click-through di default: i click passano al desktop sotto.
-  // forward:true continua a inviare i mousemove al renderer per l'hit-test.
   win.setIgnoreMouseEvents(true, { forward: true });
-
   win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
+  win.on('closed', () => {
+    win = undefined;
+  });
 
   if (process.env.OPENMATE_UI_DEBUG) {
-    win.webContents.on('console-message', (_e, _lvl, message, line, source) => {
-      console.log(`[renderer] ${message} (${source}:${line})`);
-    });
-    win.webContents.on('did-fail-load', (_e, code, desc, url) => {
-      console.error(`[did-fail-load] ${code} ${desc} ${url}`);
-    });
-    win.webContents.on('preload-error', (_e, p, err) => {
-      console.error(`[preload-error] ${p}: ${err}`);
-    });
-    win.webContents.on('render-process-gone', (_e, d) => console.error('[render-gone]', d));
-    win.webContents.once('did-finish-load', () => console.log('[main] renderer caricato'));
-    win.webContents.openDevTools({ mode: 'detach' });
+    win.webContents.on('console-message', (_e, _lvl, message, line, source) =>
+      console.log(`[renderer] ${message} (${source}:${line})`),
+    );
+    win.webContents.on('preload-error', (_e, p, err) => console.error(`[preload-error] ${p}: ${err}`));
+    win.webContents.once('did-finish-load', () => console.log('[main] companion caricato'));
   }
 }
 
-// Il renderer attiva/disattiva l'interattività quando il mouse è sul personaggio.
-ipcMain.on('set-interactive', (_event, interactive) => {
-  if (!win) return;
-  win.setIgnoreMouseEvents(!interactive, { forward: true });
+/* ---------------- finestra onboarding ---------------- */
+function openOnboarding() {
+  onbWin = new BrowserWindow({
+    width: 560,
+    height: 640,
+    resizable: false,
+    title: 'OpenMate',
+    backgroundColor: '#0a0c0b',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload-onboarding.cjs'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
+    },
+  });
+  onbWin.loadFile(path.join(__dirname, '..', 'renderer', 'onboarding.html'));
+  onbWin.on('closed', () => {
+    onbWin = undefined;
+    // se l'utente chiude senza completare e non c'è companion, esci
+    if (!win && !isOnboarded()) app.quit();
+  });
+}
+
+ipcMain.on('onboarding-complete', (_e, data) => {
+  saveOnboarding(data);
+  startDaemon();
+  createCompanion();
+  if (onbWin) {
+    onbWin.close();
+    onbWin = undefined;
+  }
 });
 
-// Drag & drop della finestra: segue il cursore reale (robusto col click-through).
+/* ---------------- IPC companion ---------------- */
+ipcMain.on('set-interactive', (_e, interactive) => {
+  if (win) win.setIgnoreMouseEvents(!interactive, { forward: true });
+});
+
 let dragOffset = null;
 let dragTimer = null;
 ipcMain.on('drag-start', () => {
@@ -90,7 +213,6 @@ ipcMain.on('drag-end', () => {
 
 ipcMain.on('quit', () => app.quit());
 
-// Hotkey globale: richiama il robot e mette il focus sull'input.
 function summon() {
   if (!win) return;
   win.show();
@@ -99,7 +221,6 @@ function summon() {
   win.webContents.send('summon');
 }
 
-// POST di un comando al daemon (pause/resume/interrupt).
 async function postDaemon(kind) {
   try {
     await fetch(`${DAEMON_URL}/command`, {
@@ -112,7 +233,6 @@ async function postDaemon(kind) {
   }
 }
 
-// Menu contestuale (tasto destro sul robot).
 function showContextMenu() {
   const menu = Menu.buildFromTemplate([
     {
@@ -132,12 +252,21 @@ function showContextMenu() {
 }
 ipcMain.on('context-menu', showContextMenu);
 
+/* ---------------- avvio ---------------- */
 app.whenReady().then(() => {
-  createWindow();
   globalShortcut.register(HOTKEY, summon);
+  if (EXTERNAL || isOnboarded()) {
+    startDaemon();
+    createCompanion();
+  } else {
+    openOnboarding();
+  }
 });
-app.on('will-quit', () => globalShortcut.unregisterAll());
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll();
+  stopDaemon();
+});
 app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  if (!win && !onbWin && (EXTERNAL || isOnboarded())) createCompanion();
 });
 app.on('window-all-closed', () => app.quit());
