@@ -8,6 +8,7 @@ const bridge = window.overlay || {
   openMenu() {},
   onSummon() {},
   onShowActivity() {},
+  onLayout() {},
   quit() {},
 };
 
@@ -204,6 +205,11 @@ bridge.onSummon(() => {
   bridge.setInteractive(true);
 });
 bridge.onShowActivity(showActivity);
+bridge.onLayout((side) => {
+  const app = document.getElementById('app');
+  app.classList.remove('robot-left', 'robot-right');
+  app.classList.add(`robot-${side === 'left' ? 'left' : 'right'}`);
+});
 
 /* --- menu contestuale --- */
 stage.addEventListener('contextmenu', (ev) => {

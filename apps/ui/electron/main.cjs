@@ -11,8 +11,11 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { spawn } = require('node:child_process');
 
-const WIDTH = 300;
-const HEIGHT = 540; // spazio sopra il robot per fumetti/card (finestra trasparente)
+const WIDTH = 500; // largo: robot su un lato, fumetto sull'altro (verso il centro)
+const HEIGHT = 540;
+const ROBOT_W = 200;
+const ROBOT_MARGIN = 10;
+let currentSide = 'right';
 const HOTKEY = process.env.OPENMATE_HOTKEY || 'CommandOrControl+Shift+O';
 const PORT = Number(process.env.OPENMATE_PORT || 8787);
 const DAEMON_URL = process.env.OPENMATE_URL || `http://127.0.0.1:${PORT}`;
@@ -142,6 +145,7 @@ function createCompanion() {
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   win.setIgnoreMouseEvents(true, { forward: true });
   win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
+  win.webContents.on('did-finish-load', () => applyLayout());
   win.on('closed', () => {
     win = undefined;
   });
@@ -212,7 +216,26 @@ ipcMain.on('drag-end', () => {
   if (dragTimer) clearInterval(dragTimer);
   dragTimer = null;
   dragOffset = null;
+  applyLayout();
 });
+
+// Sceglie il lato del fumetto in base a dove si trova la finestra sullo schermo.
+function robotOffset(side) {
+  return side === 'right' ? WIDTH - ROBOT_MARGIN - ROBOT_W : ROBOT_MARGIN;
+}
+function applyLayout() {
+  if (!win) return;
+  const { workArea } = screen.getPrimaryDisplay();
+  const [wx, wy] = win.getPosition();
+  const side = wx + WIDTH / 2 > workArea.x + workArea.width / 2 ? 'right' : 'left';
+  if (side !== currentSide) {
+    // riposiziona la finestra per NON far saltare il robot quando cambia lato
+    const robotCenter = wx + robotOffset(currentSide) + ROBOT_W / 2;
+    win.setPosition(Math.round(robotCenter - robotOffset(side) - ROBOT_W / 2), wy);
+    currentSide = side;
+  }
+  win.webContents.send('layout', side);
+}
 
 ipcMain.on('quit', () => app.quit());
 

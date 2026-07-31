@@ -14,5 +14,6 @@ contextBridge.exposeInMainWorld('overlay', {
   openMenu: () => ipcRenderer.send('context-menu'),
   onSummon: (cb) => ipcRenderer.on('summon', () => cb()),
   onShowActivity: (cb) => ipcRenderer.on('show-activity', () => cb()),
+  onLayout: (cb) => ipcRenderer.on('layout', (_e, side) => cb(side)),
   quit: () => ipcRenderer.send('quit'),
 });
