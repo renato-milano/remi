@@ -44,19 +44,29 @@ export class DirectProviderBackend implements ReasoningBackend {
             output: part.output,
           };
           break;
+        case 'error':
+          // errore del provider (auth/modello/base URL…): propagalo pulito
+          throw part.error instanceof Error ? part.error : new Error(String(part.error));
         default:
           break;
       }
     }
 
-    const usage = await result.usage;
+    let usage: { inputTokens?: number; outputTokens?: number; totalTokens?: number } | undefined;
+    let finishReason = 'stop';
+    try {
+      usage = await result.usage;
+      finishReason = await result.finishReason;
+    } catch {
+      // stream terminato senza output: l'errore è già stato propagato sopra
+    }
     yield {
       type: 'finish',
-      finishReason: await result.finishReason,
+      finishReason,
       usage: {
-        inputTokens: usage.inputTokens,
-        outputTokens: usage.outputTokens,
-        totalTokens: usage.totalTokens,
+        inputTokens: usage?.inputTokens,
+        outputTokens: usage?.outputTokens,
+        totalTokens: usage?.totalTokens,
       },
     };
   }

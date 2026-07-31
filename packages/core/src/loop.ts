@@ -74,6 +74,7 @@ export class CognitiveLoop {
     let actions = 0;
     let usage: TokenUsage = {};
     let interrupted = false;
+    let errorMsg;
     try {
       for await (const ev of this.opts.backend.run({
         system,
@@ -100,16 +101,22 @@ export class CognitiveLoop {
         }
       }
     } catch (err) {
-      if (!opts.signal?.aborted) throw err;
+      if (opts.signal?.aborted) interrupted = true;
+      else errorMsg = err instanceof Error ? err.message : String(err);
     }
     if (opts.signal?.aborted) interrupted = true;
 
     const finalText = text.trim();
 
-    // 4. reflect
+    // 4. reflect — l'errore viene comunicato all'utente, non fa crashare
     if (interrupted) {
       this.opts.memory.log({ kind: 'reflection', actor: 'agent', content: "Ciclo interrotto dall'utente." });
       if (task) this.opts.tasks.updateTaskStatus(task.id, 'pending'); // ritentabile
+    } else if (errorMsg) {
+      const short = errorMsg.length > 260 ? `${errorMsg.slice(0, 260)}…` : errorMsg;
+      this.opts.onEvent?.({ kind: 'message', role: 'agent', content: `Ho avuto un problema col modello. ${short}` });
+      this.opts.memory.log({ kind: 'reflection', actor: 'agent', content: `Errore nel ciclo: ${errorMsg}` });
+      if (task) this.opts.tasks.updateTaskStatus(task.id, 'blocked');
     } else {
       if (finalText) this.opts.onEvent?.({ kind: 'message', role: 'agent', content: finalText });
       this.opts.memory.log({ kind: 'reflection', actor: 'agent', content: reflection(trigger, actions, finalText) });

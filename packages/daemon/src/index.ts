@@ -7,6 +7,10 @@ export { Daemon, type DaemonOptions, type DaemonEvent } from './daemon.js';
 export { SqliteAuditSink } from './audit-sqlite.js';
 export { startHttpServer, type ClientCommand } from './server.js';
 
+// Rete di sicurezza: un errore non gestito non deve far crashare il daemon.
+process.on('unhandledRejection', (reason) => console.error('[daemon] unhandledRejection:', reason));
+process.on('uncaughtException', (err) => console.error('[daemon] uncaughtException:', err));
+
 /** Entrypoint: carica config, monta il daemon, avvia scheduler e HTTP. */
 export async function main(): Promise<void> {
   const config = loadConfig({ configPath: process.env.OPENMATE_CONFIG });
