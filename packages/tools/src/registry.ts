@@ -114,6 +114,9 @@ export async function executeGated(
   const ts = new Date().toISOString();
   const explanation = t.explain?.(input);
   const isComputer = t.name.startsWith('computer.');
+  const isShell = t.name === 'shell.run';
+  // "non pericoloso" = read/network/write; dangerous/unknown restano sempre gated
+  const nonDangerous = !!explanation && explanation.level !== 'dangerous' && explanation.level !== 'unknown';
 
   let requiresApproval: boolean;
   if (isComputer) {
@@ -122,6 +125,10 @@ export async function executeGated(
   } else {
     requiresApproval = t.permission === 'dangerous' || (t.needsApproval?.(input, policy) ?? false);
     if (requiresApproval && explanation && autoApproves(policy.autoApprove, explanation.level)) {
+      requiresApproval = false;
+    }
+    // shell: dopo la prima approvazione, i comandi NON pericolosi scorrono per la sessione
+    if (requiresApproval && isShell && nonDangerous && ctx.isSessionGranted?.('shell')) {
       requiresApproval = false;
     }
   }
@@ -142,6 +149,8 @@ export async function executeGated(
       return { denied: true, reason: 'approvazione negata' };
     }
     if (isComputer) ctx.grantSession?.('computer'); // concedi per il resto del ciclo
+    // approvato un comando shell non pericoloso → concedi la shell per la sessione
+    if (isShell && nonDangerous) ctx.grantSession?.('shell');
     decision = 'approved';
   }
 

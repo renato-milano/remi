@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createMemory } from '@openmate/memory';
@@ -10,6 +10,7 @@ import {
   ToolRegistry,
   createComputerTools,
   createMemoryTools,
+  createProjectTools,
   createToolContext,
   explainCommand,
   shellRunTool,
@@ -98,6 +99,58 @@ describe('@openmate/tools — shell.run gate + audit', () => {
     expect(out.code).toBe(0);
     expect(out.stdout).toContain('ok');
     expect(audit.entries.at(-1)).toMatchObject({ decision: 'approved', outcome: 'ok' });
+  });
+
+  it('gate di sessione shell: approvi una volta, poi i non pericolosi scorrono', async () => {
+    let asked = 0;
+    const grants = new Set<string>();
+    const ctx = createToolContext({
+      audit,
+      grants,
+      requestApproval: async () => {
+        asked += 1;
+        return true;
+      },
+    });
+    // 1ª (non allowlisted, non pericolosa) → chiede e concede la sessione shell
+    await registry.execute('shell.run', { command: 'ls /tmp' }, ctx, policy);
+    // 2ª e 3ª non pericolose → auto (nessuna nuova richiesta)
+    await registry.execute('shell.run', { command: 'cat /etc/hosts' }, ctx, policy);
+    await registry.execute('shell.run', { command: 'printf ciao' }, ctx, policy);
+    expect(asked).toBe(1);
+    // un comando PERICOLOSO chiede comunque, nonostante la sessione concessa
+    await registry.execute('shell.run', { command: 'rm -rf /tmp/openmate-nope' }, ctx, policy);
+    expect(asked).toBe(2);
+  });
+});
+
+describe('@openmate/tools — memoria di progetto (.remi)', () => {
+  let root: string;
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), 'openmate-proj-'));
+  });
+  afterEach(() => rmSync(root, { recursive: true, force: true }));
+
+  it('crea .remi/project.md alla prima volta e lo rilegge poi', async () => {
+    const registry = new ToolRegistry().registerAll(createProjectTools());
+    const ctx = createToolContext({ audit: new InMemoryAuditSink(), requestApproval: async () => true });
+
+    const first = (await registry.execute('project.remember', { path: root }, ctx, policy)) as {
+      created: boolean;
+      path: string;
+      content: string;
+    };
+    expect(first.created).toBe(true);
+    expect(existsSync(join(root, '.remi', 'project.md'))).toBe(true);
+    expect(first.content).toContain('Progetto:');
+
+    const second = (await registry.execute('project.remember', { path: root }, ctx, policy)) as {
+      created: boolean;
+    };
+    expect(second.created).toBe(false);
+
+    await registry.execute('project.record', { path: root, note: 'cartella di test' }, ctx, policy);
+    expect(readFileSync(join(root, '.remi', 'project.md'), 'utf8')).toContain('cartella di test');
   });
 });
 

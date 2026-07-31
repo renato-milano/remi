@@ -10,6 +10,7 @@ export { explainCommand, type CommandExplanation, type RiskLevel } from './expla
 export { fileTools, fileReadTool, fileWriteTool, fileListTool, fileNeedsApproval } from './files.js';
 export { createMemoryTools } from './memory-tools.js';
 export { createComputerTools } from './computer-tools.js';
+export { createProjectTools } from './project-tools.js';
 export {
   defineTool,
   type ApprovalRequest,

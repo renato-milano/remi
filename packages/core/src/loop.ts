@@ -161,8 +161,11 @@ Regole:
 - Non mischiare tentativi a caso di shell/curl con i click. Scegli una strategia e portala a termine.
 - Vai avanti finché l'obiettivo è DAVVERO raggiunto (il risultato è visibile nello screenshot). Non fermarti a metà; ma non ripetere all'infinito la stessa azione che non funziona: cambia approccio o chiedi.`;
 
+const PROJECT_GUIDE = `## Memoria di progetto (.remi)
+Ogni cartella può essere un "progetto" con una memoria persistente in .remi/project.md. Quando inizi a lavorare in una cartella (o l'utente te ne indica una), usa project.remember({path}) per caricarne — o crearne — il contesto: così ricordi cos'è la cartella e a cosa serve. Man mano che scopri lo scopo della cartella, la sua struttura o compi azioni importanti, salvale con project.record({path, note}). Consulta questa memoria prima di agire in una cartella già vista.`;
+
 function buildSystem(persona: string, user: string, task?: Task, computerUse = false): string {
-  let base = `Sei un agente personale autonomo che vive sul dispositivo dell'utente.\n\n## Persona\n${persona}\n\n## Utente\n${user}\n\n## Stile\n${STYLE}`;
+  let base = `Sei un agente personale autonomo che vive sul dispositivo dell'utente.\n\n## Persona\n${persona}\n\n## Utente\n${user}\n\n## Stile\n${STYLE}\n\n${PROJECT_GUIDE}`;
   if (computerUse) base += `\n\n${COMPUTER_GUIDE}`;
   return task ? `${base}\n\n## Task attivo\n${task.title}` : base;
 }

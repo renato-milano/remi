@@ -24,6 +24,7 @@ import {
   ToolRegistry,
   createComputerTools,
   createMemoryTools,
+  createProjectTools,
   fileTools,
   shellRunTool,
 } from '@openmate/tools';
@@ -76,7 +77,8 @@ export class Daemon {
     this.registry = new ToolRegistry()
       .register(shellRunTool)
       .registerAll(fileTools)
-      .registerAll(createMemoryTools(this.memory));
+      .registerAll(createMemoryTools(this.memory))
+      .registerAll(createProjectTools());
 
     // Computer-use: solo se abilitato in config e supportato dalla piattaforma.
     this.computerUse = { enabled: false };
