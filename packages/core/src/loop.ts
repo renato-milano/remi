@@ -154,9 +154,9 @@ Puoi VEDERE e USARE lo schermo con i tool computer.*. Ogni azione ti restituisce
 Regole:
 - Le coordinate (x,y) sono nei PIXEL dell'ultimo screenshot. Non inventarle: individua l'elemento nell'immagine. Se non vedi bene, dillo invece di cliccare a caso.
 - Lavora a piccoli passi: screenshot per vedere → una azione → verifica sul nuovo screenshot che sia andata come previsto; solo allora prosegui.
-- PREFERISCI i deep-link/URL invece dei click quando esistono: sono molto più affidabili. Molte app espongono uno schema URI (es. "app:azione:parametro") che apre l'app ED esegue l'azione in un colpo solo; i siti hanno URL di ricerca diretti. Su macOS: shell.run con open "<url o uri>" oppure open -a "NomeApp".
-- Dopo aver aperto un'app aspetta che sia PRONTA: fai uno screenshot e controlla che sia caricata prima di interagire (appena aperta non ha ancora il focus).
-- Per cercare dentro un'app senza deep-link: (1) metti a fuoco il campo di ricerca cliccandolo, (2) computer.type("query"), (3) computer.key(["enter"]) per confermare. NON dimenticare Invio.
+- PREFERISCI i deep-link/URL invece dei click quando esistono: sono molto più affidabili. Molte app espongono uno schema URI (es. "app:azione:parametro") che apre l'app ED esegue l'azione in un colpo solo; i siti hanno URL di ricerca diretti. Su macOS: per un URI/URL usa shell.run open "<url o uri>" (SENZA -a); per aprire un'app per nome usa open -a "NomeApp".
+- Dopo aver aperto un'app NON agire subito: non è ancora pronta né a fuoco. Usa computer.wait(2-3) e guarda lo screenshot che restituisce; ripeti l'attesa finché è caricata, poi interagisci.
+- Per cercare dentro un'app senza deep-link: (1) attendi che sia pronta, (2) metti a fuoco il campo di ricerca cliccandolo, (3) computer.type("query"), (4) computer.key(["enter"]). NON dimenticare Invio, e verifica con uno screenshot che la ricerca sia partita.
 - Non mischiare tentativi a caso di shell/curl con i click. Scegli una strategia e portala a termine.
 - Vai avanti finché l'obiettivo è DAVVERO raggiunto (il risultato è visibile nello screenshot). Non fermarti a metà; ma non ripetere all'infinito la stessa azione che non funziona: cambia approccio o chiedi.`;
 

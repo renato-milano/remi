@@ -25,6 +25,19 @@ export function createComputerTools(executor: Executor): Tool[] {
     execute: async (_i, ctx) => capture(ctx),
   });
 
+  const wait = defineTool({
+    name: 'computer.wait',
+    description:
+      'Aspetta qualche secondo (es. mentre un’app si carica o si apre) e restituisce un nuovo screenshot. Usalo dopo aver aperto un’app, prima di interagire.',
+    parameters: z.object({ seconds: z.number().min(0).max(10).default(2) }),
+    permission: 'guarded',
+    explain: () => ({ text: 'aspettare qualche secondo', level: 'read', known: true }),
+    execute: async (i, ctx) => {
+      await new Promise((r) => setTimeout(r, Math.round((i.seconds ?? 2) * 1000)));
+      return capture(ctx);
+    },
+  });
+
   const move = defineTool({
     name: 'computer.move',
     description: 'Sposta il puntatore a (x,y) nei pixel dell’ultimo screenshot.',
@@ -97,5 +110,5 @@ export function createComputerTools(executor: Executor): Tool[] {
     },
   });
 
-  return [screenshot, move, click, doubleClick, type, key, scroll];
+  return [screenshot, wait, move, click, doubleClick, type, key, scroll];
 }
