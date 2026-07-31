@@ -27,6 +27,12 @@ export interface ReasoningInput {
   budget: Budget;
   /** Consente di annullare il ciclo in corso (kill-switch). */
   signal?: AbortSignal;
+  /**
+   * Restituisce (e consuma) l'ultimo screenshot in attesa (PNG base64), da
+   * iniettare come user message prima del passo successivo. Vedi computer-use:
+   * le immagini nei tool result non arrivano al modello su molti provider.
+   */
+  takeImage?(): string | undefined;
 }
 
 export interface TokenUsage {

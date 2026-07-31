@@ -253,16 +253,21 @@ describe('@openmate/tools — computer.* gate di sessione', () => {
     expect(asked).toBe(2);
   });
 
-  it('espone toModelOutput per gli screenshot (content immagine)', () => {
-    const ctx = createToolContext({ audit: new InMemoryAuditSink(), requestApproval: async () => true });
-    const registry2 = new ToolRegistry().registerAll(createComputerTools(fakeExecutor()));
-    const set2 = registry2.toAiToolSet(ctx, policy);
-    expect(typeof set2.computer_screenshot?.toModelOutput).toBe('function');
-    // biome-ignore lint/suspicious/noExplicitAny: firma AI SDK
-    const tmo = set2.computer_screenshot?.toModelOutput as any;
-    const mapped = tmo({ output: { screenshot: 'AAAA', width: 100, height: 80 } }) as {
-      value: { type: string }[];
+  it('emette lo screenshot via ctx.emitImage (non nel tool result)', async () => {
+    const images: string[] = [];
+    const ctx = createToolContext({
+      audit: new InMemoryAuditSink(),
+      requestApproval: async () => true,
+      emitImage: (b64) => images.push(b64),
+    });
+    const registry = new ToolRegistry().registerAll(createComputerTools(fakeExecutor()));
+    const out = (await registry.execute('computer.screenshot', {}, ctx, policy)) as {
+      screenshot?: string;
+      width?: number;
     };
-    expect(mapped.value.some((p) => p.type === 'file')).toBe(true);
+    // l'immagine viaggia via emitImage (user message), non dentro il risultato
+    expect(images).toEqual(['AAAA']);
+    expect(out.screenshot).toBeUndefined();
+    expect(out.width).toBe(100);
   });
 });

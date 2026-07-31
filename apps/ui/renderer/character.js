@@ -8,10 +8,10 @@ function createSvgCharacter(mount) {
   <svg viewBox="0 0 200 200" id="creatureRoot" data-state="idle" data-tint="cyan">
     <defs>
       <linearGradient id="head-g" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stop-color="#2b3037"/><stop offset="1" stop-color="#0c0f13"/>
+        <stop offset="0" stop-color="#e4e9ef"/><stop offset="1" stop-color="#a7b2bf"/>
       </linearGradient>
       <linearGradient id="ear-g" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stop-color="#31363d"/><stop offset="1" stop-color="#12161b"/>
+        <stop offset="0" stop-color="#eef2f7"/><stop offset="1" stop-color="#b0bbc7"/>
       </linearGradient>
       <radialGradient id="screen-g" cx="0.5" cy="0.3" r="0.95">
         <stop offset="0" stop-color="#17212f"/><stop offset="1" stop-color="#04070c"/>

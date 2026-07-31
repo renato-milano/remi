@@ -13,6 +13,7 @@ export class DirectProviderBackend implements ReasoningBackend {
 
   async *run(input: ReasoningInput): AsyncIterable<ReasoningEvent> {
     const startedAt = Date.now();
+    const takeImage = input.takeImage;
     const result = streamText({
       model: this.model,
       system: input.system,
@@ -20,6 +21,29 @@ export class DirectProviderBackend implements ReasoningBackend {
       tools: input.tools,
       stopWhen: stepCountIs(input.budget.maxSteps),
       abortSignal: input.signal,
+      // Inietta l'ultimo screenshot come user message prima del passo: le immagini
+      // nei tool result non raggiungono il modello su OpenAI-compatible.
+      prepareStep: takeImage
+        ? ({ messages }) => {
+            const img = takeImage();
+            if (!img) return {};
+            return {
+              messages: [
+                ...messages,
+                {
+                  role: 'user',
+                  content: [
+                    {
+                      type: 'text',
+                      text: 'Screenshot attuale dello schermo (le coordinate sono in questi pixel):',
+                    },
+                    { type: 'image', image: img, mediaType: 'image/png' },
+                  ],
+                },
+              ],
+            };
+          }
+        : undefined,
     });
 
     for await (const part of result.fullStream) {

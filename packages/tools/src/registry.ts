@@ -30,16 +30,21 @@ export interface ToolContextOptions {
   audit: AuditSink;
   requestApproval: (req: ApprovalRequest) => Promise<boolean>;
   signal?: AbortSignal;
+  emitImage?: (pngBase64: string) => void;
+  /** Store dei grant di sessione (namespace). Se passato, i grant persistono
+   *  oltre il singolo ciclo (es. computer-use: chiedi una volta per sessione). */
+  grants?: Set<string>;
 }
 
 export function createToolContext(opts: ToolContextOptions): ToolContext {
-  const granted = new Set<string>();
+  const granted = opts.grants ?? new Set<string>();
   return {
     requestApproval: opts.requestApproval,
     audit: (entry) => opts.audit.write({ ts: entry.ts ?? new Date().toISOString(), ...entry }),
     signal: opts.signal,
     grantSession: (ns) => granted.add(ns),
     isSessionGranted: (ns) => granted.has(ns),
+    emitImage: opts.emitImage,
   };
 }
 

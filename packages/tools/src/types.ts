@@ -42,6 +42,12 @@ export interface ToolContext {
   /** Concede l'approvazione a un namespace per il resto del ciclo (es. 'computer'). */
   grantSession?(namespace: string): void;
   isSessionGranted?(namespace: string): boolean;
+  /**
+   * Rende un'immagine (PNG base64) visibile al modello. Viene iniettata come
+   * user message: i tool result non trasportano immagini su molti provider
+   * (OpenAI-compatible), gli user message sì. Usato dal computer-use.
+   */
+  emitImage?(pngBase64: string): void;
 }
 
 /**

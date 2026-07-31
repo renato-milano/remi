@@ -32,6 +32,9 @@ export interface CognitiveLoopOptions {
 export class CognitiveLoop {
   private state: AgentState = { status: 'idle' };
   private readonly audit: AuditSink;
+  /** Grant di sessione (es. 'computer'): persistono tra i cicli, per l'intera
+   *  vita del daemon → il computer-use si approva una volta, non a ogni messaggio. */
+  private readonly sessionGrants = new Set<string>();
 
   constructor(private readonly opts: CognitiveLoopOptions) {
     this.audit = opts.audit ?? new InMemoryAuditSink();
@@ -58,9 +61,16 @@ export class CognitiveLoop {
     const messages: ModelMessage[] = [{ role: 'user', content: userContent(trigger, task) }];
 
     // 2. tool context: l'approval segna lo stato waiting_approval; il signal è il kill-switch
+    // buffer immagine: i computer.* vi depositano lo screenshot; il backend lo
+    // inietta come user message prima del passo successivo (vedi takeImage).
+    const imageBuffer: { current?: string } = {};
     const ctx = createToolContext({
       audit: this.audit,
       signal: opts.signal,
+      grants: this.sessionGrants, // persistono tra i cicli
+      emitImage: (b64) => {
+        imageBuffer.current = b64;
+      },
       requestApproval: async (req) => {
         this.setState({ status: 'waiting_approval' });
         const approved = await this.opts.requestApproval(req);
@@ -83,6 +93,11 @@ export class CognitiveLoop {
         tools,
         budget: this.opts.budget,
         signal: opts.signal,
+        takeImage: () => {
+          const v = imageBuffer.current;
+          imageBuffer.current = undefined;
+          return v;
+        },
       })) {
         switch (ev.type) {
           case 'text-delta':
