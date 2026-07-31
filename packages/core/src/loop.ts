@@ -81,11 +81,20 @@ export class CognitiveLoop {
     const tools = this.opts.registry.toAiToolSet(ctx, this.opts.policy);
 
     // 3. plan/act: consuma lo stream del backend (budget applicato dal backend)
-    let text = '';
+    // Risposte INCREMENTALI: il testo prodotto prima di ogni azione viene emesso
+    // subito come messaggio (l'agente "parla mentre agisce"), non accumulato.
+    let text = ''; // accumulo completo (per reflection/memoria)
+    let pending = ''; // segmento del passo corrente, non ancora emesso
     let actions = 0;
     let usage: TokenUsage = {};
     let interrupted = false;
     let errorMsg;
+    const flush = () => {
+      const seg = pending.trim();
+      pending = '';
+      if (seg) this.opts.onEvent?.({ kind: 'message', role: 'agent', content: seg });
+      return seg;
+    };
     try {
       for await (const ev of this.opts.backend.run({
         system,
@@ -101,9 +110,11 @@ export class CognitiveLoop {
       })) {
         switch (ev.type) {
           case 'text-delta':
+            pending += ev.text;
             text += ev.text;
             break;
           case 'tool-call':
+            flush(); // emetti la narrazione prima di agire
             actions += 1;
             this.setState({ status: 'acting' });
             this.opts.onEvent?.({ kind: 'action', summary: ev.toolName });
@@ -123,6 +134,7 @@ export class CognitiveLoop {
     if (opts.signal?.aborted) interrupted = true;
 
     const finalText = text.trim();
+    const lastSegment = pending.trim(); // ultimo segmento, emesso sotto se il ciclo va a buon fine
 
     // 4. reflect — l'errore viene comunicato all'utente, non fa crashare
     if (interrupted) {
@@ -134,7 +146,8 @@ export class CognitiveLoop {
       this.opts.memory.log({ kind: 'reflection', actor: 'agent', content: `Errore nel ciclo: ${errorMsg}` });
       if (task) this.opts.tasks.updateTaskStatus(task.id, 'blocked');
     } else {
-      if (finalText) this.opts.onEvent?.({ kind: 'message', role: 'agent', content: finalText });
+      // emette solo l'ultimo segmento: quelli precedenti sono già stati inviati durante il ciclo
+      if (lastSegment) this.opts.onEvent?.({ kind: 'message', role: 'agent', content: lastSegment });
       this.opts.memory.log({ kind: 'reflection', actor: 'agent', content: reflection(trigger, actions, finalText) });
       if (task) this.opts.tasks.updateTaskStatus(task.id, 'done');
     }
