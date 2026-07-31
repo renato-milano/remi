@@ -35,6 +35,7 @@ function wireChips(containerId) {
 }
 wireChips('tones');
 wireChips('beat');
+wireChips('trust');
 
 // --- provider (menu a tendina) ---
 const PROVIDERS = {
@@ -79,10 +80,11 @@ function collect() {
   const tone = document.querySelector('#tones .chip.active')?.dataset.tone || 'curioso';
   const apiKey = apiKeyEl.value.trim();
   const heartbeatMinutes = Number(document.querySelector('#beat .chip.active')?.dataset.min) || 15;
+  const autoApprove = document.querySelector('#trust .chip.active')?.dataset.trust || 'read';
   const P = PROVIDERS[provKey];
   const model = modelEl.value.trim() || P.model || 'claude-sonnet-4-5';
   const baseURL = P.showBase ? baseURLEl.value.trim() || P.base || undefined : P.base || undefined;
-  return { name, tone, apiKey, heartbeatMinutes, provider: { name: P.name, model, baseURL } };
+  return { name, tone, apiKey, heartbeatMinutes, autoApprove, provider: { name: P.name, model, baseURL } };
 }
 
 function hatch() {

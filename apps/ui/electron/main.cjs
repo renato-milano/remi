@@ -80,7 +80,11 @@ function saveOnboarding(data) {
   const config = {
     provider,
     heartbeat: { intervalMs: minutes * 60000, cron: [] },
-    autonomy: { shell: { allow: [], deny: [] }, files: { allow: [] } },
+    autonomy: {
+      shell: { allow: [], deny: [] },
+      files: { allow: [] },
+      autoApprove: ['none', 'read', 'write'].includes(data.autoApprove) ? data.autoApprove : 'read',
+    },
     budget: { maxSteps: 12, wallClockMs: 120000 },
     storage: { root: storageRoot },
   };

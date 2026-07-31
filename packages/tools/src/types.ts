@@ -7,6 +7,8 @@ export type Permission = 'safe' | 'guarded' | 'dangerous';
 export interface AutonomyPolicy {
   shell: { allow: string[]; deny: string[] };
   files: { allow: string[] };
+  /** Fino a che rischio agire senza chiedere: none | read | write. Il "dangerous" chiede sempre. */
+  autoApprove?: 'none' | 'read' | 'write';
 }
 
 export interface ApprovalRequest {

@@ -28,6 +28,8 @@ export const autonomySchema = z.object({
       allow: z.array(z.string()).default([]),
     })
     .default({ allow: [] }),
+  /** Fin dove agire senza chiedere: none | read | write (il pericoloso chiede sempre). */
+  autoApprove: z.enum(['none', 'read', 'write']).default('read'),
 });
 
 /** Heartbeat + cron (vedi docs/02). */

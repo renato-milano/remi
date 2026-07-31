@@ -1,4 +1,5 @@
 import { type ToolSet, tool } from 'ai';
+import type { RiskLevel } from './explain.js';
 import type {
   ApprovalRequest,
   AuditEntry,
@@ -7,6 +8,15 @@ import type {
   Tool,
   ToolContext,
 } from './types.js';
+
+const RISK_RANK: Record<RiskLevel, number> = { read: 0, network: 1, write: 2, dangerous: 3, unknown: 4 };
+const TRUST_MAX: Record<NonNullable<AutonomyPolicy['autoApprove']>, number> = { none: -1, read: 0, write: 2 };
+
+/** true se l'azione può partire senza chiedere, dato il livello di fiducia. */
+function autoApproves(trust: AutonomyPolicy['autoApprove'], level: RiskLevel): boolean {
+  if (level === 'dangerous' || level === 'unknown') return false; // mai automatico
+  return RISK_RANK[level] <= (TRUST_MAX[trust ?? 'none'] ?? -1);
+}
 
 /** Sink di audit in-memory (default per test; il daemon userà SQLite in M6). */
 export class InMemoryAuditSink implements AuditSink {
@@ -82,7 +92,12 @@ export async function executeGated(
 ): Promise<unknown> {
   const input = t.parameters.parse(rawInput);
   const ts = new Date().toISOString();
-  const requiresApproval = t.permission === 'dangerous' || (t.needsApproval?.(input, policy) ?? false);
+  const explanation = t.explain?.(input);
+  let requiresApproval = t.permission === 'dangerous' || (t.needsApproval?.(input, policy) ?? false);
+  // auto-approvazione per rischio basso, secondo il livello di fiducia
+  if (requiresApproval && explanation && autoApproves(policy.autoApprove, explanation.level)) {
+    requiresApproval = false;
+  }
 
   let decision: AuditEntry['decision'] = 'auto';
   if (requiresApproval) {
@@ -91,7 +106,7 @@ export async function executeGated(
       summary: `Eseguire ${t.name}`,
       details: input,
       risk: t.permission === 'dangerous' ? 'dangerous' : 'guarded',
-      explanation: t.explain?.(input),
+      explanation,
     });
     if (!approved) {
       ctx.audit({ ts, tool: t.name, input, decision: 'denied', outcome: 'skipped' });

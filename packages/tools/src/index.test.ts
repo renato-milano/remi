@@ -66,6 +66,27 @@ describe('@openmate/tools — shell.run gate + audit', () => {
     expect(audit.entries.at(-1)).toMatchObject({ tool: 'shell.run', decision: 'denied' });
   });
 
+  it('con fiducia "read" auto-approva le letture, ma non i pericolosi', async () => {
+    const readPolicy: AutonomyPolicy = { shell: { allow: [], deny: [] }, files: { allow: [] }, autoApprove: 'read' };
+    let asked = 0;
+    const ctx = createToolContext({
+      audit,
+      requestApproval: async () => {
+        asked += 1;
+        return false;
+      },
+    });
+    // 'echo' → rischio read → auto (nessuna richiesta)
+    const out = (await registry.execute('shell.run', { command: 'echo ciao' }, ctx, readPolicy)) as {
+      code: number;
+    };
+    expect(asked).toBe(0);
+    expect(out.code).toBe(0);
+    // 'rm -rf' → dangerous → chiede comunque
+    await registry.execute('shell.run', { command: 'rm -rf /tmp/openmate-nope' }, ctx, readPolicy);
+    expect(asked).toBe(1);
+  });
+
   it('esegue dopo approvazione un comando non allowlisted', async () => {
     const ctx = createToolContext({ audit, requestApproval: async () => true });
     const out = (await registry.execute('shell.run', { command: 'printf ok' }, ctx, policy)) as {
