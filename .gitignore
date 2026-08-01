@@ -15,3 +15,6 @@ coverage/
 # Runtime data (local-first storage)
 openmate.db
 openmate.db-*
+
+# Memoria di progetto per cartella (locale, generata dall'agente)
+.remi/
