@@ -175,7 +175,11 @@ Regole:
 - Vai avanti finché l'obiettivo è DAVVERO raggiunto (il risultato è visibile nello screenshot). Non fermarti a metà; ma non ripetere all'infinito la stessa azione che non funziona: cambia approccio o chiedi.`;
 
 const PROJECT_GUIDE = `## Memoria di progetto (.remi)
-Ogni cartella può essere un "progetto" con una memoria persistente in .remi/project.md. Quando inizi a lavorare in una cartella (o l'utente te ne indica una), usa project.remember({path}) per caricarne — o crearne — il contesto: così ricordi cos'è la cartella e a cosa serve. Man mano che scopri lo scopo della cartella, la sua struttura o compi azioni importanti, salvale con project.record({path, note}). Consulta questa memoria prima di agire in una cartella già vista.`;
+Ogni cartella può essere un "progetto" con una memoria persistente in .remi/project.md. Quando inizi a lavorare in una cartella (o l'utente te ne indica una), usa project.remember({path}) per caricarne — o crearne — il contesto.
+- Alla PRIMA visita (sezioni "da compilare"), riempi "Cos'è" e "A cosa serve" con project.update({path, section, content}); aggiorna le sezioni quando cambiano.
+- Usa project.record({path, note}) SOLO per eventi/azioni (vanno nel Registro), non per la descrizione stabile.
+- Se vuoi riorganizzare tutto liberamente, usa project.write({path, content}).
+Consulta questa memoria prima di agire in una cartella già vista.`;
 
 function buildSystem(persona: string, user: string, task?: Task, computerUse = false): string {
   let base = `Sei un agente personale autonomo che vive sul dispositivo dell'utente.\n\n## Persona\n${persona}\n\n## Utente\n${user}\n\n## Stile\n${STYLE}\n\n${PROJECT_GUIDE}`;

@@ -152,6 +152,29 @@ describe('@openmate/tools — memoria di progetto (.remi)', () => {
     await registry.execute('project.record', { path: root, note: 'cartella di test' }, ctx, policy);
     expect(readFileSync(join(root, '.remi', 'project.md'), 'utf8')).toContain('cartella di test');
   });
+
+  it('project.update compila una sezione senza toccare le altre', async () => {
+    const registry = new ToolRegistry().registerAll(createProjectTools());
+    const ctx = createToolContext({ audit: new InMemoryAuditSink(), requestApproval: async () => true });
+    await registry.execute('project.remember', { path: root }, ctx, policy);
+    await registry.execute(
+      'project.update',
+      { path: root, section: "Cos'è", content: 'Repo di prova per i test.' },
+      ctx,
+      policy,
+    );
+    const md = readFileSync(join(root, '.remi', 'project.md'), 'utf8');
+    expect(md).toContain('Repo di prova per i test.');
+    expect(md).not.toContain('(da compilare'); // il placeholder di "Cos'è" è stato sostituito
+    expect(md).toContain('## A cosa serve'); // le altre sezioni restano
+  });
+
+  it('project.write riscrive per intero il file', async () => {
+    const registry = new ToolRegistry().registerAll(createProjectTools());
+    const ctx = createToolContext({ audit: new InMemoryAuditSink(), requestApproval: async () => true });
+    await registry.execute('project.write', { path: root, content: '# Nuovo\n\nsolo questo' }, ctx, policy);
+    expect(readFileSync(join(root, '.remi', 'project.md'), 'utf8')).toBe('# Nuovo\n\nsolo questo\n');
+  });
 });
 
 describe('@openmate/tools — memory tools', () => {

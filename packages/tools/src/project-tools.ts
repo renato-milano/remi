@@ -43,6 +43,22 @@ function ensure(path = '.'): { root: string; file: string; created: boolean } {
   return { root, file, created };
 }
 
+/** Sostituisce il contenuto di una sezione "## <nome>"; se manca, la aggiunge in fondo. */
+function setSection(md: string, section: string, content: string): string {
+  const lines = md.split('\n');
+  const norm = (s: string) => s.trim().toLowerCase();
+  const head = lines.findIndex((l) => l.startsWith('## ') && norm(l.slice(3)) === norm(section));
+  if (head === -1) return `${md.trimEnd()}\n\n## ${section}\n${content.trim()}\n`;
+  let end = lines.length;
+  for (let i = head + 1; i < lines.length; i++) {
+    if (lines[i].startsWith('## ')) {
+      end = i;
+      break;
+    }
+  }
+  return [...lines.slice(0, head + 1), content.trim(), '', ...lines.slice(end)].join('\n');
+}
+
 /**
  * Tool di memoria-di-progetto (stile "cowork"): ogni cartella può avere una
  * memoria persistente in .remi/project.md che ricorda cos'è e a cosa serve.
@@ -68,13 +84,13 @@ export function createProjectTools(): Tool[] {
   const record = defineTool({
     name: 'project.record',
     description:
-      "Aggiorna la memoria di progetto (.remi/project.md) con qualcosa di importante su questa cartella: scopo, contesto o un'azione fatta. Serve a ricordare in futuro.",
+      "Aggiunge una riga al 'Registro azioni' della memoria di progetto: un evento o un'azione fatta, con timestamp. Per la descrizione stabile della cartella usa invece project.update.",
     parameters: z.object({
       path: z.string().default('.'),
-      note: z.string().describe('cosa ricordare (una riga)'),
+      note: z.string().describe('evento/azione da registrare (una riga)'),
     }),
     permission: 'safe',
-    explain: () => ({ text: 'aggiornare la memoria di progetto', level: 'read', known: true }),
+    explain: () => ({ text: 'registrare un evento nella memoria di progetto', level: 'read', known: true }),
     execute: async (i) => {
       const { file } = ensure(i.path);
       const ts = new Date().toISOString().slice(0, 16).replace('T', ' ');
@@ -83,5 +99,42 @@ export function createProjectTools(): Tool[] {
     },
   });
 
-  return [remember, record];
+  const update = defineTool({
+    name: 'project.update',
+    description:
+      "Compila/riscrive una sezione stabile della memoria di progetto (es. \"Cos'è\", \"A cosa serve\", \"Contesto e note\"). Usalo alla prima visita di una cartella per descrivere cos'è e a cosa serve, e per tenerla aggiornata.",
+    parameters: z.object({
+      path: z.string().default('.'),
+      section: z.string().describe('nome della sezione, es. "Cos\'è" o "A cosa serve"'),
+      content: z.string().describe('nuovo contenuto della sezione'),
+    }),
+    permission: 'safe',
+    explain: (i) => ({ text: `aggiornare la sezione "${i.section}" del progetto`, level: 'read', known: true }),
+    execute: async (i) => {
+      const { file } = ensure(i.path);
+      const next = setSection(readFileSync(file, 'utf8'), i.section, i.content);
+      writeFileSync(file, next, 'utf8');
+      return { ok: true, path: file };
+    },
+  });
+
+  const write = defineTool({
+    name: 'project.write',
+    description:
+      "Riscrive per intero la memoria di progetto (.remi/project.md) con il testo dato. Usalo quando vuoi riorganizzarla liberamente; per modifiche puntuali preferisci project.update o project.record.",
+    parameters: z.object({
+      path: z.string().default('.'),
+      content: z.string().describe('contenuto markdown completo del file'),
+    }),
+    permission: 'safe',
+    explain: () => ({ text: 'riscrivere la memoria di progetto', level: 'read', known: true }),
+    execute: async (i) => {
+      const { dir, file } = paths(i.path);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(file, i.content.endsWith('\n') ? i.content : `${i.content}\n`, 'utf8');
+      return { ok: true, path: file };
+    },
+  });
+
+  return [remember, record, update, write];
 }
