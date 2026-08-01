@@ -38,8 +38,8 @@ function createSvgCharacter(mount) {
 
     <g id="bob">
       <!-- orecchie / nubs -->
-      <rect x="18" y="92" width="12" height="34" rx="6" fill="url(#ear-g)"/>
-      <rect x="170" y="92" width="12" height="34" rx="6" fill="url(#ear-g)"/>
+      <rect id="earL" class="ear" x="18" y="92" width="12" height="34" rx="6" fill="url(#ear-g)"/>
+      <rect id="earR" class="ear" x="170" y="92" width="12" height="34" rx="6" fill="url(#ear-g)"/>
       <!-- testa -->
       <rect x="28" y="38" width="144" height="124" rx="34" fill="url(#head-g)"/>
       <!-- rim-light: riflesso chiaro sul bordo della scocca -->
@@ -87,6 +87,29 @@ function createSvgCharacter(mount) {
           <rect class="glyph" x="114" y="76" width="16" height="24" rx="8"/>
           <text class="q qmove" x="130" y="74" font-size="28">?</text>
         </g>
+        <!-- errore / dispiaciuto: sopracciglia all'ingiù -->
+        <g class="expr" data-expr="sad">
+          <path class="arc" d="M67 84 Q78 96 89 84"/>
+          <path class="arc" d="M111 84 Q122 96 133 84"/>
+        </g>
+        <!-- successo: occhi a stella + luccichio -->
+        <g class="expr" data-expr="success">
+          <path class="glyph tw" transform="translate(78,88)" d="M0 -12 L3.1 -3.1 L12 0 L3.1 3.1 L0 12 L-3.1 3.1 L-12 0 L-3.1 -3.1 Z"/>
+          <path class="glyph tw tw2" transform="translate(122,88)" d="M0 -12 L3.1 -3.1 L12 0 L3.1 3.1 L0 12 L-3.1 3.1 L-12 0 L-3.1 -3.1 Z"/>
+          <circle class="glyph spark" cx="150" cy="66" r="2.4"/>
+          <circle class="glyph spark spark2" cx="52" cy="70" r="2"/>
+        </g>
+        <!-- sorpresa: occhi spalancati -->
+        <g class="expr" data-expr="surprised">
+          <circle class="glyph pop" cx="78" cy="88" r="12"/>
+          <circle class="glyph pop" cx="122" cy="88" r="12"/>
+        </g>
+        <!-- confusione: occhi asimmetrici + ? -->
+        <g class="expr" data-expr="confused">
+          <rect class="glyph" x="70" y="72" width="16" height="30" rx="8"/>
+          <rect class="glyph" x="115" y="84" width="14" height="8" rx="4"/>
+          <text class="q qmove" x="132" y="74" font-size="26">?</text>
+        </g>
 
         <path id="mouth" class="mouth" d="M86 120 Q100 129 114 120"/>
       </g>
@@ -96,6 +119,7 @@ function createSvgCharacter(mount) {
         <rect x="35" y="45" width="130" height="110" fill="url(#scanlines)"/>
         <rect x="35" y="45" width="130" height="110" fill="url(#crt-vignette)"/>
         <rect id="crt-scan" x="35" y="43" width="130" height="16"/>
+        <rect id="crt-flash" x="35" y="45" width="130" height="110" fill="#fff" opacity="0"/>
       </g>
     </g>
   </svg>`;
@@ -119,7 +143,14 @@ function createSvgCharacter(mount) {
     sleeping: 'M95 122 Q100 126 105 122',
     waiting_approval: 'M95 121 Q100 126 105 121',
     happy: 'M84 119 Q100 133 116 119',
+    success: 'M82 118 Q100 136 118 118',
+    sad: 'M86 128 Q100 119 114 128',
+    surprised: 'M94 122 Q100 132 106 122',
+    confused: 'M88 124 Q100 120 112 126',
+    talk: 'M90 121 Q100 128 110 121',
   };
+  // tinta associata a un'espressione emotiva (default: bianco)
+  const EMO_TINT = { success: 'green', sad: 'red', happy: 'green', surprised: 'white', confused: 'amber' };
 
   let currentExpr = 'neutral';
   let currentMouth = MOUTH.idle;
@@ -163,24 +194,76 @@ function createSvgCharacter(mount) {
   }
   requestAnimationFrame(frame);
 
-  setInterval(() => {
-    if (root.dataset.state === 'idle') flash('happy', 1100);
-  }, 16000);
+  const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
+  // tinta di base per stato (bianco di default, ambra in attesa approvazione)
+  const stateTint = (s) => (s === 'waiting_approval' ? 'amber' : 'default');
+  let baseTint = 'default';
 
   function flash(name, ms = 1000) {
     showExpr(name);
     if (MOUTH[name]) mouth.setAttribute('d', MOUTH[name]);
+    if (EMO_TINT[name]) root.dataset.tint = EMO_TINT[name];
     clearTimeout(flashTimer);
     flashTimer = setTimeout(() => {
       showExpr(currentExpr);
       mouth.setAttribute('d', currentMouth);
+      root.dataset.tint = baseTint;
     }, ms);
   }
+
+  // gesto one-shot: applica una classe animata su #creatureRoot e la rimuove
+  let gestureTimer = null;
+  function playGesture(cls, ms = 600) {
+    if (reduce) return;
+    root.classList.remove(cls);
+    void root.offsetWidth; // reflow → ri-triggera l'animazione
+    root.classList.add(cls);
+    clearTimeout(gestureTimer);
+    gestureTimer = setTimeout(() => root.classList.remove(cls), ms);
+  }
+
+  // mappa il testo dell'azione a un micro-gesto + espressione
+  function reactToAction(summary = '') {
+    const s = String(summary).toLowerCase();
+    if (/error|fail|denied|errore|negat/.test(s)) { flash('sad', 1300); playGesture('g-shake', 500); return; }
+    if (/done|success|complet|finito|✓|riuscit/.test(s)) { flash('success', 1400); playGesture('g-bounce', 640); return; }
+    if (/screenshot|schermo|capture|foto/.test(s)) { playGesture('g-snap', 420); flash('surprised', 500); return; }
+    if (/type|write|edit|scriv|digit|input|tast/.test(s)) { flash('focused', 900); playGesture('g-type', 900); return; }
+    if (/click|clic|press|tap|button/.test(s)) { playGesture('g-nod', 460); return; }
+    if (/search|grep|find|cerca|trov|read|leg|open|apri|scan/.test(s)) { flash('curious', 900); playGesture('g-tilt', 700); return; }
+    // azione generica: piccolo cenno d'assenso
+    playGesture('g-nod', 460);
+  }
+
+  // --- idle: comportamenti casuali (fidget) per dare vita ---
+  const FIDGETS = [
+    () => flash('happy', 1100),
+    () => { playGesture('g-tilt', 900); flash('curious', 900); },     // si guarda intorno
+    () => { playGesture('g-yawn', 1200); flash('sleepy', 1200); },     // sbadiglio
+    () => { playGesture('g-sneeze', 520); flash('surprised', 500); },  // starnuto
+    () => playGesture('g-earwiggle', 700),                             // orecchie
+    () => playGesture('g-stretch', 900),                              // stiracchiata
+  ];
+  function scheduleFidget(first) {
+    const wait = first ? 3200 : 7000 + Math.random() * 9000;
+    setTimeout(() => {
+      if (!reduce && root.dataset.state === 'idle') {
+        FIDGETS[Math.floor(Math.random() * FIDGETS.length)]();
+      }
+      scheduleFidget();
+    }, wait);
+  }
+  scheduleFidget(true);
+
+  // saluto all'avvio: conferma visiva che il personaggio è vivo
+  if (!reduce) setTimeout(() => { playGesture('g-bounce', 640); flash('happy', 1300); }, 900);
 
   return {
     setState(status) {
       const expr = EXPR[status] || 'neutral';
-      root.dataset.tint = status === 'waiting_approval' ? 'amber' : 'cyan';
+      baseTint = stateTint(status);
+      root.dataset.tint = baseTint;
       if (root.dataset.state === status) return;
       root.dataset.state = status;
       currentExpr = expr;
@@ -191,6 +274,8 @@ function createSvgCharacter(mount) {
       root.classList.remove('react');
       void root.offsetWidth;
       root.classList.add('react');
+      // allerta approvazione: pulsa per attirare l'attenzione
+      root.classList.toggle('alert', status === 'waiting_approval');
       if (status !== 'sleeping') {
         clearInterval(blinkTimer);
         blink();
@@ -198,6 +283,7 @@ function createSvgCharacter(mount) {
       }
     },
     flash,
+    gesture: reactToAction,
   };
 }
 

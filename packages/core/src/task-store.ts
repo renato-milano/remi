@@ -18,6 +18,10 @@ export interface Task {
   status: TaskStatus;
   dueTs?: string;
   createdTs: string;
+  /** Quante volte è stato preso in carico da un ciclo (guardia anti-loop). */
+  attempts: number;
+  /** Registro dei progressi (append), così un ciclo successivo riprende. */
+  notes?: string;
 }
 
 interface TaskRow {
@@ -27,6 +31,8 @@ interface TaskRow {
   status: string;
   due_ts: string | null;
   created_ts: string;
+  attempts: number | null;
+  notes: string | null;
 }
 
 function rowToTask(r: TaskRow): Task {
@@ -37,6 +43,8 @@ function rowToTask(r: TaskRow): Task {
     status: r.status as TaskStatus,
     dueTs: r.due_ts ?? undefined,
     createdTs: r.created_ts,
+    attempts: r.attempts ?? 0,
+    notes: r.notes ?? undefined,
   };
 }
 
@@ -46,6 +54,16 @@ export class TaskStore {
 
   constructor(dbPath: string) {
     this.db = openTaskDb(dbPath);
+    this.migrate();
+  }
+
+  /** Aggiunge le colonne attempts/notes ai DB già esistenti (idempotente). */
+  private migrate(): void {
+    const cols = new Set(
+      (this.db.prepare('PRAGMA table_info(tasks)').all() as { name: string }[]).map((c) => c.name),
+    );
+    if (!cols.has('attempts')) this.db.exec('ALTER TABLE tasks ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0');
+    if (!cols.has('notes')) this.db.exec('ALTER TABLE tasks ADD COLUMN notes TEXT');
   }
 
   close(): void {
@@ -73,6 +91,7 @@ export class TaskStore {
       status: 'pending',
       dueTs: input.dueTs,
       createdTs: new Date().toISOString(),
+      attempts: 0,
     };
     this.db
       .prepare('INSERT INTO tasks(id,goal_id,title,status,due_ts,created_ts) VALUES(?,?,?,?,?,?)')
@@ -87,6 +106,19 @@ export class TaskStore {
 
   updateTaskStatus(id: string, status: TaskStatus): void {
     this.db.prepare('UPDATE tasks SET status=? WHERE id=?').run(status, id);
+  }
+
+  /** Incrementa il contatore dei tentativi (chiamato quando il task va in_progress). */
+  incrementAttempts(id: string): void {
+    this.db.prepare('UPDATE tasks SET attempts=COALESCE(attempts,0)+1 WHERE id=?').run(id);
+  }
+
+  /** Accoda una riga al registro progressi del task. */
+  appendNote(id: string, note: string): void {
+    const cur = (this.db.prepare('SELECT notes FROM tasks WHERE id=?').get(id) as { notes: string | null } | undefined)
+      ?.notes;
+    const ts = new Date().toISOString().slice(0, 16).replace('T', ' ');
+    this.db.prepare('UPDATE tasks SET notes=? WHERE id=?').run(`${cur ?? ''}- [${ts}] ${note}\n`, id);
   }
 
   nextPendingTask(): Task | undefined {

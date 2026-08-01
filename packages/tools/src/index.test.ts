@@ -14,6 +14,7 @@ import {
   createMemoryTools,
   createProjectTools,
   createScheduleTools,
+  createTaskTools,
   createToolContext,
   explainCommand,
   shellRunTool,
@@ -254,6 +255,51 @@ describe('@openmate/tools — code.run + agent.*', () => {
     expect(listed.schedules).toHaveLength(1);
     await registry.execute('schedule.cancel', { id: ok.id }, ctx, policy);
     expect(store).toHaveLength(0);
+  });
+
+  it('task.add/list/note/complete/block gestiscono il ciclo di vita', async () => {
+    const store = new Map<string, { id: string; title: string; status: string; attempts: number; notes?: string }>();
+    let n = 0;
+    const registry = new ToolRegistry().registerAll(
+      createTaskTools({
+        createGoal: (title) => ({ id: 'g0', title }),
+        addTask: (title) => {
+          const t = { id: `t${n++}`, title, status: 'pending', attempts: 0 };
+          store.set(t.id, t);
+          return { id: t.id, title };
+        },
+        listTasks: () => [...store.values()],
+        getTask: (id) => store.get(id),
+        noteTask: (id, note) => {
+          const t = store.get(id);
+          if (!t) return false;
+          t.notes = (t.notes ?? '') + note;
+          return true;
+        },
+        completeTask: (id) => {
+          const t = store.get(id);
+          if (!t) return false;
+          t.status = 'done';
+          return true;
+        },
+        blockTask: (id) => {
+          const t = store.get(id);
+          if (!t) return false;
+          t.status = 'blocked';
+          return true;
+        },
+      }),
+    );
+    const ctx = createToolContext({ audit: new InMemoryAuditSink(), requestApproval: async () => true });
+    const added = (await registry.execute('task.add', { title: 'scrivere il report' }, ctx, policy)) as {
+      task: { id: string };
+    };
+    const id = added.task.id;
+    await registry.execute('task.note', { id, note: 'raccolti i dati' }, ctx, policy);
+    const listed = (await registry.execute('task.list', {}, ctx, policy)) as { tasks: { notes?: string }[] };
+    expect(listed.tasks[0]?.notes).toContain('raccolti i dati');
+    await registry.execute('task.complete', { id }, ctx, policy);
+    expect(store.get(id)?.status).toBe('done');
   });
 
   it('agent.set_heartbeat e agent.wake_in chiamano il controllo', async () => {

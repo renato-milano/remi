@@ -193,6 +193,7 @@ function handleEvent(e) {
     case 'action':
       say(`· ${e.summary}`, { action: true, ms: 2600 });
       pushLog(`▸ ${e.summary}`);
+      character.gesture?.(e.summary);
       if (typeof e.summary === 'string' && /^computer[._]/.test(e.summary)) showComputerBanner();
       break;
     case 'message': {
@@ -208,6 +209,7 @@ function handleEvent(e) {
     }
     case 'approval_request':
       showApproval(e);
+      character.flash?.('surprised', 800);
       pushLog(`⚠ approvazione: ${e.request?.toolName ?? ''}`);
       break;
     default:

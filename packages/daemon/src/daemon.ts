@@ -29,7 +29,9 @@ import {
   createMemoryTools,
   createProjectTools,
   createScheduleTools,
+  createTaskTools,
   type ScheduleInfo,
+  type TaskInfo,
   fileTools,
   shellRunTool,
 } from '@openmate/tools';
@@ -38,6 +40,8 @@ import { type Schedule, ScheduleStore } from './schedule-store.js';
 
 /** Auto-nega di un'approvazione senza risposta (evita blocchi della coda). */
 const APPROVAL_TIMEOUT_MS = 120_000;
+/** Ogni quanti heartbeat "a vuoto" concedere un ciclo di manutenzione memoria. */
+const MAINTENANCE_EVERY_IDLE = 4;
 
 /** Evento sul filo verso i client: eventi del loop + approval_request con id. */
 export type DaemonEvent =
@@ -73,6 +77,8 @@ export class Daemon {
   >();
   private currentAbort?: AbortController;
   private paused = false;
+  /** Contatore di heartbeat a vuoto, per la cadenza di manutenzione. */
+  private idleHeartbeats = 0;
   /** Timer di auto-continuazione (agent.wake_in). */
   private readonly followupTimers = new Set<ReturnType<typeof setTimeout>>();
   private readonly configPath?: string;
@@ -109,6 +115,30 @@ export class Daemon {
           list: () => this.listSchedules(),
           cancel: (id) => this.cancelSchedule(id),
         }),
+      )
+      .registerAll(
+        createTaskTools({
+          createGoal: (title) => this.tasks.createGoal({ title }),
+          addTask: (title, goalId) => this.tasks.createTask({ title, goalId }),
+          listTasks: () => this.tasks.listTasks() as TaskInfo[],
+          getTask: (id) => this.tasks.getTask(id) as TaskInfo | undefined,
+          noteTask: (id, note) => {
+            if (!this.tasks.getTask(id)) return false;
+            this.tasks.appendNote(id, note);
+            return true;
+          },
+          completeTask: (id) => {
+            if (!this.tasks.getTask(id)) return false;
+            this.tasks.updateTaskStatus(id, 'done');
+            return true;
+          },
+          blockTask: (id, reason) => {
+            if (!this.tasks.getTask(id)) return false;
+            if (reason) this.tasks.appendNote(id, `BLOCCATO: ${reason}`);
+            this.tasks.updateTaskStatus(id, 'blocked');
+            return true;
+          },
+        }),
       );
 
     // Computer-use: solo se abilitato in config e supportato dalla piattaforma.
@@ -139,7 +169,17 @@ export class Daemon {
     this.scheduler = new Scheduler({
       intervalMs: opts.config.heartbeat.intervalMs,
       cron: opts.config.heartbeat.cron,
-      shouldRun: () => !this.paused && this.tasks.nextPendingTask() !== undefined,
+      shouldRun: () => {
+        if (this.paused) return false;
+        if (this.tasks.nextPendingTask() !== undefined) return true;
+        // nessun task: ogni N tick a vuoto concedi un ciclo di MANUTENZIONE memoria
+        this.idleHeartbeats += 1;
+        if (this.idleHeartbeats >= MAINTENANCE_EVERY_IDLE) {
+          this.idleHeartbeats = 0;
+          return true;
+        }
+        return false;
+      },
       onCycle: async (trigger) => {
         this.currentAbort = new AbortController();
         try {

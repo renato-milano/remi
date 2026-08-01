@@ -44,7 +44,7 @@ class BlockingBackend implements ReasoningBackend {
 }
 
 describe('@openmate/core — CognitiveLoop', () => {
-  it('esegue un ciclo: azione, chiusura task, episodic di reflection', async () => {
+  it('esegue un ciclo: azione, il task NON si chiude da solo (si riprende), reflection', async () => {
     const goal = tasks.createGoal({ title: 'Tenere una nota di test' });
     const task = tasks.createTask({ goalId: goal.id, title: 'Registrare la nota' });
 
@@ -71,7 +71,9 @@ describe('@openmate/core — CognitiveLoop', () => {
     const result = await loop.runCycle({ kind: 'heartbeat' });
 
     expect(result.actions).toBe(1);
-    expect(tasks.getTask(task.id)?.status).toBe('done');
+    // non chiuso automaticamente: l'agente non ha chiamato task.complete → torna 'pending'
+    expect(tasks.getTask(task.id)?.status).toBe('pending');
+    expect(tasks.getTask(task.id)?.attempts).toBe(1);
     // il tool ha davvero scritto in memoria
     expect(mem.search('wibble', { scope: 'episodic' }).length).toBeGreaterThan(0);
     // la reflection del ciclo è stata registrata

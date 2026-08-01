@@ -55,7 +55,10 @@ export class CognitiveLoop {
   async runCycle(trigger: Trigger, opts: { signal?: AbortSignal } = {}): Promise<CycleResult> {
     // 1. perceive: attiva un task (heartbeat/cron); un messaggio utente non lo richiede
     const task = trigger.kind === 'user_message' ? undefined : this.opts.tasks.nextPendingTask();
-    if (task) this.opts.tasks.updateTaskStatus(task.id, 'in_progress');
+    if (task) {
+      this.opts.tasks.incrementAttempts(task.id);
+      this.opts.tasks.updateTaskStatus(task.id, 'in_progress');
+    }
     this.setState({ status: 'thinking', activeTaskId: task?.id, activeGoalId: task?.goalId });
 
     const core = this.opts.memory.coreBlocks();
@@ -155,7 +158,14 @@ export class CognitiveLoop {
       // emette solo l'ultimo segmento: quelli precedenti sono già stati inviati durante il ciclo
       if (lastSegment) this.opts.onEvent?.({ kind: 'message', role: 'agent', content: lastSegment });
       this.opts.memory.log({ kind: 'reflection', actor: 'agent', content: reflection(trigger, actions, finalText) });
-      if (task) this.opts.tasks.updateTaskStatus(task.id, 'done');
+      // NON marcare "done" da soli: il task lo chiude l'agente (task.complete). Se
+      // è ancora in corso, lo si riprende al prossimo heartbeat; troppi tentativi → blocked.
+      if (task) {
+        const cur = this.opts.tasks.getTask(task.id);
+        if (cur && cur.status === 'in_progress') {
+          this.opts.tasks.updateTaskStatus(task.id, cur.attempts >= MAX_TASK_ATTEMPTS ? 'blocked' : 'pending');
+        }
+      }
     }
 
     // aggiorna il buffer di conversazione (solo turni riusciti; niente
@@ -180,6 +190,8 @@ export class CognitiveLoop {
 
 /** Messaggi max nel buffer di conversazione (~12 turni). Limita i token. */
 const MAX_HISTORY = 24;
+/** Dopo N cicli senza completarlo, un task va in 'blocked' (anti-loop). */
+const MAX_TASK_ATTEMPTS = 8;
 
 const STYLE =
   'Rispondi in modo BREVE e naturale, come in una chat con un amico: di norma 1-2 frasi. ' +
@@ -216,7 +228,8 @@ Hai una wiki di memoria durevole (memory.write / memory.search / memory.read) ch
 - Aggiorna la nota (stesso name) se il path o l'uso cambiano.`;
 
 const AUTONOMY_GUIDE = `## Autonomia (sii proattivo ed efficiente)
-- Task lunghi: NON aspettare il prossimo heartbeat. Quando un lavoro richiede più passi/tempo, salva i progressi (memoria/.remi) e usa agent.wake_in({seconds, note}) per riprendere presto lasciandoti una nota su cosa continuare. Regola il ritmo con agent.set_heartbeat({seconds}): più veloce mentre lavori attivamente, più lento quando sei in attesa (per non consumare inutilmente).
+- OBIETTIVI A LUNGO RAGGIO: se l'utente chiede un lavoro grande o che richiede più sessioni, NON provare a finirlo tutto in un colpo. Crea un task persistente con task.add({title}) (o goal.create per un obiettivo ampio con più task): verrà ripreso da solo a ogni heartbeat. A ogni ripresa: leggi i progressi, fai un passo avanti, annota con task.note({id, note}) DOVE sei arrivato, e quando l'obiettivo è DAVVERO raggiunto chiudilo con task.complete({id}) (finché non lo fai, continuerai a riprenderlo). Se sei bloccato (serve l'utente o manca qualcosa) usa task.block({id, reason}).
+- Task lunghi entro la sessione: usa agent.wake_in({seconds, note}) per riprendere presto senza aspettare il prossimo heartbeat. Regola il ritmo con agent.set_heartbeat({seconds}): più veloce mentre lavori attivamente, più lento quando sei in attesa.
 - Puoi scrivere ed ESEGUIRE codice con code.run({language:'python'|'node'|'bash', code}): usalo per calcoli, elaborazione dati, automazioni e logica non banale, invece di comandi shell fragili. Riceverai stdout/stderr e il codice di uscita.
 - Task RICORRENTI: se l'utente chiede qualcosa di periodico ("ogni giorno alle 17…", "ogni lunedì…", "ogni ora…"), riconoscilo e crea un task con schedule.create({cron, instruction, title}), traducendo l'orario in cron a 5 campi (es. "0 17 * * *" = ogni giorno alle 17:00; "0 * * * *" = ogni ora). L'istruzione dev'essere completa e autosufficiente (verrà eseguita da sola a ogni scatto). Conferma all'utente cosa hai programmato. Usa schedule.list per vedere i task attivi e schedule.cancel({id}) quando l'utente chiede di smettere.`;
 
@@ -231,15 +244,27 @@ function userContent(trigger: Trigger, task?: Task): string {
     case 'user_message':
       return trigger.content;
     case 'heartbeat':
-      return task
-        ? `È il tuo heartbeat. Avanza il task attivo: "${task.title}".`
-        : 'È il tuo heartbeat. Nessun task pendente: valuta se fare manutenzione o restare in attesa.';
+      return task ? advanceTaskPrompt(task) : MAINTENANCE_PROMPT;
     case 'cron':
-      return task
-        ? `Job cron "${trigger.name}". Avanza il task: "${task.title}".`
-        : `Job cron "${trigger.name}".`;
+      return task ? `Job cron "${trigger.name}". ${advanceTaskPrompt(task)}` : `Job cron "${trigger.name}".`;
   }
 }
+
+/** Prompt per far avanzare un task persistente su più cicli. */
+function advanceTaskPrompt(task: Task): string {
+  const progress = task.notes ? `\n\nProgressi finora:\n${task.notes}` : '\n\n(nessun progresso ancora annotato)';
+  return (
+    `È il tuo heartbeat. Avanza il task: "${task.title}" (id: ${task.id}, tentativo ${task.attempts}).${progress}\n\n` +
+    'Fai UN passo avanti concreto, poi annota dove sei arrivato con task.note({id, note}). ' +
+    "Se l'obiettivo è COMPLETATO, chiudilo con task.complete({id}). Se sei bloccato, usa task.block({id, reason})."
+  );
+}
+
+const MAINTENANCE_PROMPT =
+  'È il tuo heartbeat e non ci sono task da avanzare: è un buon momento per la MANUTENZIONE della memoria. ' +
+  'Rivedi la memoria episodica recente (memory.search) e consolida ciò che è importante e durevole nella wiki (memory.write) ' +
+  "o nel profilo utente (memory.core.edit): fatti dell'utente, cartelle/clienti, decisioni. Se non c'è nulla di utile da consolidare, " +
+  'rispondi in una riga che è tutto in ordine, senza fare altro.';
 
 function reflection(trigger: Trigger, actions: number, text: string): string {
   const head = `Ciclo (${trigger.kind}) completato: ${actions} azioni.`;

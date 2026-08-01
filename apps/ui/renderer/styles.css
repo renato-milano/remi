@@ -19,6 +19,11 @@ html,body{width:100%;height:100%;background:transparent;overflow:hidden;
 /* colore dei glifi dello schermo */
 #creatureRoot{--eye:#ffffff}
 #creatureRoot[data-tint="amber"]{--eye:#ffd27a}
+#creatureRoot[data-tint="red"]{--eye:#ff8a7a}
+#creatureRoot[data-tint="green"]{--eye:#5ef2a0}
+#creatureRoot[data-tint="white"],#creatureRoot[data-tint="default"]{--eye:#ffffff}
+/* transizione morbida del colore al cambio di tinta emotiva */
+#screenEyes .glyph,#screenEyes .arc,#screenEyes .q,#mouth{transition:fill .25s ease,stroke .25s ease}
 
 /* movimenti */
 #bob{animation:bob 3.8s ease-in-out infinite;transform-origin:100px 150px}
@@ -49,6 +54,56 @@ html,body{width:100%;height:100%;background:transparent;overflow:hidden;
 @keyframes crtFlicker{
   0%,7%,9%,55%,57%,100%{opacity:1}
   8%,56%{opacity:.86}
+}
+
+/* ---- gesti one-shot (reazioni ad azioni / fidget) ---- */
+/* ognuno sovrascrive per breve tempo il fluttuare di #bob, poi torna al bob */
+.g-nod #bob{animation:gNod .46s ease}
+@keyframes gNod{0%,100%{transform:translateY(0) rotate(0)}45%{transform:translateY(5px) rotate(0)}}
+.g-shake #bob{animation:gShake .5s ease}
+@keyframes gShake{0%,100%{transform:rotate(0)}20%{transform:rotate(-5deg)}45%{transform:rotate(4deg)}70%{transform:rotate(-3deg)}}
+.g-bounce #bob{animation:gBounce .64s cubic-bezier(.3,1.4,.5,1)}
+@keyframes gBounce{0%{transform:translateY(0)}30%{transform:translateY(-10px) scale(1.05,.95)}60%{transform:translateY(0) scale(.97,1.03)}100%{transform:translateY(0)}}
+.g-snap #bob{animation:gSnap .42s ease}
+@keyframes gSnap{0%,100%{transform:scale(1)}35%{transform:scale(.94,.96)}}
+.g-snap #crt-flash{animation:snapFlash .42s ease}
+@keyframes snapFlash{0%{opacity:0}18%{opacity:.7}100%{opacity:0}}
+.g-type #bob{animation:gType .9s ease}
+@keyframes gType{0%,100%{transform:translateY(0)}12%,36%,60%,84%{transform:translateY(-1.4px)}24%,48%,72%{transform:translateY(1.4px)}}
+.g-tilt #bob{animation:gTilt .8s ease}
+@keyframes gTilt{0%,100%{transform:rotate(0)}45%{transform:rotate(-7deg)}}
+.g-yawn #bob{animation:gYawn 1.2s ease}
+@keyframes gYawn{0%,100%{transform:translateY(0) scaleY(1)}45%{transform:translateY(-3px) scaleY(1.06)}}
+.g-sneeze #bob{animation:gSneeze .52s ease}
+@keyframes gSneeze{0%{transform:translateY(0)}55%{transform:translateY(-2px) scale(1.02)}68%{transform:translateY(4px) scale(1.04,.95)}100%{transform:translateY(0)}}
+.g-stretch #bob{animation:gStretch .9s ease}
+@keyframes gStretch{0%,100%{transform:scale(1) rotate(0)}50%{transform:scale(1.04,.97) rotate(2.5deg)}}
+
+/* orecchie: wiggle nei fidget, abbassate quando dorme, dritte in allerta */
+.ear{transform-box:fill-box;transform-origin:50% 100%;transition:transform .35s ease}
+[data-state="sleeping"] .ear{transform:translateY(4px) scaleY(.82)}
+#creatureRoot.alert .ear{transform:translateY(-3px)}
+.g-earwiggle #earL{animation:earWigL .7s ease}
+.g-earwiggle #earR{animation:earWigR .7s ease}
+@keyframes earWigL{0%,100%{transform:rotate(0)}30%{transform:rotate(-16deg)}65%{transform:rotate(9deg)}}
+@keyframes earWigR{0%,100%{transform:rotate(0)}30%{transform:rotate(16deg)}65%{transform:rotate(-9deg)}}
+
+/* allerta approvazione: alone ambra pulsante */
+#creatureRoot.alert{animation:alertPulse 1.2s ease-in-out infinite}
+@keyframes alertPulse{0%,100%{filter:none}50%{filter:drop-shadow(0 0 8px rgba(255,191,92,.75))}}
+
+/* nuovi glifi: occhi spalancati (sorpresa) + scintille (successo) */
+.pop{animation:popIn .3s ease;transform-box:fill-box;transform-origin:center}
+@keyframes popIn{0%{transform:scale(.4)}70%{transform:scale(1.12)}100%{transform:scale(1)}}
+.spark{animation:spark 1s ease-in-out infinite;transform-box:fill-box;transform-origin:center}
+.spark2{animation-delay:.4s}
+@keyframes spark{0%,100%{opacity:.2;transform:scale(.6)}50%{opacity:1;transform:scale(1.1)}}
+
+/* accessibilità: rispetta chi preferisce meno movimento */
+@media (prefers-reduced-motion: reduce){
+  #bob,#shadow,#crt,#crt-scan,#creatureRoot.alert,
+  .tw,.qmove,.td,.zdrift,.spark,.pop{animation:none !important}
+  #crt-scan{opacity:0}
 }
 
 /* piccole animazioni dei glifi */
