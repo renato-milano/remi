@@ -1,9 +1,26 @@
 .dash{padding:24px 28px;height:100vh;overflow-y:auto;display:flex;flex-direction:column;gap:18px}
-.dash-head{display:flex;align-items:baseline;justify-content:space-between}
+.dash-head{display:flex;align-items:center;justify-content:space-between}
+.head-right{display:flex;align-items:center;gap:12px}
 .dash h1{font-family:var(--serif);font-weight:400;font-size:26px}
-.dash h2{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#8b958c;margin-bottom:10px}
+.dash h2{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#8b958c;margin-bottom:8px}
+.sec-head{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.sec-head h2{margin:0}
+.pill{font-family:var(--mono);font-size:11px;color:var(--alive2);background:rgba(94,242,160,.1);border:1px solid rgba(94,242,160,.25);border-radius:999px;padding:1px 9px}
 .dot{font-family:var(--mono);font-size:12px;color:#5c665e}
 .dot.on{color:var(--alive2)}
+.hint{font-family:var(--mono);font-size:11px;color:#8b958c;margin:-4px 0 10px;line-height:1.5}
+.err{font-family:var(--mono);font-size:11px;color:#ff7a6b;flex:1}
+
+/* form crea-task */
+.add{margin-top:12px;border:1px solid var(--line);border-radius:12px;background:var(--panel)}
+.add summary{font-family:var(--mono);font-size:12px;color:var(--alive);cursor:pointer;padding:10px 14px;list-style:none}
+.add summary::-webkit-details-marker{display:none}
+.add[open] summary{border-bottom:1px solid var(--line)}
+.form{padding:12px 14px;display:flex;flex-direction:column;gap:8px}
+.form .field{width:100%;text-align:left}
+.form textarea.field{resize:vertical;line-height:1.5}
+.cron-human{font-family:var(--mono);font-size:11px;color:var(--alive2);min-height:14px}
+.form-foot{display:flex;align-items:center;gap:10px;margin-top:2px}
 
 .cards{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px}

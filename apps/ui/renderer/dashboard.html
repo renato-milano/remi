@@ -12,30 +12,50 @@
   <div class="dash">
     <div class="dash-head">
       <h1>Cruscotto</h1>
-      <span id="dot" class="dot">● offline</span>
+      <div class="head-right">
+        <button id="sleep" class="btn ghost small no-drag">☾ Dormi</button>
+        <span id="dot" class="dot">● offline</span>
+      </div>
     </div>
 
-    <section class="cards">
-      <div class="card">
-        <div class="k">Heartbeat</div>
-        <div class="v" id="hb">—</div>
-        <div class="s">ogni quanto mi sveglio</div>
-      </div>
-      <div class="card">
-        <div class="k">Task ricorrenti</div>
-        <div class="v" id="schedCount">—</div>
-        <div class="s">attivi</div>
-      </div>
-      <div class="card">
-        <div class="k">Controllo schermo</div>
-        <div class="v" id="cu">—</div>
-        <div class="s">computer-use</div>
+    <section>
+      <h2>Ritmo (heartbeat)</h2>
+      <p class="hint">Ogni quanto mi sveglio da solo per portare avanti le cose. La modifica è immediata e resta salvata.</p>
+      <div class="chips" id="hbChips">
+        <button class="chip" data-sec="60">Ogni 1 min</button>
+        <button class="chip" data-sec="300">Ogni 5 min</button>
+        <button class="chip" data-sec="900">Ogni 15 min</button>
+        <button class="chip" data-sec="3600">Ogni ora</button>
+        <button class="chip" data-sec="1000000">Solo su richiesta</button>
       </div>
     </section>
 
     <section>
-      <h2>Task ricorrenti</h2>
+      <div class="sec-head">
+        <h2>Task ricorrenti</h2>
+        <span id="schedCount" class="pill">0</span>
+      </div>
       <div id="schedList" class="list"><div class="empty">Nessun task ricorrente.</div></div>
+
+      <details class="add no-drag">
+        <summary>+ Nuovo task ricorrente</summary>
+        <div class="form">
+          <input id="fTitle" class="field mono" type="text" placeholder="titolo (facoltativo)" />
+          <div class="chips" id="cronPresets">
+            <button class="chip" data-cron="0 17 * * *">Ogni giorno 17:00</button>
+            <button class="chip" data-cron="0 9 * * 1">Ogni lunedì 9:00</button>
+            <button class="chip" data-cron="0 * * * *">Ogni ora</button>
+            <button class="chip" data-cron="*/5 * * * *">Ogni 5 min</button>
+          </div>
+          <input id="fCron" class="field mono" type="text" placeholder="cron: 0 17 * * *" />
+          <div id="cronHuman" class="cron-human"></div>
+          <textarea id="fInstr" class="field mono" rows="3" placeholder="cosa fare a ogni scatto (istruzione completa)"></textarea>
+          <div class="form-foot">
+            <span id="addErr" class="err"></span>
+            <button id="addBtn" class="btn primary small">Crea</button>
+          </div>
+        </div>
+      </details>
     </section>
 
     <section>

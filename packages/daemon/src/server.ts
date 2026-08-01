@@ -10,7 +10,9 @@ export type ClientCommand =
   | { kind: 'interrupt' }
   | { kind: 'pause' }
   | { kind: 'resume' }
-  | { kind: 'cancel_schedule'; id: string };
+  | { kind: 'cancel_schedule'; id: string }
+  | { kind: 'set_heartbeat'; seconds: number }
+  | { kind: 'create_schedule'; cron: string; instruction: string; title?: string };
 
 /** Wrapper HTTP locale: SSE per gli eventi + POST per i comandi (docs/08). */
 export function startHttpServer(daemon: Daemon, port: number) {
@@ -27,6 +29,7 @@ export function startHttpServer(daemon: Daemon, port: number) {
       computerUse: daemon.computerUse,
       heartbeatSeconds: daemon.heartbeatSeconds(),
       scheduleCount: daemon.listSchedules().length,
+      paused: daemon.isPaused(),
     }),
   );
 
@@ -69,6 +72,14 @@ export function startHttpServer(daemon: Daemon, port: number) {
         return c.json({ ok: true });
       case 'cancel_schedule':
         return c.json({ ok: daemon.cancelSchedule(cmd.id) });
+      case 'set_heartbeat':
+        daemon.setHeartbeat(cmd.seconds);
+        return c.json({ ok: true, heartbeatSeconds: daemon.heartbeatSeconds() });
+      case 'create_schedule': {
+        if (!daemon.isValidCron(cmd.cron)) return c.json({ ok: false, error: 'cron non valido' }, 400);
+        const s = daemon.createSchedule({ cron: cmd.cron, instruction: cmd.instruction, title: cmd.title });
+        return c.json({ ok: true, schedule: s });
+      }
       default:
         return c.json({ ok: false, error: 'comando sconosciuto' }, 400);
     }

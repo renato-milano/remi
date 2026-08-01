@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { OpenMateConfig, Secrets } from '@openmate/config';
 import {
@@ -48,6 +49,8 @@ export interface DaemonOptions {
   secrets?: Secrets;
   /** Override del backend (test/Fake). Default: DirectProviderBackend su Claude. */
   backend?: ReasoningBackend;
+  /** Path del file di config, per persistere i cambi di heartbeat dal cruscotto. */
+  configPath?: string;
 }
 
 /**
@@ -72,12 +75,14 @@ export class Daemon {
   private paused = false;
   /** Timer di auto-continuazione (agent.wake_in). */
   private readonly followupTimers = new Set<ReturnType<typeof setTimeout>>();
+  private readonly configPath?: string;
   /** Stato del computer-use (per l'overlay). */
   readonly computerUse: { enabled: boolean; reason?: string };
 
   constructor(opts: DaemonOptions) {
     const root = opts.config.storage.root;
     const dbPath = join(root, 'openmate.db');
+    this.configPath = opts.configPath;
 
     this.memory = createMemory(root);
     this.tasks = new TaskStore(dbPath);
@@ -264,6 +269,14 @@ export class Daemon {
     return this.schedules.remove(id);
   }
 
+  isValidCron(expr: string): boolean {
+    return Scheduler.isValidCron(expr);
+  }
+
+  isPaused(): boolean {
+    return this.paused;
+  }
+
   /** Ultime voci di audit (per la dashboard). */
   recentLog(n = 50) {
     return this.audit.recent(n);
@@ -271,6 +284,20 @@ export class Daemon {
 
   heartbeatSeconds(): number {
     return Math.round(this.scheduler.getHeartbeatMs() / 1000);
+  }
+
+  /** Cambia il ritmo dell'heartbeat dal cruscotto (runtime + persistito su config). */
+  setHeartbeat(seconds: number): void {
+    const s = Math.min(1_000_000, Math.max(10, Math.round(seconds)));
+    this.scheduler.setHeartbeat(s * 1000);
+    if (!this.configPath) return;
+    try {
+      const cfg = JSON.parse(readFileSync(this.configPath, 'utf8'));
+      cfg.heartbeat = { ...(cfg.heartbeat ?? {}), intervalMs: s * 1000 };
+      writeFileSync(this.configPath, JSON.stringify(cfg, null, 2), 'utf8');
+    } catch {
+      /* best-effort: la modifica resta comunque a runtime */
+    }
   }
 
   createGoal(title: string): Goal {

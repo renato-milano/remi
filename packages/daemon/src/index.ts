@@ -15,7 +15,7 @@ process.on('uncaughtException', (err) => console.error('[daemon] uncaughtExcepti
 export async function main(): Promise<void> {
   const config = loadConfig({ configPath: process.env.OPENMATE_CONFIG });
   const secrets = resolveSecrets(config);
-  const daemon = new Daemon({ config, secrets });
+  const daemon = new Daemon({ config, secrets, configPath: process.env.OPENMATE_CONFIG });
   daemon.start();
   const port = Number(process.env.OPENMATE_PORT ?? 8787);
   startHttpServer(daemon, port);
