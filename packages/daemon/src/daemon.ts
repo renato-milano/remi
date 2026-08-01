@@ -27,10 +27,13 @@ import {
   createComputerTools,
   createMemoryTools,
   createProjectTools,
+  createScheduleTools,
+  type ScheduleInfo,
   fileTools,
   shellRunTool,
 } from '@openmate/tools';
 import { SqliteAuditSink } from './audit-sqlite.js';
+import { type Schedule, ScheduleStore } from './schedule-store.js';
 
 /** Auto-nega di un'approvazione senza risposta (evita blocchi della coda). */
 const APPROVAL_TIMEOUT_MS = 120_000;
@@ -58,6 +61,7 @@ export class Daemon {
   readonly scheduler: Scheduler;
   private readonly registry: ToolRegistry;
   private readonly audit: SqliteAuditSink;
+  private readonly schedules: ScheduleStore;
   private readonly policy: AutonomyPolicy;
   private readonly subscribers = new Set<(event: DaemonEvent) => void>();
   private readonly pendingApprovals = new Map<
@@ -78,6 +82,7 @@ export class Daemon {
     this.memory = createMemory(root);
     this.tasks = new TaskStore(dbPath);
     this.audit = new SqliteAuditSink(dbPath);
+    this.schedules = new ScheduleStore(dbPath);
     this.registry = new ToolRegistry()
       .register(shellRunTool)
       .register(codeRunTool)
@@ -90,6 +95,14 @@ export class Daemon {
           setHeartbeat: (s) => this.scheduler.setHeartbeat(s * 1000),
           getHeartbeatSeconds: () => Math.round(this.scheduler.getHeartbeatMs() / 1000),
           wakeIn: (s, note) => this.scheduleFollowup(s, note),
+        }),
+      )
+      .registerAll(
+        createScheduleTools({
+          isValidCron: (expr) => Scheduler.isValidCron(expr),
+          create: (input) => this.createSchedule(input),
+          list: () => this.listSchedules(),
+          cancel: (id) => this.cancelSchedule(id),
         }),
       );
 
@@ -222,6 +235,44 @@ export class Daemon {
     this.followupTimers.clear();
   }
 
+  /* ---------------- task ricorrenti (schedule) ---------------- */
+
+  /** Registra il cron di uno schedule: a ogni scatto rilancia l'istruzione. */
+  private armSchedule(s: Schedule): void {
+    this.scheduler.addCron(s.id, s.cron, () => {
+      if (!this.paused) void this.submitUserMessage(`[Task ricorrente: ${s.title}] ${s.instruction}`);
+    });
+  }
+
+  private toInfo(s: Schedule): ScheduleInfo {
+    return { id: s.id, cron: s.cron, title: s.title, instruction: s.instruction, nextRun: this.scheduler.nextRun(s.id) };
+  }
+
+  createSchedule(input: { cron: string; instruction: string; title?: string }): ScheduleInfo {
+    const s = this.schedules.create(input);
+    this.armSchedule(s);
+    this.emit({ kind: 'state', state: this.loop.getState() }); // nudge UI
+    return this.toInfo(s);
+  }
+
+  listSchedules(): ScheduleInfo[] {
+    return this.schedules.list().map((s) => this.toInfo(s));
+  }
+
+  cancelSchedule(id: string): boolean {
+    this.scheduler.removeCron(id);
+    return this.schedules.remove(id);
+  }
+
+  /** Ultime voci di audit (per la dashboard). */
+  recentLog(n = 50) {
+    return this.audit.recent(n);
+  }
+
+  heartbeatSeconds(): number {
+    return Math.round(this.scheduler.getHeartbeatMs() / 1000);
+  }
+
   createGoal(title: string): Goal {
     return this.tasks.createGoal({ title });
   }
@@ -236,6 +287,7 @@ export class Daemon {
 
   start(): void {
     this.scheduler.start();
+    for (const s of this.schedules.list()) this.armSchedule(s); // ripristina i task ricorrenti
   }
 
   stop(): void {
@@ -247,6 +299,7 @@ export class Daemon {
     }
     this.audit.close();
     this.tasks.close();
+    this.schedules.close();
     this.memory.close();
   }
 }

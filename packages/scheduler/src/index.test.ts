@@ -39,6 +39,19 @@ describe('@openmate/scheduler — pre-check heartbeat', () => {
     expect(cycles).toEqual([{ kind: 'user_message', content: 'ciao' }]);
   });
 
+  it('valida le espressioni cron', () => {
+    expect(Scheduler.isValidCron('0 17 * * *')).toBe(true);
+    expect(Scheduler.isValidCron('non-un-cron')).toBe(false);
+  });
+
+  it('addCron/removeCron gestiscono i task ricorrenti e nextRun', () => {
+    const { scheduler } = makeScheduler(() => false);
+    scheduler.addCron('s1', '0 17 * * *', () => {});
+    expect(scheduler.nextRun('s1')).toMatch(/T/); // ISO con prossima esecuzione
+    scheduler.removeCron('s1');
+    expect(scheduler.nextRun('s1')).toBeNull();
+  });
+
   it('setHeartbeat cambia il ritmo a runtime', () => {
     const { scheduler } = makeScheduler(() => false);
     expect(scheduler.getHeartbeatMs()).toBe(1_000_000);

@@ -13,6 +13,7 @@ import {
   createComputerTools,
   createMemoryTools,
   createProjectTools,
+  createScheduleTools,
   createToolContext,
   explainCommand,
   shellRunTool,
@@ -217,6 +218,42 @@ describe('@openmate/tools — code.run + agent.*', () => {
     await registry.execute('code.run', { language: 'bash', code: 'echo a' }, ctx, strictPolicy);
     await registry.execute('code.run', { language: 'bash', code: 'echo b' }, ctx, strictPolicy);
     expect(asked).toBe(1);
+  });
+
+  it('schedule.create valida il cron e crea; list/cancel funzionano', async () => {
+    const store: { id: string; cron: string; title: string; instruction: string }[] = [];
+    const registry = new ToolRegistry().registerAll(
+      createScheduleTools({
+        isValidCron: (e) => /^[\d*, /-]+( [\d*, /-]+){4}$/.test(e),
+        create: (i) => {
+          const s = { id: 's1', cron: i.cron, title: i.title ?? i.instruction, instruction: i.instruction };
+          store.push(s);
+          return s;
+        },
+        list: () => store,
+        cancel: (id) => {
+          const n = store.length;
+          for (let i = store.length - 1; i >= 0; i--) if (store[i].id === id) store.splice(i, 1);
+          return store.length < n;
+        },
+      }),
+    );
+    const ctx = createToolContext({ audit: new InMemoryAuditSink(), requestApproval: async () => true });
+    const bad = (await registry.execute('schedule.create', { cron: 'ogni giorno', instruction: 'x' }, ctx, policy)) as {
+      ok: boolean;
+    };
+    expect(bad.ok).toBe(false); // cron non valido
+    const ok = (await registry.execute(
+      'schedule.create',
+      { cron: '0 17 * * *', instruction: 'report cartella X', title: 'Report' },
+      ctx,
+      policy,
+    )) as { ok: boolean; id: string };
+    expect(ok.ok).toBe(true);
+    const listed = (await registry.execute('schedule.list', {}, ctx, policy)) as { schedules: unknown[] };
+    expect(listed.schedules).toHaveLength(1);
+    await registry.execute('schedule.cancel', { id: ok.id }, ctx, policy);
+    expect(store).toHaveLength(0);
   });
 
   it('agent.set_heartbeat e agent.wake_in chiamano il controllo', async () => {

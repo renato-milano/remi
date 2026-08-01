@@ -40,6 +40,20 @@ export class SqliteAuditSink implements AuditSink {
     return (this.db.prepare('SELECT COUNT(*) AS n FROM audit').get() as { n: number }).n;
   }
 
+  /** Ultime N voci (per la dashboard), più recenti prima. */
+  recent(n = 50): AuditEntry[] {
+    const rows = this.db
+      .prepare('SELECT ts,tool,input,decision,outcome FROM audit ORDER BY id DESC LIMIT ?')
+      .all(n) as Record<string, unknown>[];
+    return rows.map((r) => ({
+      ts: String(r.ts),
+      tool: String(r.tool),
+      input: r.input,
+      decision: String(r.decision) as AuditEntry['decision'],
+      outcome: r.outcome == null ? undefined : String(r.outcome),
+    }));
+  }
+
   close(): void {
     this.db.close();
   }

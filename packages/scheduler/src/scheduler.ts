@@ -29,9 +29,36 @@ export class Scheduler {
   private queue: SchedulerTrigger[] = [];
   private running = false;
   private intervalMs: number;
+  private dynamicCron = new Map<string, Cron>();
 
   constructor(private readonly opts: SchedulerOptions) {
     this.intervalMs = opts.intervalMs;
+  }
+
+  /** Valida un'espressione cron (5-6 campi). */
+  static isValidCron(expr: string): boolean {
+    try {
+      new Cron(expr, { paused: true }).stop();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Registra un cron dinamico (task ricorrente). Sostituisce quello con lo stesso id. */
+  addCron(id: string, expr: string, onFire: () => void): void {
+    this.removeCron(id);
+    this.dynamicCron.set(id, new Cron(expr, onFire));
+  }
+
+  removeCron(id: string): void {
+    this.dynamicCron.get(id)?.stop();
+    this.dynamicCron.delete(id);
+  }
+
+  /** Prossima esecuzione (ISO) di un cron dinamico, o null. */
+  nextRun(id: string): string | null {
+    return this.dynamicCron.get(id)?.nextRun()?.toISOString() ?? null;
   }
 
   start(): void {
@@ -66,6 +93,8 @@ export class Scheduler {
     }
     for (const job of this.cronJobs) job.stop();
     this.cronJobs = [];
+    for (const job of this.dynamicCron.values()) job.stop();
+    this.dynamicCron.clear();
   }
 
   /** Un messaggio utente: bypassa il pre-check e ha priorità sulla coda. */

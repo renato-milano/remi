@@ -183,7 +183,8 @@ Consulta questa memoria prima di agire in una cartella già vista.`;
 
 const AUTONOMY_GUIDE = `## Autonomia (sii proattivo ed efficiente)
 - Task lunghi: NON aspettare il prossimo heartbeat. Quando un lavoro richiede più passi/tempo, salva i progressi (memoria/.remi) e usa agent.wake_in({seconds, note}) per riprendere presto lasciandoti una nota su cosa continuare. Regola il ritmo con agent.set_heartbeat({seconds}): più veloce mentre lavori attivamente, più lento quando sei in attesa (per non consumare inutilmente).
-- Puoi scrivere ed ESEGUIRE codice con code.run({language:'python'|'node'|'bash', code}): usalo per calcoli, elaborazione dati, automazioni e logica non banale, invece di comandi shell fragili. Riceverai stdout/stderr e il codice di uscita.`;
+- Puoi scrivere ed ESEGUIRE codice con code.run({language:'python'|'node'|'bash', code}): usalo per calcoli, elaborazione dati, automazioni e logica non banale, invece di comandi shell fragili. Riceverai stdout/stderr e il codice di uscita.
+- Task RICORRENTI: se l'utente chiede qualcosa di periodico ("ogni giorno alle 17…", "ogni lunedì…", "ogni ora…"), riconoscilo e crea un task con schedule.create({cron, instruction, title}), traducendo l'orario in cron a 5 campi (es. "0 17 * * *" = ogni giorno alle 17:00; "0 * * * *" = ogni ora). L'istruzione dev'essere completa e autosufficiente (verrà eseguita da sola a ogni scatto). Conferma all'utente cosa hai programmato. Usa schedule.list per vedere i task attivi e schedule.cancel({id}) quando l'utente chiede di smettere.`;
 
 function buildSystem(persona: string, user: string, task?: Task, computerUse = false): string {
   let base = `Sei un agente personale autonomo che vive sul dispositivo dell'utente.\n\n## Persona\n${persona}\n\n## Utente\n${user}\n\n## Stile\n${STYLE}\n\n${AUTONOMY_GUIDE}\n\n${PROJECT_GUIDE}`;

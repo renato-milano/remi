@@ -9,7 +9,8 @@ export type ClientCommand =
   | { kind: 'approval_decision'; requestId: string; approved: boolean; always?: boolean }
   | { kind: 'interrupt' }
   | { kind: 'pause' }
-  | { kind: 'resume' };
+  | { kind: 'resume' }
+  | { kind: 'cancel_schedule'; id: string };
 
 /** Wrapper HTTP locale: SSE per gli eventi + POST per i comandi (docs/08). */
 export function startHttpServer(daemon: Daemon, port: number) {
@@ -20,8 +21,21 @@ export function startHttpServer(daemon: Daemon, port: number) {
 
   app.get('/health', (c) => c.json({ ok: true }));
 
-  // Stato del computer-use (per l'overlay: abilitato/supportato + motivo).
-  app.get('/status', (c) => c.json({ computerUse: daemon.computerUse }));
+  // Stato per overlay/dashboard: computer-use, heartbeat, n. task ricorrenti.
+  app.get('/status', (c) =>
+    c.json({
+      computerUse: daemon.computerUse,
+      heartbeatSeconds: daemon.heartbeatSeconds(),
+      scheduleCount: daemon.listSchedules().length,
+    }),
+  );
+
+  // Dashboard: task ricorrenti e log recente.
+  app.get('/schedules', (c) => c.json({ schedules: daemon.listSchedules() }));
+  app.get('/log', (c) => {
+    const n = Number(c.req.query('n') ?? 50);
+    return c.json({ entries: daemon.recentLog(Number.isFinite(n) ? n : 50) });
+  });
 
   app.get('/events', (c) =>
     streamSSE(c, async (stream) => {
@@ -53,6 +67,8 @@ export function startHttpServer(daemon: Daemon, port: number) {
       case 'resume':
         daemon.resume();
         return c.json({ ok: true });
+      case 'cancel_schedule':
+        return c.json({ ok: daemon.cancelSchedule(cmd.id) });
       default:
         return c.json({ ok: false, error: 'comando sconosciuto' }, 400);
     }
