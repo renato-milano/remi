@@ -1,0 +1,32 @@
+.dash{padding:24px 28px;height:100vh;overflow-y:auto;display:flex;flex-direction:column;gap:18px}
+.dash-head{display:flex;align-items:baseline;justify-content:space-between}
+.dash h1{font-family:var(--serif);font-weight:400;font-size:26px}
+.dash h2{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#8b958c;margin-bottom:10px}
+.dot{font-family:var(--mono);font-size:12px;color:#5c665e}
+.dot.on{color:var(--alive2)}
+
+.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px}
+.card .k{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:#8b958c}
+.card .v{font-family:var(--serif);font-size:22px;color:var(--ink);margin:6px 0 2px}
+.card .s{font-family:var(--mono);font-size:10.5px;color:#5c665e}
+
+.list{display:flex;flex-direction:column;gap:10px}
+.row{display:flex;gap:12px;align-items:flex-start;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.row-main{flex:1;min-width:0}
+.row-title{font-family:var(--serif);font-size:15px;color:var(--ink)}
+.row-sub{font-family:var(--mono);font-size:11px;color:#8b958c;margin:3px 0}
+.row-sub code{color:var(--alive)}
+.row-instr{font-size:12.5px;color:#c3ccc4;margin-top:4px;line-height:1.4}
+.btn.small{padding:6px 12px;font-size:11px;flex:0 0 auto}
+
+.log{font-family:var(--mono);font-size:11.5px;display:flex;flex-direction:column;gap:2px;max-height:260px;overflow:auto}
+.log-row{display:grid;grid-template-columns:44px 16px 150px 1fr;gap:8px;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.05);align-items:baseline}
+.lt{color:#5c665e}
+.ld{text-align:center}
+.ld.approved{color:var(--alive2)}
+.ld.denied{color:#ff7a6b}
+.ltool{color:#cdd6cd;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lout{color:#7b857c;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+.empty{font-family:var(--mono);font-size:12px;color:#5c665e;padding:8px 0}

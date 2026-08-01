@@ -267,6 +267,30 @@ ipcMain.on('onboarding-complete', (_e, data) => {
 });
 
 /* ---------------- finestra impostazioni ---------------- */
+let dashboardWin; // cruscotto
+function openDashboard() {
+  if (dashboardWin) {
+    dashboardWin.focus();
+    return;
+  }
+  dashboardWin = new BrowserWindow({
+    width: 640,
+    height: 720,
+    title: 'OpenMate — Cruscotto',
+    backgroundColor: '#0a0c0b',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload-dashboard.cjs'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
+    },
+  });
+  dashboardWin.loadFile(path.join(__dirname, '..', 'renderer', 'dashboard.html'));
+  dashboardWin.on('closed', () => {
+    dashboardWin = undefined;
+  });
+}
+
 function openSettings() {
   if (settingsWin) {
     settingsWin.focus();
@@ -412,6 +436,7 @@ function showContextMenu() {
     { label: '⏹  Interrompi', click: () => postDaemon('interrupt') },
     { type: 'separator' },
     { label: 'Cosa stai facendo?', click: () => win?.webContents.send('show-activity') },
+    { label: 'Cruscotto…', click: () => openDashboard() },
     { label: 'Impostazioni…', click: () => openSettings() },
     { type: 'separator' },
     { label: 'Esci', role: 'quit' },
