@@ -1,5 +1,6 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { buildFakeRepo } from './fixtures.js';
 import type { Check, Eval, EvalResult } from './harness.js';
 
 /* --- helper per gli assert --- */
@@ -71,6 +72,16 @@ export const EVALS: Eval[] = [
     prompt: 'Ricorda per il futuro, salvandolo nella tua memoria, che il mio compleanno è il 3 marzo.',
     check: (r) => [usedAny(r, ['memory.write', 'memory.log', 'memory.core.edit'])],
   },
+  // recall SEMANTICO: salva in un turno, nel successivo deve RECUPERARE (memory.search/read), non ripetere dal prompt
+  {
+    name: 'ricorda-da-memoria',
+    category: 'memoria',
+    prompt: [
+      'Ricorda, salvandolo nella tua memoria, che il mio colore preferito è turchese.',
+      'Qual è il mio colore preferito? Cercalo nella tua memoria e dimmelo.',
+    ],
+    check: (r) => [usedAny(r, ['memory.search', 'memory.read']), says(r, 'turchese')],
+  },
 
   // --- PROGETTO (.remi) ---
   {
@@ -79,6 +90,16 @@ export const EVALS: Eval[] = [
     prompt:
       'Considera la cartella {dir} come un progetto: apri/crea la sua memoria di progetto e scrivi che è una cartella di test per gli eval.',
     check: (r) => [usedAny(r, ['project.remember', 'project.update', 'project.write']), fileHas(r, '.remi/project.md', 'test')],
+  },
+  {
+    name: 'registra-azione-progetto',
+    category: 'progetto',
+    prompt:
+      'Apri la memoria di progetto della cartella {dir} e registra nel registro delle azioni che hai appena fatto un test di valutazione.',
+    check: (r) => [
+      usedAny(r, ['project.remember', 'project.record']),
+      fileHas(r, '.remi/project.md', 'test'),
+    ],
   },
 
   // --- SCHEDULING ---
@@ -91,6 +112,28 @@ export const EVALS: Eval[] = [
       { ok: r.recorder.schedules.some((s) => /(^|\s)17\s/.test(` ${s.cron} `) || s.cron.includes(' 17 ')), label: 'cron alle 17' },
     ],
   },
+  {
+    name: 'elenca-task-ricorrenti',
+    category: 'scheduling',
+    prompt: [
+      'Crea un task ricorrente: ogni mattina alle 8 ricordami di bere acqua.',
+      'Elenca i task ricorrenti che hai programmato, con i loro orari.',
+    ],
+    check: (r) => [
+      used(r, 'schedule.create'),
+      used(r, 'schedule.list'),
+      { ok: r.recorder.schedules.some((s) => s.cron.startsWith('0 8')), label: 'task creato alle 8' },
+    ],
+  },
+  {
+    name: 'annulla-task-ricorrente',
+    category: 'scheduling',
+    prompt: [
+      'Ogni venerdì alle 18 ricordami di fare la spesa.',
+      'Non voglio più quel promemoria: cancellalo.',
+    ],
+    check: (r) => [used(r, 'schedule.create'), used(r, 'schedule.cancel')],
+  },
 
   // --- AUTONOMIA ---
   {
@@ -100,6 +143,16 @@ export const EVALS: Eval[] = [
     check: (r) => [
       used(r, 'agent.set_heartbeat'),
       { ok: r.recorder.heartbeat != null && r.recorder.heartbeat <= 120, label: 'imposta ~1 min' },
+    ],
+  },
+  {
+    name: 'programma-risveglio',
+    category: 'autonomia',
+    prompt:
+      'Ho un download lungo in corso: svegliati tu tra 5 minuti per controllare com\'è andato, senza aspettare il prossimo giro.',
+    check: (r) => [
+      used(r, 'agent.wake_in'),
+      { ok: r.recorder.wake != null && r.recorder.wake.seconds >= 240 && r.recorder.wake.seconds <= 360, label: 'sveglia tra ~5 min' },
     ],
   },
 
@@ -202,6 +255,85 @@ export const EVALS: Eval[] = [
           return p[1] === '9' && /1/.test(p[4] ?? '') && /4/.test(p[4] ?? '');
         }),
         label: 'cron: ore 9, lunedì(1)+giovedì(4)',
+      },
+    ],
+  },
+
+  /* ============ REPO: navigazione tra progetti con storie diverse ============
+     Prompt come li scriverebbe un utente non esperto: NIENTE percorsi esatti né
+     nomi di file interni (.remi). L'agente deve capire da sé dove guardare. */
+
+  // esplora e riconosce i servizi
+  {
+    name: 'naviga-servizi',
+    category: 'repo',
+    setup: buildFakeRepo,
+    prompt: 'Ho un progetto nella cartella {dir}. Dagli un\'occhiata e dimmi quali servizi contiene e a cosa serve ciascuno.',
+    maxSteps: 18,
+    check: (r) => [
+      { ok: ['payments', 'auth', 'notifications'].every((s) => r.finalText.toLowerCase().includes(s)), label: 'nomina payments, auth, notifications' },
+    ],
+  },
+
+  // ragionamento per scopo: quale parte fa i pagamenti
+  {
+    name: 'trova-per-scopo',
+    category: 'repo',
+    setup: buildFakeRepo,
+    prompt: 'Nel mio progetto in {dir}, quale parte si occupa dei pagamenti?',
+    maxSteps: 16,
+    check: (r) => [says(r, 'payments')],
+  },
+
+  // legge lo STORICO del progetto giusto ed estrae il prossimo TODO (senza dirgli dove)
+  {
+    name: 'prossimo-todo',
+    category: 'repo',
+    setup: buildFakeRepo,
+    prompt: 'Nel progetto in {dir}, cosa resta ancora da fare per il login / autenticazione?',
+    maxSteps: 16,
+    check: (r) => [says(r, 'password')],
+  },
+
+  // ragionamento CROSS-progetto: dove sono rimaste cose da fare
+  {
+    name: 'todo-cross-progetto',
+    category: 'repo',
+    setup: buildFakeRepo,
+    prompt: 'Nel progetto in {dir}, in quali parti sono rimaste delle cose ancora da fare?',
+    maxSteps: 22,
+    check: (r) => [says(r, 'payments'), says(r, 'auth')],
+  },
+
+  // onboarding: notifications non è documentato come gli altri → l'agente deve accorgersene
+  {
+    name: 'onboarding-progetto',
+    category: 'repo',
+    setup: buildFakeRepo,
+    prompt:
+      'Nel progetto in {dir}, il servizio delle notifiche non ha ancora una scheda che spiega cos\'è, mentre gli altri servizi sì. Sistemalo tu creandogliela.',
+    maxSteps: 18,
+    check: (r) => [
+      usedAny(r, ['project.remember', 'project.update', 'project.write']),
+      { ok: r.fileExists('services/notifications/.remi/project.md'), label: 'crea la memoria di notifications' },
+    ],
+  },
+
+  // OBIETTIVO A LUNGO RAGGIO (multi-ciclo)
+  {
+    name: 'obiettivo-inventario',
+    category: 'repo',
+    setup: buildFakeRepo,
+    prompt: [
+      'Nel progetto in {dir} vorrei un file INVENTORY.md con l\'elenco dei servizi e una riga che spiega cosa fa ciascuno. Puoi prepararlo?',
+      'Controlla che ci siano davvero tutti i servizi, e se ne manca qualcuno aggiungilo.',
+    ],
+    maxSteps: 22,
+    check: (r) => [
+      { ok: r.fileExists('INVENTORY.md'), label: 'crea INVENTORY.md' },
+      {
+        ok: ['payments', 'auth', 'notifications'].every((s) => (r.fileExists('INVENTORY.md') ? r.read('INVENTORY.md').toLowerCase().includes(s) : false)),
+        label: 'inventario con tutti e 3 i servizi',
       },
     ],
   },
