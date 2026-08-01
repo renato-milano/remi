@@ -1,0 +1,23 @@
+{
+  "name": "@openmate/evals",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "eval": "tsx src/run.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@openmate/config": "workspace:*",
+    "@openmate/llm": "workspace:*",
+    "@openmate/memory": "workspace:*",
+    "@openmate/tools": "workspace:*",
+    "@openmate/core": "workspace:*",
+    "@openmate/scheduler": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "catalog:",
+    "tsx": "catalog:",
+    "@types/node": "catalog:"
+  }
+}
