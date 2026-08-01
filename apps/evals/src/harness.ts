@@ -43,8 +43,10 @@ export type Check = { ok: boolean; label: string };
 export interface Eval {
   name: string;
   category: string;
-  /** Il messaggio dell'utente. `{dir}` viene sostituito con la cartella di lavoro. */
-  prompt: string;
+  /** Uno o più messaggi utente eseguiti in sequenza (stessa memoria/storage).
+   *  Più prompt = conversazione multi-ciclo (es. salva-poi-ricorda). `{dir}` →
+   *  cartella di lavoro. */
+  prompt: string | string[];
   setup?: (dir: string) => void;
   check: (r: EvalResult) => Check[];
   maxSteps?: number;
@@ -119,16 +121,23 @@ export async function runEval(ev: Eval, backend: ReasoningBackend): Promise<RanE
       },
     });
 
-    const result = await loop.runCycle({ kind: 'user_message', content: ev.prompt.replaceAll('{dir}', dir) }, {});
+    const prompts = Array.isArray(ev.prompt) ? ev.prompt : [ev.prompt];
+    const usage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
+    for (const p of prompts) {
+      const res = await loop.runCycle({ kind: 'user_message', content: p.replaceAll('{dir}', dir) }, {});
+      usage.inputTokens += res.usage.inputTokens ?? 0;
+      usage.outputTokens += res.usage.outputTokens ?? 0;
+      usage.totalTokens += res.usage.totalTokens ?? (res.usage.inputTokens ?? 0) + (res.usage.outputTokens ?? 0);
+    }
     memory.close();
     tasks.close();
 
     const r: EvalResult = {
       dir,
       messages,
-      finalText: messages.join('\n') || result.text,
+      finalText: messages.join('\n'),
       toolsUsed: [...new Set(audit.entries.map((e) => e.tool))],
-      usage: result.usage,
+      usage,
       recorder: rec,
       fileExists: (rel) => existsSync(join(dir, rel)),
       read: (rel) => (existsSync(join(dir, rel)) ? readFileSync(join(dir, rel), 'utf8') : ''),
@@ -140,7 +149,7 @@ export async function runEval(ev: Eval, backend: ReasoningBackend): Promise<RanE
       checks,
       pass: checks.every((c) => c.ok),
       tools: r.toolsUsed,
-      usage: result.usage,
+      usage,
     };
   } finally {
     rmSync(dir, { recursive: true, force: true });

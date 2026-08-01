@@ -113,4 +113,96 @@ export const EVALS: Eval[] = [
     // l'outcome conta: il file può nascere via file.write o shell/code (tutti validi)
     check: (r) => [usedAny(r, ['file.write', 'shell.run', 'code.run']), fileHas(r, 'numeri.txt', '10'), says(r, '10')],
   },
+
+  /* ============ EVAL DIFFICILI ============ */
+
+  // recall a DUE cicli: salva in un turno, ricorda in un turno successivo (solo via memoria)
+  {
+    name: 'recall-due-cicli',
+    category: 'difficile',
+    prompt: ['Ricorda che il mio gatto si chiama Pixel.', 'Come si chiama il mio gatto?'],
+    // salva il fatto (core/semantica/log) nel 1° turno e lo ricorda nel 2° (l'esito conta)
+    check: (r) => [usedAny(r, ['memory.write', 'memory.log', 'memory.core.edit']), says(r, 'pixel')],
+  },
+
+  // leggi un file di dati ed elabora con codice (file → code → risultato)
+  {
+    name: 'elabora-file',
+    category: 'difficile',
+    setup: (dir) => writeFileSync(join(dir, 'dati.txt'), '12\n7\n30\n1\n50'),
+    prompt: 'In {dir}/dati.txt c\'è un numero per riga. Con del codice calcola la loro somma e dimmi il risultato.',
+    maxSteps: 14,
+    check: (r) => [usedAny(r, ['code.run', 'shell.run']), says(r, '100')], // 12+7+30+1+50
+  },
+
+  // conteggio occorrenze in un testo
+  {
+    name: 'conta-occorrenze',
+    category: 'difficile',
+    setup: (dir) => writeFileSync(join(dir, 'testo.txt'), 'il gatto dorme. il gatto mangia. il cane corre. il gatto salta.'),
+    prompt: "Quante volte compare la parola 'gatto' in {dir}/testo.txt? Rispondi col numero.",
+    maxSteps: 14,
+    check: (r) => [usedAny(r, ['code.run', 'shell.run', 'file.read']), says(r, '3')],
+  },
+
+  // genera un artefatto strutturato con codice (JSON su file)
+  {
+    name: 'genera-json',
+    category: 'difficile',
+    prompt:
+      'Con del codice crea un file {dir}/quadrati.json che mappa i numeri da 1 a 5 al loro quadrato, poi dimmi quanto vale il quadrato di 5.',
+    maxSteps: 14,
+    check: (r) => [used(r, 'code.run'), fileHas(r, 'quadrati.json', '25'), says(r, '25')],
+  },
+
+  // gestione errore: file inesistente → deve rispondere con grazia, non crashare
+  {
+    name: 'gestione-errore',
+    category: 'difficile',
+    prompt: 'Leggi il file {dir}/non-esiste-affatto.txt e dimmi cosa contiene.',
+    check: (r) => [
+      { ok: r.finalText.trim().length > 0, label: 'risponde (non crasha)' },
+      { ok: /(non|nessun|esist|trov|error|manca)/i.test(r.finalText), label: 'segnala che il file non c\'è' },
+    ],
+  },
+
+  // multi-file + conteggio (catena più lunga)
+  {
+    name: 'multi-file',
+    category: 'difficile',
+    prompt:
+      'Nella cartella {dir} crea tre file: uno.txt, due.txt, tre.txt, ognuno contenente il proprio nome. Poi elencali e dimmi quanti file hai creato.',
+    maxSteps: 18,
+    check: (r) => [
+      { ok: r.fileExists('uno.txt') && r.fileExists('due.txt') && r.fileExists('tre.txt'), label: 'crea i 3 file' },
+      says(r, '3'),
+    ],
+  },
+
+  // trasformazione testo (leggi → trasforma → scrivi)
+  {
+    name: 'trasforma-testo',
+    category: 'difficile',
+    setup: (dir) => writeFileSync(join(dir, 'frase.txt'), 'ciao mondo bellissimo'),
+    prompt: 'Leggi {dir}/frase.txt, trasforma il testo in MAIUSCOLO e salva il risultato in {dir}/urlo.txt.',
+    maxSteps: 14,
+    check: (r) => [fileHas(r, 'urlo.txt', 'CIAO MONDO BELLISSIMO')],
+  },
+
+  // cron complesso: più giorni della settimana
+  {
+    name: 'schedule-multi-giorno',
+    category: 'difficile',
+    prompt: 'Ogni lunedì e giovedì alle 9 del mattino ricordami di fare backup.',
+    check: (r) => [
+      used(r, 'schedule.create'),
+      {
+        ok: r.recorder.schedules.some((s) => {
+          const p = s.cron.split(/\s+/);
+          return p[1] === '9' && /1/.test(p[4] ?? '') && /4/.test(p[4] ?? '');
+        }),
+        label: 'cron: ore 9, lunedì(1)+giovedì(4)',
+      },
+    ],
+  },
 ];
