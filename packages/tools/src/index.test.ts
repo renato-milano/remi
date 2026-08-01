@@ -409,12 +409,28 @@ describe('@openmate/tools — computer.* gate di sessione', () => {
     });
     const registry = new ToolRegistry().registerAll(createComputerTools(fakeExecutor()));
 
-    await registry.execute('computer.screenshot', {}, ctx, policy);
-    await registry.execute('computer.click', { x: 10, y: 20 }, ctx, policy);
-    await registry.execute('computer.type', { text: 'ciao' }, ctx, policy);
+    await registry.execute('computer.screenshot', {}, ctx, policy); // gratis (osservazione)
+    await registry.execute('computer.click', { x: 10, y: 20 }, ctx, policy); // 1ª AZIONE → chiede
+    await registry.execute('computer.type', { text: 'ciao' }, ctx, policy); // auto (sessione concessa)
 
-    expect(asked).toBe(1); // una sola richiesta per l'intera sessione
+    expect(asked).toBe(1); // una sola richiesta, e solo per agire
     expect(audit.entries.filter((e) => e.tool.startsWith('computer.'))).toHaveLength(3);
+  });
+
+  it('lo screenshot NON richiede approvazione (guardare è gratis)', async () => {
+    let asked = 0;
+    const ctx = createToolContext({
+      audit: new InMemoryAuditSink(),
+      requestApproval: async () => {
+        asked += 1;
+        return true;
+      },
+    });
+    const registry = new ToolRegistry().registerAll(createComputerTools(fakeExecutor()));
+    await registry.execute('computer.screenshot', {}, ctx, policy);
+    await registry.execute('computer.list_elements', {}, ctx, policy);
+    await registry.execute('computer.wait', { seconds: 0 }, ctx, policy);
+    expect(asked).toBe(0); // nessuna richiesta per guardare/attendere
   });
 
   it('se l\'utente nega, non esegue e non concede la sessione', async () => {

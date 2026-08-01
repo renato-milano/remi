@@ -188,6 +188,10 @@ const STYLE =
 const COMPUTER_GUIDE = `## Controllo del computer (vision)
 Puoi VEDERE e USARE lo schermo con i tool computer.*. Ogni azione ti restituisce un nuovo screenshot: guardalo davvero prima di decidere la mossa successiva.
 
+GUARDARE È GRATIS: computer.screenshot (e computer.list_elements) NON richiedono permesso — sono solo osservazione. Chiedi il permesso SOLO per AGIRE (click, type, tasti, scroll).
+
+Chiediti sempre se la richiesta dell'utente richiede di vedere lo schermo: frasi come "cosa vedi?", "cosa c'è sullo schermo?", "aiutami con questo", "che errore è?", "leggi questa pagina", "questo", "qui", riferimenti a ciò che ha davanti → fai SUBITO computer.screenshot (senza chiedere) e rispondi in base a ciò che vedi. Se non serve guardare (una domanda generica), non farlo.
+
 Regole:
 - Le coordinate (x,y) sono nei PIXEL dell'ultimo screenshot. Non inventarle: individua l'elemento nell'immagine. Se non vedi bene, dillo invece di cliccare a caso.
 - Lavora a piccoli passi: screenshot per vedere → una azione → verifica sul nuovo screenshot che sia andata come previsto; solo allora prosegui.

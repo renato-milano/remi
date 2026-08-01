@@ -121,8 +121,11 @@ export async function executeGated(
 
   let requiresApproval: boolean;
   if (isComputer) {
-    // computer-use: approvazione UNA volta per ciclo (gate di sessione), mai auto per rischio
-    requiresApproval = !(ctx.isSessionGranted?.('computer') ?? false);
+    // Guardare lo schermo (screenshot/list_elements/wait, permission 'guarded')
+    // è osservazione → NESSUN permesso. Solo AGIRE (click/type…, 'dangerous')
+    // passa dal gate di sessione: approvazione una volta per ciclo.
+    const readOnly = t.permission !== 'dangerous';
+    requiresApproval = !readOnly && !(ctx.isSessionGranted?.('computer') ?? false);
   } else if (isCode) {
     // esecuzione codice: nessun permesso di default; solo con fiducia "chiedimi
     // sempre" (autoApprove: 'none') chiede una volta per sessione, poi scorre
