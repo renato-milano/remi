@@ -35,6 +35,9 @@ export class CognitiveLoop {
   /** Grant di sessione (es. 'computer'): persistono tra i cicli, per l'intera
    *  vita del daemon → il computer-use si approva una volta, non a ogni messaggio. */
   private readonly sessionGrants = new Set<string>();
+  /** Buffer di conversazione (memoria a breve termine della chat): ultimi turni
+   *  user/assistant inclusi nel contesto del modello, così ricorda cosa ci si è detti. */
+  private readonly history: ModelMessage[] = [];
 
   constructor(private readonly opts: CognitiveLoopOptions) {
     this.audit = opts.audit ?? new InMemoryAuditSink();
@@ -58,7 +61,10 @@ export class CognitiveLoop {
     const core = this.opts.memory.coreBlocks();
     const hasComputer = Boolean(this.opts.registry.get('computer.screenshot'));
     const system = buildSystem(core.persona, core.user, task, hasComputer);
-    const messages: ModelMessage[] = [{ role: 'user', content: userContent(trigger, task) }];
+    // memoria a breve termine della chat: includiamo gli ultimi turni della
+    // conversazione, così l'agente RICORDA cosa ci si è appena detti.
+    const userText = userContent(trigger, task);
+    const messages: ModelMessage[] = [...this.history, { role: 'user', content: userText }];
 
     // 2. tool context: l'approval segna lo stato waiting_approval; il signal è il kill-switch
     // buffer immagine: i computer.* vi depositano lo screenshot; il backend lo
@@ -152,10 +158,28 @@ export class CognitiveLoop {
       if (task) this.opts.tasks.updateTaskStatus(task.id, 'done');
     }
 
+    // aggiorna il buffer di conversazione (solo turni riusciti; niente
+    // pollution da heartbeat interni). Trim agli ultimi MAX_HISTORY messaggi.
+    if (!interrupted && !errorMsg) {
+      if (trigger.kind === 'user_message') {
+        this.history.push({ role: 'user', content: userText });
+        if (finalText) this.history.push({ role: 'assistant', content: finalText });
+      } else if (finalText) {
+        // heartbeat/cron che produce un messaggio proattivo: resta nel dialogo
+        this.history.push({ role: 'assistant', content: finalText });
+      }
+      if (this.history.length > MAX_HISTORY) {
+        this.history.splice(0, this.history.length - MAX_HISTORY);
+      }
+    }
+
     this.setState({ status: 'idle', activeTaskId: undefined, activeGoalId: undefined });
     return { taskId: task?.id, actions, text: finalText, usage };
   }
 }
+
+/** Messaggi max nel buffer di conversazione (~12 turni). Limita i token. */
+const MAX_HISTORY = 24;
 
 const STYLE =
   'Rispondi in modo BREVE e naturale, come in una chat con un amico: di norma 1-2 frasi. ' +
