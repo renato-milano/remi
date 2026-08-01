@@ -28,18 +28,35 @@ export class Scheduler {
   private cronJobs: Cron[] = [];
   private queue: SchedulerTrigger[] = [];
   private running = false;
+  private intervalMs: number;
 
-  constructor(private readonly opts: SchedulerOptions) {}
+  constructor(private readonly opts: SchedulerOptions) {
+    this.intervalMs = opts.intervalMs;
+  }
 
   start(): void {
     if (this.timer) return;
     this.timer = setInterval(() => {
       void this.runHeartbeatOnce();
-    }, this.opts.intervalMs);
+    }, this.intervalMs);
     this.timer.unref?.();
     for (const expr of this.opts.cron ?? []) {
       this.cronJobs.push(new Cron(expr, () => void this.enqueue({ kind: 'cron', name: expr })));
     }
+  }
+
+  /** Cambia il ritmo dell'heartbeat a runtime (l'agente può regolarsi da sé). */
+  setHeartbeat(intervalMs: number): void {
+    this.intervalMs = Math.max(1000, Math.round(intervalMs));
+    if (this.timer) {
+      clearInterval(this.timer);
+      this.timer = setInterval(() => void this.runHeartbeatOnce(), this.intervalMs);
+      this.timer.unref?.();
+    }
+  }
+
+  getHeartbeatMs(): number {
+    return this.intervalMs;
   }
 
   stop(): void {

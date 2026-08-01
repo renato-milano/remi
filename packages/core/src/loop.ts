@@ -181,8 +181,12 @@ Ogni cartella può essere un "progetto" con una memoria persistente in .remi/pro
 - Se vuoi riorganizzare tutto liberamente, usa project.write({path, content}).
 Consulta questa memoria prima di agire in una cartella già vista.`;
 
+const AUTONOMY_GUIDE = `## Autonomia (sii proattivo ed efficiente)
+- Task lunghi: NON aspettare il prossimo heartbeat. Quando un lavoro richiede più passi/tempo, salva i progressi (memoria/.remi) e usa agent.wake_in({seconds, note}) per riprendere presto lasciandoti una nota su cosa continuare. Regola il ritmo con agent.set_heartbeat({seconds}): più veloce mentre lavori attivamente, più lento quando sei in attesa (per non consumare inutilmente).
+- Puoi scrivere ed ESEGUIRE codice con code.run({language:'python'|'node'|'bash', code}): usalo per calcoli, elaborazione dati, automazioni e logica non banale, invece di comandi shell fragili. Riceverai stdout/stderr e il codice di uscita.`;
+
 function buildSystem(persona: string, user: string, task?: Task, computerUse = false): string {
-  let base = `Sei un agente personale autonomo che vive sul dispositivo dell'utente.\n\n## Persona\n${persona}\n\n## Utente\n${user}\n\n## Stile\n${STYLE}\n\n${PROJECT_GUIDE}`;
+  let base = `Sei un agente personale autonomo che vive sul dispositivo dell'utente.\n\n## Persona\n${persona}\n\n## Utente\n${user}\n\n## Stile\n${STYLE}\n\n${AUTONOMY_GUIDE}\n\n${PROJECT_GUIDE}`;
   if (computerUse) base += `\n\n${COMPUTER_GUIDE}`;
   return task ? `${base}\n\n## Task attivo\n${task.title}` : base;
 }

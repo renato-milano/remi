@@ -39,6 +39,15 @@ describe('@openmate/scheduler — pre-check heartbeat', () => {
     expect(cycles).toEqual([{ kind: 'user_message', content: 'ciao' }]);
   });
 
+  it('setHeartbeat cambia il ritmo a runtime', () => {
+    const { scheduler } = makeScheduler(() => false);
+    expect(scheduler.getHeartbeatMs()).toBe(1_000_000);
+    scheduler.setHeartbeat(30_000);
+    expect(scheduler.getHeartbeatMs()).toBe(30_000);
+    scheduler.setHeartbeat(10); // clamp minimo a 1000ms
+    expect(scheduler.getHeartbeatMs()).toBe(1000);
+  });
+
   it('start/stop con un cron non lancia eccezioni', () => {
     const { scheduler } = makeScheduler(() => false);
     scheduler.stop();

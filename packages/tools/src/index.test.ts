@@ -8,6 +8,8 @@ import {
   type AutonomyPolicy,
   InMemoryAuditSink,
   ToolRegistry,
+  codeRunTool,
+  createAgentTools,
   createComputerTools,
   createMemoryTools,
   createProjectTools,
@@ -174,6 +176,53 @@ describe('@openmate/tools — memoria di progetto (.remi)', () => {
     const ctx = createToolContext({ audit: new InMemoryAuditSink(), requestApproval: async () => true });
     await registry.execute('project.write', { path: root, content: '# Nuovo\n\nsolo questo' }, ctx, policy);
     expect(readFileSync(join(root, '.remi', 'project.md'), 'utf8')).toBe('# Nuovo\n\nsolo questo\n');
+  });
+});
+
+describe('@openmate/tools — code.run + agent.*', () => {
+  it('esegue codice e restituisce output; gate di sessione (chiede una volta)', async () => {
+    let asked = 0;
+    const ctx = createToolContext({
+      audit: new InMemoryAuditSink(),
+      grants: new Set<string>(),
+      requestApproval: async () => {
+        asked += 1;
+        return true;
+      },
+    });
+    const registry = new ToolRegistry().register(codeRunTool);
+    const out1 = (await registry.execute(
+      'code.run',
+      { language: 'bash', code: 'echo ciao-dal-codice' },
+      ctx,
+      policy,
+    )) as { code: number; stdout: string };
+    expect(out1.code).toBe(0);
+    expect(out1.stdout).toContain('ciao-dal-codice');
+    // seconda esecuzione: sessione già concessa → nessuna nuova richiesta
+    await registry.execute('code.run', { language: 'bash', code: 'echo due' }, ctx, policy);
+    expect(asked).toBe(1);
+  });
+
+  it('agent.set_heartbeat e agent.wake_in chiamano il controllo', async () => {
+    let hb = 0;
+    let wake: { s: number; note: string } | undefined;
+    const registry = new ToolRegistry().registerAll(
+      createAgentTools({
+        setHeartbeat: (s) => {
+          hb = s;
+        },
+        getHeartbeatSeconds: () => 900,
+        wakeIn: (s, note) => {
+          wake = { s, note };
+        },
+      }),
+    );
+    const ctx = createToolContext({ audit: new InMemoryAuditSink(), requestApproval: async () => true });
+    await registry.execute('agent.set_heartbeat', { seconds: 30 }, ctx, policy);
+    await registry.execute('agent.wake_in', { seconds: 20, note: 'continua il download' }, ctx, policy);
+    expect(hb).toBe(30);
+    expect(wake).toEqual({ s: 20, note: 'continua il download' });
   });
 });
 

@@ -22,6 +22,8 @@ import {
   type ApprovalRequest,
   type AutonomyPolicy,
   ToolRegistry,
+  codeRunTool,
+  createAgentTools,
   createComputerTools,
   createMemoryTools,
   createProjectTools,
@@ -64,6 +66,8 @@ export class Daemon {
   >();
   private currentAbort?: AbortController;
   private paused = false;
+  /** Timer di auto-continuazione (agent.wake_in). */
+  private readonly followupTimers = new Set<ReturnType<typeof setTimeout>>();
   /** Stato del computer-use (per l'overlay). */
   readonly computerUse: { enabled: boolean; reason?: string };
 
@@ -76,9 +80,18 @@ export class Daemon {
     this.audit = new SqliteAuditSink(dbPath);
     this.registry = new ToolRegistry()
       .register(shellRunTool)
+      .register(codeRunTool)
       .registerAll(fileTools)
       .registerAll(createMemoryTools(this.memory))
-      .registerAll(createProjectTools());
+      .registerAll(createProjectTools())
+      .registerAll(
+        createAgentTools({
+          // riferimenti lazy allo scheduler (creato più avanti nel costruttore)
+          setHeartbeat: (s) => this.scheduler.setHeartbeat(s * 1000),
+          getHeartbeatSeconds: () => Math.round(this.scheduler.getHeartbeatMs() / 1000),
+          wakeIn: (s, note) => this.scheduleFollowup(s, note),
+        }),
+      );
 
     // Computer-use: solo se abilitato in config e supportato dalla piattaforma.
     this.computerUse = { enabled: false };
@@ -176,6 +189,7 @@ export class Daemon {
     if (this.paused) return;
     this.paused = true;
     this.scheduler.stop();
+    this.clearFollowups();
     this.emit({ kind: 'state', state: { status: 'sleeping' } });
   }
 
@@ -189,6 +203,23 @@ export class Daemon {
 
   async submitUserMessage(content: string): Promise<void> {
     await this.scheduler.submitUserMessage(content);
+  }
+
+  /** Programma una auto-continuazione (agent.wake_in): tra N secondi rilancia un
+   *  ciclo con la nota come istruzione, bypassando il pre-check. */
+  scheduleFollowup(seconds: number, note: string): void {
+    const ms = Math.min(3_600_000, Math.max(3000, Math.round(seconds * 1000)));
+    const timer = setTimeout(() => {
+      this.followupTimers.delete(timer);
+      if (!this.paused) void this.submitUserMessage(`[Auto-continuazione] ${note}`);
+    }, ms);
+    timer.unref?.();
+    this.followupTimers.add(timer);
+  }
+
+  private clearFollowups(): void {
+    for (const t of this.followupTimers) clearTimeout(t);
+    this.followupTimers.clear();
   }
 
   createGoal(title: string): Goal {
@@ -209,6 +240,7 @@ export class Daemon {
 
   stop(): void {
     this.scheduler.stop();
+    this.clearFollowups();
     for (const [id, entry] of this.pendingApprovals) {
       this.pendingApprovals.delete(id);
       entry.resolve(false);

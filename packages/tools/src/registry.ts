@@ -114,6 +114,7 @@ export async function executeGated(
   const ts = new Date().toISOString();
   const explanation = t.explain?.(input);
   const isComputer = t.name.startsWith('computer.');
+  const isCode = t.name === 'code.run';
   const isShell = t.name === 'shell.run';
   // "non pericoloso" = read/network/write; dangerous/unknown restano sempre gated
   const nonDangerous = !!explanation && explanation.level !== 'dangerous' && explanation.level !== 'unknown';
@@ -122,6 +123,9 @@ export async function executeGated(
   if (isComputer) {
     // computer-use: approvazione UNA volta per ciclo (gate di sessione), mai auto per rischio
     requiresApproval = !(ctx.isSessionGranted?.('computer') ?? false);
+  } else if (isCode) {
+    // esecuzione codice: approvazione una volta per sessione, poi scorre
+    requiresApproval = !(ctx.isSessionGranted?.('code') ?? false);
   } else {
     requiresApproval = t.permission === 'dangerous' || (t.needsApproval?.(input, policy) ?? false);
     if (requiresApproval && explanation && autoApproves(policy.autoApprove, explanation.level)) {
@@ -137,18 +141,21 @@ export async function executeGated(
   if (requiresApproval) {
     const approved = await ctx.requestApproval({
       toolName: t.name,
-      summary: isComputer ? 'Controllare il computer' : `Eseguire ${t.name}`,
+      summary: isComputer ? 'Controllare il computer' : isCode ? 'Eseguire codice' : `Eseguire ${t.name}`,
       details: input,
-      risk: isComputer || t.permission === 'dangerous' ? 'dangerous' : 'guarded',
+      risk: isComputer || isCode || t.permission === 'dangerous' ? 'dangerous' : 'guarded',
       explanation: isComputer
         ? { text: 'controllare lo schermo, il mouse e la tastiera', level: 'dangerous', known: true }
-        : explanation,
+        : isCode
+          ? { text: 'scrivere ed eseguire codice sul tuo computer', level: 'dangerous', known: true }
+          : explanation,
     });
     if (!approved) {
       ctx.audit({ ts, tool: t.name, input, decision: 'denied', outcome: 'skipped' });
       return { denied: true, reason: 'approvazione negata' };
     }
     if (isComputer) ctx.grantSession?.('computer'); // concedi per il resto del ciclo
+    if (isCode) ctx.grantSession?.('code'); // esecuzione codice concessa per la sessione
     // approvato un comando shell non pericoloso → concedi la shell per la sessione
     if (isShell && nonDangerous) ctx.grantSession?.('shell');
     decision = 'approved';
