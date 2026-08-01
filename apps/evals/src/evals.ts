@@ -83,6 +83,21 @@ export const EVALS: Eval[] = [
     check: (r) => [usedAny(r, ['memory.search', 'memory.read']), says(r, 'turchese')],
   },
 
+  // CARTELLE CONOSCIUTE: cita un path oggi → domani lo ritrova senza richiederlo
+  {
+    name: 'ricorda-cartella',
+    category: 'memoria',
+    prompt: [
+      'D\'ora in poi i file del cliente Zeta stanno nella cartella {dir}/clienti/zeta. Tienilo a mente per le prossime volte.',
+      'Dove sono i file del cliente Zeta? Rispondimi col percorso.',
+    ],
+    maxSteps: 14,
+    check: (r) => [
+      usedAny(r, ['memory.write', 'memory.log', 'memory.core.edit']), // l'ha salvata
+      says(r, 'clienti/zeta'), // ricorda il path senza richiederlo
+    ],
+  },
+
   // --- PROGETTO (.remi) ---
   {
     name: 'memoria-progetto',
