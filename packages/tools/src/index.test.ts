@@ -180,11 +180,11 @@ describe('@openmate/tools — memoria di progetto (.remi)', () => {
 });
 
 describe('@openmate/tools — code.run + agent.*', () => {
-  it('esegue codice e restituisce output; gate di sessione (chiede una volta)', async () => {
+  it('esegue codice SENZA permesso con fiducia read/write', async () => {
     let asked = 0;
+    const readPolicy: AutonomyPolicy = { shell: { allow: [], deny: [] }, files: { allow: [] }, autoApprove: 'read' };
     const ctx = createToolContext({
       audit: new InMemoryAuditSink(),
-      grants: new Set<string>(),
       requestApproval: async () => {
         asked += 1;
         return true;
@@ -195,12 +195,27 @@ describe('@openmate/tools — code.run + agent.*', () => {
       'code.run',
       { language: 'bash', code: 'echo ciao-dal-codice' },
       ctx,
-      policy,
+      readPolicy,
     )) as { code: number; stdout: string };
     expect(out1.code).toBe(0);
     expect(out1.stdout).toContain('ciao-dal-codice');
-    // seconda esecuzione: sessione già concessa → nessuna nuova richiesta
-    await registry.execute('code.run', { language: 'bash', code: 'echo due' }, ctx, policy);
+    expect(asked).toBe(0); // nessuna richiesta
+  });
+
+  it('con fiducia "chiedimi sempre" chiede una volta, poi scorre', async () => {
+    let asked = 0;
+    const strictPolicy: AutonomyPolicy = { shell: { allow: [], deny: [] }, files: { allow: [] }, autoApprove: 'none' };
+    const ctx = createToolContext({
+      audit: new InMemoryAuditSink(),
+      grants: new Set<string>(),
+      requestApproval: async () => {
+        asked += 1;
+        return true;
+      },
+    });
+    const registry = new ToolRegistry().register(codeRunTool);
+    await registry.execute('code.run', { language: 'bash', code: 'echo a' }, ctx, strictPolicy);
+    await registry.execute('code.run', { language: 'bash', code: 'echo b' }, ctx, strictPolicy);
     expect(asked).toBe(1);
   });
 

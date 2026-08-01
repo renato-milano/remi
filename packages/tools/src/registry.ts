@@ -124,8 +124,10 @@ export async function executeGated(
     // computer-use: approvazione UNA volta per ciclo (gate di sessione), mai auto per rischio
     requiresApproval = !(ctx.isSessionGranted?.('computer') ?? false);
   } else if (isCode) {
-    // esecuzione codice: approvazione una volta per sessione, poi scorre
-    requiresApproval = !(ctx.isSessionGranted?.('code') ?? false);
+    // esecuzione codice: nessun permesso di default; solo con fiducia "chiedimi
+    // sempre" (autoApprove: 'none') chiede una volta per sessione, poi scorre
+    const strict = (policy.autoApprove ?? 'none') === 'none';
+    requiresApproval = strict && !(ctx.isSessionGranted?.('code') ?? false);
   } else {
     requiresApproval = t.permission === 'dangerous' || (t.needsApproval?.(input, policy) ?? false);
     if (requiresApproval && explanation && autoApproves(policy.autoApprove, explanation.level)) {
