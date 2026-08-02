@@ -63,7 +63,8 @@ export class CognitiveLoop {
 
     const core = this.opts.memory.coreBlocks();
     const hasComputer = Boolean(this.opts.registry.get('computer.screenshot'));
-    const system = buildSystem(core.persona, core.user, task, hasComputer);
+    const hasBrowser = Boolean(this.opts.registry.get('browser.open'));
+    const system = buildSystem(core.persona, core.user, task, { computer: hasComputer, browser: hasBrowser });
     // memoria a breve termine della chat: includiamo gli ultimi turni della
     // conversazione, così l'agente RICORDA cosa ci si è appena detti.
     const userText = userContent(trigger, task);
@@ -233,9 +234,22 @@ const AUTONOMY_GUIDE = `## Autonomia (sii proattivo ed efficiente)
 - Puoi scrivere ed ESEGUIRE codice con code.run({language:'python'|'node'|'bash', code}): usalo per calcoli, elaborazione dati, automazioni e logica non banale, invece di comandi shell fragili. Riceverai stdout/stderr e il codice di uscita.
 - Task RICORRENTI: se l'utente chiede qualcosa di periodico ("ogni giorno alle 17…", "ogni lunedì…", "ogni ora…"), riconoscilo e crea un task con schedule.create({cron, instruction, title}), traducendo l'orario in cron a 5 campi (es. "0 17 * * *" = ogni giorno alle 17:00; "0 * * * *" = ogni ora). L'istruzione dev'essere completa e autosufficiente (verrà eseguita da sola a ogni scatto). Conferma all'utente cosa hai programmato. Usa schedule.list per vedere i task attivi e schedule.cancel({id}) quando l'utente chiede di smettere.`;
 
-function buildSystem(persona: string, user: string, task?: Task, computerUse = false): string {
+const BROWSER_GUIDE = `## Browser (web)
+Puoi navigare il web con i tool browser.*. È il modo PREFERITO per compiti web (cercare, leggere, compilare form): è strutturato e affidabile, non serve "vedere" pixel.
+- browser.open({url}): apre un URL, un dominio o testo libero (→ ricerca Google). Restituisce titolo, una lista di elementi interattivi con un "ref", e un estratto di testo.
+- Per agire scegli l'elemento dalla lista e usa il suo ref: browser.click({ref}) o browser.type({ref, text, submit:true}) (submit preme Invio, per cercare/inviare).
+- browser.read() per il testo completo della pagina; browser.snapshot() per rileggere lo stato; browser.back() per tornare indietro.
+- Lavora a piccoli passi: dopo un'azione guarda il nuovo snapshot e prosegui. Guardare/leggere è gratis; la prima azione (clic/scrittura) chiede una conferma, poi scorre.`;
+
+function buildSystem(
+  persona: string,
+  user: string,
+  task?: Task,
+  caps: { computer?: boolean; browser?: boolean } = {},
+): string {
   let base = `Sei un agente personale autonomo che vive sul dispositivo dell'utente.\n\n## Persona\n${persona}\n\n## Utente\n${user}\n\n## Stile\n${STYLE}\n\n${AUTONOMY_GUIDE}\n\n${PROJECT_GUIDE}\n\n${WIKI_GUIDE}`;
-  if (computerUse) base += `\n\n${COMPUTER_GUIDE}`;
+  if (caps.browser) base += `\n\n${BROWSER_GUIDE}`;
+  if (caps.computer) base += `\n\n${COMPUTER_GUIDE}`;
   return task ? `${base}\n\n## Task attivo\n${task.title}` : base;
 }
 

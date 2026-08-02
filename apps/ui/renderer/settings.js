@@ -113,6 +113,7 @@ api.onData(({ config, hasKey }) => {
   const min = Math.round((config.heartbeat?.intervalMs || 900000) / 60000);
   setChip('beat', 'min', min >= 1000 ? '100000' : String(min));
   computerUseEl.checked = Boolean(config.computerUse?.enabled);
+  document.getElementById('browserEnabled').checked = Boolean(config.browser?.enabled);
   renderPerms();
 });
 
@@ -127,6 +128,7 @@ function collect() {
     autoApprove,
     heartbeatMinutes,
     computerUse: computerUseEl.checked,
+    browser: document.getElementById('browserEnabled').checked,
     apiKey: apiKeyEl.value.trim(), // vuoto = non cambiare
   };
 }

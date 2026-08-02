@@ -103,6 +103,25 @@ importers:
         specifier: ^33.0.0
         version: 33.4.11
 
+  packages/browser:
+    dependencies:
+      playwright-core:
+        specifier: ^1.48.0
+        version: 1.62.1
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 22.20.1
+      tsup:
+        specifier: 'catalog:'
+        version: 8.5.1(postcss@8.5.25)(tsx@4.23.1)(typescript@5.9.3)
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vitest:
+        specifier: 'catalog:'
+        version: 2.1.9(@types/node@22.20.1)
+
   packages/computer:
     dependencies:
       '@nut-tree-fork/nut-js':
@@ -183,6 +202,9 @@ importers:
       '@hono/node-server':
         specifier: ^1.13.0
         version: 1.19.17(hono@4.12.32)
+      '@openmate/browser':
+        specifier: workspace:*
+        version: link:../browser
       '@openmate/computer':
         specifier: workspace:*
         version: link:../computer
@@ -307,6 +329,9 @@ importers:
 
   packages/tools:
     dependencies:
+      '@openmate/browser':
+        specifier: workspace:*
+        version: link:../browser
       '@openmate/computer':
         specifier: workspace:*
         version: link:../computer
@@ -2104,6 +2129,11 @@ packages:
 
   pkg-types@1.3.1:
     resolution: {integrity: sha512-/Jm5M4RvtBFVkKWRu2BLUTNP8/M2a+UwuAX+ae4770q1qVGtfjG+WTCupoZixokjmHiry8uI+dlY8KXYV5HVVQ==}
+
+  playwright-core@1.62.1:
+    resolution: {integrity: sha512-wPYSwEBJY9GHraISXqyqtx0na0LpO3XEX7jNDhntbex7tzUS7kLnZsOlFruFJB4Hi/rhDMjXGqHewDZ68nYZVw==}
+    engines: {node: '>=20'}
+    hasBin: true
 
   pngjs@3.4.0:
     resolution: {integrity: sha512-NCrCHhWmnQklfH4MtJMRjZ2a8c80qXeMlQMv2uVp9ISJMTt562SbGd6n2oq0PaPgKm7Z6pL9E2UlLIhC+SHL3w==}
@@ -4260,6 +4290,8 @@ snapshots:
       confbox: 0.1.8
       mlly: 1.8.2
       pathe: 2.0.3
+
+  playwright-core@1.62.1: {}
 
   pngjs@3.4.0: {}
 

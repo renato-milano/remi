@@ -21,7 +21,8 @@
     "ai": "catalog:",
     "zod": "catalog:",
     "@openmate/memory": "workspace:*",
-    "@openmate/computer": "workspace:*"
+    "@openmate/computer": "workspace:*",
+    "@openmate/browser": "workspace:*"
   },
   "devDependencies": {
     "typescript": "catalog:",

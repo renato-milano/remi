@@ -114,18 +114,20 @@ export async function executeGated(
   const ts = new Date().toISOString();
   const explanation = t.explain?.(input);
   const isComputer = t.name.startsWith('computer.');
+  const isBrowser = t.name.startsWith('browser.');
   const isCode = t.name === 'code.run';
   const isShell = t.name === 'shell.run';
+  // namespace con gate di sessione: guardare è gratis, agire chiede una volta
+  const gatedNs = isComputer ? 'computer' : isBrowser ? 'browser' : undefined;
   // "non pericoloso" = read/network/write; dangerous/unknown restano sempre gated
   const nonDangerous = !!explanation && explanation.level !== 'dangerous' && explanation.level !== 'unknown';
 
   let requiresApproval: boolean;
-  if (isComputer) {
-    // Guardare lo schermo (screenshot/list_elements/wait, permission 'guarded')
-    // è osservazione → NESSUN permesso. Solo AGIRE (click/type…, 'dangerous')
-    // passa dal gate di sessione: approvazione una volta per ciclo.
+  if (gatedNs) {
+    // Osservare (screenshot/snapshot/read, permission 'guarded') → NESSUN permesso.
+    // Solo AGIRE (click/type…, 'dangerous') passa dal gate: approvazione una volta.
     const readOnly = t.permission !== 'dangerous';
-    requiresApproval = !readOnly && !(ctx.isSessionGranted?.('computer') ?? false);
+    requiresApproval = !readOnly && !(ctx.isSessionGranted?.(gatedNs) ?? false);
   } else if (isCode) {
     // esecuzione codice: nessun permesso di default; solo con fiducia "chiedimi
     // sempre" (autoApprove: 'none') chiede una volta per sessione, poi scorre
@@ -146,20 +148,28 @@ export async function executeGated(
   if (requiresApproval) {
     const approved = await ctx.requestApproval({
       toolName: t.name,
-      summary: isComputer ? 'Controllare il computer' : isCode ? 'Eseguire codice' : `Eseguire ${t.name}`,
+      summary: isComputer
+        ? 'Controllare il computer'
+        : isBrowser
+          ? 'Controllare il browser'
+          : isCode
+            ? 'Eseguire codice'
+            : `Eseguire ${t.name}`,
       details: input,
-      risk: isComputer || isCode || t.permission === 'dangerous' ? 'dangerous' : 'guarded',
+      risk: isComputer || isBrowser || isCode || t.permission === 'dangerous' ? 'dangerous' : 'guarded',
       explanation: isComputer
         ? { text: 'controllare lo schermo, il mouse e la tastiera', level: 'dangerous', known: true }
-        : isCode
-          ? { text: 'scrivere ed eseguire codice sul tuo computer', level: 'dangerous', known: true }
-          : explanation,
+        : isBrowser
+          ? { text: 'navigare e interagire col browser (clic e testo)', level: 'dangerous', known: true }
+          : isCode
+            ? { text: 'scrivere ed eseguire codice sul tuo computer', level: 'dangerous', known: true }
+            : explanation,
     });
     if (!approved) {
       ctx.audit({ ts, tool: t.name, input, decision: 'denied', outcome: 'skipped' });
       return { denied: true, reason: 'approvazione negata' };
     }
-    if (isComputer) ctx.grantSession?.('computer'); // concedi per il resto del ciclo
+    if (gatedNs) ctx.grantSession?.(gatedNs); // computer/browser: concesso per la sessione
     if (isCode) ctx.grantSession?.('code'); // esecuzione codice concessa per la sessione
     // approvato un comando shell non pericoloso → concedi la shell per la sessione
     if (isShell && nonDangerous) ctx.grantSession?.('shell');

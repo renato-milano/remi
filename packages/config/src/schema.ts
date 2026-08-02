@@ -48,6 +48,13 @@ export const computerUseSchema = z.object({
   enabled: z.boolean().default(false),
 });
 
+/** Controllo del browser (Playwright, sessione autonoma). Default off. */
+export const browserSchema = z.object({
+  enabled: z.boolean().default(false),
+  /** Mostra la finestra del browser (false = headless in background). */
+  headed: z.boolean().default(true),
+});
+
 export const configSchema = z.object({
   provider: providerSchema.default({}),
   heartbeat: heartbeatSchema.default({}),
@@ -55,6 +62,7 @@ export const configSchema = z.object({
   budget: budgetSchema.default({}),
   storage: storageSchema.default({}),
   computerUse: computerUseSchema.default({}),
+  browser: browserSchema.default({}),
 });
 
 export type ProviderConfig = z.infer<typeof providerSchema>;

@@ -18,6 +18,7 @@ import {
   type Trigger,
 } from '@openmate/core';
 import { Scheduler } from '@openmate/scheduler';
+import { BrowserSession } from '@openmate/browser';
 import { createExecutor } from '@openmate/computer';
 import {
   type ApprovalRequest,
@@ -25,6 +26,7 @@ import {
   ToolRegistry,
   codeRunTool,
   createAgentTools,
+  createBrowserTools,
   createComputerTools,
   createMemoryTools,
   createProjectTools,
@@ -84,6 +86,8 @@ export class Daemon {
   private readonly configPath?: string;
   /** Stato del computer-use (per l'overlay). */
   readonly computerUse: { enabled: boolean; reason?: string };
+  /** Sessione browser (Playwright), se abilitata. */
+  private browser?: BrowserSession;
 
   constructor(opts: DaemonOptions) {
     const root = opts.config.storage.root;
@@ -148,6 +152,15 @@ export class Daemon {
       const caps = executor.capabilities();
       this.computerUse = { enabled: caps.supported, reason: caps.reason };
       if (caps.supported) this.registry.registerAll(createComputerTools(executor));
+    }
+
+    // Browser (Playwright): sessione autonoma sul Chrome installato, se abilitato.
+    if (opts.config.browser.enabled) {
+      this.browser = new BrowserSession({
+        profileDir: join(root, 'browser-profile'),
+        headless: !opts.config.browser.headed,
+      });
+      this.registry.registerAll(createBrowserTools(this.browser));
     }
 
     const backend = opts.backend ?? buildBackend(opts.config, opts.secrets);
@@ -360,6 +373,7 @@ export class Daemon {
   stop(): void {
     this.scheduler.stop();
     this.clearFollowups();
+    void this.browser?.close();
     for (const [id, entry] of this.pendingApprovals) {
       this.pendingApprovals.delete(id);
       entry.resolve(false);

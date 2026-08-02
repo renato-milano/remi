@@ -10,6 +10,7 @@ import {
   ToolRegistry,
   codeRunTool,
   createAgentTools,
+  createBrowserTools,
   createComputerTools,
   createMemoryTools,
   createProjectTools,
@@ -461,6 +462,35 @@ describe('@openmate/tools — computer.* gate di sessione', () => {
 
     expect(asked).toBe(1); // una sola richiesta, e solo per agire
     expect(audit.entries.filter((e) => e.tool.startsWith('computer.'))).toHaveLength(3);
+  });
+
+  it('browser: aprire/leggere è gratis, cliccare/scrivere chiede una volta', async () => {
+    const snap = { url: 'https://x', title: 'T', elements: [], text: 'ciao' };
+    // biome-ignore lint/suspicious/noExplicitAny: fake session
+    const fakeSession: any = {
+      open: async () => snap,
+      snapshot: async () => snap,
+      read: async () => 'testo',
+      click: async () => snap,
+      type: async () => snap,
+      back: async () => snap,
+    };
+    let asked = 0;
+    const ctx = createToolContext({
+      audit: new InMemoryAuditSink(),
+      grants: new Set<string>(),
+      requestApproval: async () => {
+        asked += 1;
+        return true;
+      },
+    });
+    const reg = new ToolRegistry().registerAll(createBrowserTools(fakeSession));
+    await reg.execute('browser.open', { url: 'x' }, ctx, policy);
+    await reg.execute('browser.read', {}, ctx, policy);
+    expect(asked).toBe(0); // guardare/leggere: gratis
+    await reg.execute('browser.click', { ref: 0 }, ctx, policy); // 1ª azione → chiede
+    await reg.execute('browser.type', { ref: 0, text: 'a' }, ctx, policy); // auto (concesso)
+    expect(asked).toBe(1);
   });
 
   it('lo screenshot NON richiede approvazione (guardare è gratis)', async () => {
