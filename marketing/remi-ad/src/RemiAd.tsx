@@ -1,37 +1,43 @@
 import React from "react";
 import { AbsoluteFill, Series, Sequence, useCurrentFrame, interpolate } from "remotion";
-import { Background, Heartbeat } from "./ui";
-import { Scene } from "./ui";
+import { Background, Scene, HolynMark } from "./ui";
 import { C, mono } from "./theme";
-import { SceneHero, SceneNotChatbot, SceneMemory } from "./scenes";
-import { SceneHeartbeat, SceneComputerUse, SceneApproval, SceneLocalFirst, SceneCTA } from "./scenes2";
+import { SceneHero, SceneStatement, SceneDesktop, SceneFolders } from "./scenes";
+import { SceneTasks, SceneGoals, SceneMemory, SceneLoop } from "./scenes2";
+import { SceneApproval, SceneLocalFirst, SceneCTA } from "./scenes3";
 
 export const SCENES = [
-  { C: SceneHero, d: 150 },
-  { C: SceneNotChatbot, d: 120 },
-  { C: SceneMemory, d: 180 },
-  { C: SceneHeartbeat, d: 180 },
-  { C: SceneComputerUse, d: 210 },
-  { C: SceneApproval, d: 170 },
-  { C: SceneLocalFirst, d: 130 },
-  { C: SceneCTA, d: 180 },
+  { C: SceneHero, d: 78 },
+  { C: SceneStatement, d: 54 },
+  { C: SceneDesktop, d: 120 },
+  { C: SceneFolders, d: 102 },
+  { C: SceneTasks, d: 108 },
+  { C: SceneGoals, d: 114 },
+  { C: SceneMemory, d: 84 },
+  { C: SceneLoop, d: 96 },
+  { C: SceneApproval, d: 96 },
+  { C: SceneLocalFirst, d: 60 },
+  { C: SceneCTA, d: 108 },
 ] as const;
 
-export const AD_DURATION = SCENES.reduce((a, s) => a + s.d, 0); // 1320
+export const AD_DURATION = SCENES.reduce((a, s) => a + s.d, 0);
 
-// piccola firma di brand, presente dopo l'hero
+// firma di brand persistente (Remi · Holyn), dopo l'hero e prima della CTA
 const BrandMark: React.FC = () => {
   const frame = useCurrentFrame();
-  const o = interpolate(frame, [0, 20], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+  const o = interpolate(frame, [0, 14], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
   return (
-    <div style={{ position: "absolute", top: 54, left: 64, display: "flex", alignItems: "center", gap: 14, opacity: o }}>
-      <Heartbeat size={12} />
-      <div style={{ fontFamily: mono, fontSize: 26, fontWeight: 600, color: C.ink, letterSpacing: "0.02em" }}>OpenMate</div>
+    <div style={{ position: "absolute", top: 50, left: 60, display: "flex", alignItems: "center", gap: 12, opacity: o }}>
+      <HolynMark size={26} />
+      <div style={{ fontFamily: mono, fontSize: 24, fontWeight: 600, color: C.ink, letterSpacing: "0.02em" }}>Remi</div>
+      <div style={{ fontFamily: mono, fontSize: 16, color: C.faint, letterSpacing: "0.14em", textTransform: "uppercase" }}>· Holyn</div>
     </div>
   );
 };
 
 export const RemiAd: React.FC = () => {
+  const firstD = SCENES[0].d;
+  const lastD = SCENES[SCENES.length - 1].d;
   return (
     <AbsoluteFill>
       <Background />
@@ -44,8 +50,7 @@ export const RemiAd: React.FC = () => {
           </Series.Sequence>
         ))}
       </Series>
-      {/* firma di brand: appare dalla seconda scena in poi */}
-      <Sequence from={SCENES[0].d - 16} durationInFrames={AD_DURATION - SCENES[0].d - SCENES[SCENES.length - 1].d + 16}>
+      <Sequence from={firstD - 10} durationInFrames={AD_DURATION - firstD - lastD + 10}>
         <BrandMark />
       </Sequence>
     </AbsoluteFill>

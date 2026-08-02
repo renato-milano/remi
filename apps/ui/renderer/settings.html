@@ -66,7 +66,11 @@
         <input type="checkbox" id="browserEnabled" />
         <span>Lascia che io navighi il web (apri, cerca, leggi, compila)</span>
       </label>
-      <p class="note">Usa il Chrome installato con un profilo separato. Funziona anche senza modello vision. Ti chiederò il permesso alla prima azione (clic/scrittura) di ogni sessione.</p>
+      <select id="browserMode" class="field select" style="margin-top:8px">
+        <option value="auto">Sessione autonoma (browser mio, profilo separato)</option>
+        <option value="extension">Estensione (il tuo Chrome live, con i tuoi login)</option>
+      </select>
+      <p class="note">Funziona anche senza modello vision. Ti chiederò il permesso alla prima azione (clic/scrittura) di ogni sessione. La modalità "Estensione" richiede di installare l'estensione OpenMate in Chrome.</p>
     </section>
 
     <div class="nav">

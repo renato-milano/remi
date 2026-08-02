@@ -48,10 +48,13 @@ export const computerUseSchema = z.object({
   enabled: z.boolean().default(false),
 });
 
-/** Controllo del browser (Playwright, sessione autonoma). Default off. */
+/** Controllo del browser. Default off.
+ *  - 'auto': sessione Playwright autonoma (browser suo, profilo persistente).
+ *  - 'extension': pilota il Chrome LIVE via l'estensione OpenMate (i tuoi login). */
 export const browserSchema = z.object({
   enabled: z.boolean().default(false),
-  /** Mostra la finestra del browser (false = headless in background). */
+  mode: z.enum(['auto', 'extension']).default('auto'),
+  /** (mode auto) Mostra la finestra del browser (false = headless). */
   headed: z.boolean().default(true),
 });
 

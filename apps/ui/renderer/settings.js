@@ -114,6 +114,7 @@ api.onData(({ config, hasKey }) => {
   setChip('beat', 'min', min >= 1000 ? '100000' : String(min));
   computerUseEl.checked = Boolean(config.computerUse?.enabled);
   document.getElementById('browserEnabled').checked = Boolean(config.browser?.enabled);
+  document.getElementById('browserMode').value = config.browser?.mode || 'auto';
   renderPerms();
 });
 
@@ -129,6 +130,7 @@ function collect() {
     heartbeatMinutes,
     computerUse: computerUseEl.checked,
     browser: document.getElementById('browserEnabled').checked,
+    browserMode: document.getElementById('browserMode').value,
     apiKey: apiKeyEl.value.trim(), // vuoto = non cambiare
   };
 }

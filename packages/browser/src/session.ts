@@ -1,4 +1,5 @@
 import type { BrowserContext, Page } from 'playwright-core';
+import type { BrowserEngine } from './engine.js';
 
 type PW = typeof import('playwright-core');
 let pwPromise: Promise<PW> | undefined;
@@ -44,7 +45,7 @@ const sel = (ref: number) => `[data-om-ref="${ref}"]`;
 /** Sessione browser su Playwright: lancia il Chrome installato (channel 'chrome')
  *  o si connette a uno esistente via CDP. Espone snapshot testuali (DOM) così
  *  anche un modello senza vision può navigare. */
-export class BrowserSession {
+export class BrowserSession implements BrowserEngine {
   private ctx?: BrowserContext;
   private page?: Page;
 

@@ -18,8 +18,9 @@ import {
   type Trigger,
 } from '@openmate/core';
 import { Scheduler } from '@openmate/scheduler';
-import { BrowserSession } from '@openmate/browser';
+import { BrowserSession, ExtensionEngine } from '@openmate/browser';
 import { createExecutor } from '@openmate/computer';
+import type { WebSocket as WsSocket } from 'ws';
 import {
   type ApprovalRequest,
   type AutonomyPolicy,
@@ -86,8 +87,15 @@ export class Daemon {
   private readonly configPath?: string;
   /** Stato del computer-use (per l'overlay). */
   readonly computerUse: { enabled: boolean; reason?: string };
-  /** Sessione browser (Playwright), se abilitata. */
+  /** Sessione browser (Playwright), se abilitata in modalità 'auto'. */
   private browser?: BrowserSession;
+  /** Relay verso l'estensione Chrome (modalità 'extension'). */
+  private extSocket?: WsSocket;
+  private extSeq = 0;
+  private readonly extPending = new Map<
+    number,
+    { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> }
+  >();
 
   constructor(opts: DaemonOptions) {
     const root = opts.config.storage.root;
@@ -154,13 +162,19 @@ export class Daemon {
       if (caps.supported) this.registry.registerAll(createComputerTools(executor));
     }
 
-    // Browser (Playwright): sessione autonoma sul Chrome installato, se abilitato.
+    // Browser: 'extension' pilota il Chrome LIVE via l'estensione; 'auto' lancia
+    // una sessione Playwright autonoma sul Chrome installato.
     if (opts.config.browser.enabled) {
-      this.browser = new BrowserSession({
-        profileDir: join(root, 'browser-profile'),
-        headless: !opts.config.browser.headed,
-      });
-      this.registry.registerAll(createBrowserTools(this.browser));
+      if (opts.config.browser.mode === 'extension') {
+        const engine = new ExtensionEngine((op, args) => this.extSendRpc(op, args));
+        this.registry.registerAll(createBrowserTools(engine));
+      } else {
+        this.browser = new BrowserSession({
+          profileDir: join(root, 'browser-profile'),
+          headless: !opts.config.browser.headed,
+        });
+        this.registry.registerAll(createBrowserTools(this.browser));
+      }
     }
 
     const backend = opts.backend ?? buildBackend(opts.config, opts.secrets);
@@ -274,6 +288,51 @@ export class Daemon {
 
   async submitUserMessage(content: string): Promise<void> {
     await this.scheduler.submitUserMessage(content);
+  }
+
+  /* ---------------- relay estensione Chrome (browser mode 'extension') ---------------- */
+
+  /** Registra la connessione WebSocket dell'estensione (una scheda alla volta). */
+  attachExtensionSocket(socket: WsSocket): void {
+    this.extSocket = socket;
+    socket.on('message', (data: Buffer) => {
+      let m: { id?: number; result?: unknown; error?: string };
+      try {
+        m = JSON.parse(data.toString());
+      } catch {
+        return;
+      }
+      if (typeof m.id !== 'number') return;
+      const p = this.extPending.get(m.id);
+      if (!p) return;
+      this.extPending.delete(m.id);
+      clearTimeout(p.timer);
+      if (m.error) p.reject(new Error(m.error));
+      else p.resolve(m.result);
+    });
+    socket.on('close', () => {
+      if (this.extSocket === socket) this.extSocket = undefined;
+    });
+  }
+
+  private extSendRpc(op: string, args?: Record<string, unknown>): Promise<unknown> {
+    const socket = this.extSocket;
+    if (!socket || socket.readyState !== 1) {
+      return Promise.reject(
+        new Error(
+          "L'estensione OpenMate non è connessa. Apri Chrome, vai sulla scheda e clicca l'icona dell'estensione per collegarla.",
+        ),
+      );
+    }
+    const id = ++this.extSeq;
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.extPending.delete(id);
+        reject(new Error('timeout: nessuna risposta dall’estensione'));
+      }, 30_000);
+      this.extPending.set(id, { resolve, reject, timer });
+      socket.send(JSON.stringify({ id, op, args: args ?? {} }));
+    });
   }
 
   /** Programma una auto-continuazione (agent.wake_in): tra N secondi rilancia un

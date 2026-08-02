@@ -1,4 +1,4 @@
-import type { BrowserSession, PageSnapshot } from '@openmate/browser';
+import type { BrowserEngine, PageSnapshot } from '@openmate/browser';
 import { z } from 'zod';
 import { type Tool, defineTool } from './types.js';
 
@@ -18,7 +18,7 @@ function fmt(snap: PageSnapshot) {
  * lista numerata di elementi (ref) e agisce per ref. Guardare/leggere è gratis;
  * cliccare/scrivere passa dal gate di sessione 'browser'.
  */
-export function createBrowserTools(session: BrowserSession): Tool[] {
+export function createBrowserTools(session: BrowserEngine): Tool[] {
   const open = defineTool({
     name: 'browser.open',
     description:

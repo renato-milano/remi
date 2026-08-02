@@ -68,7 +68,11 @@ function saveSettings(data) {
   config.heartbeat = config.heartbeat || { cron: [] };
   config.heartbeat.intervalMs = minutes * 60000;
   config.computerUse = { enabled: Boolean(data.computerUse) };
-  config.browser = { ...(config.browser || {}), enabled: Boolean(data.browser) };
+  config.browser = {
+    ...(config.browser || {}),
+    enabled: Boolean(data.browser),
+    mode: data.browserMode === 'extension' ? 'extension' : 'auto',
+  };
   if (!config.storage) config.storage = { root: storageRoot };
   if (!config.budget) config.budget = { maxSteps: 12, wallClockMs: 120000 };
   fs.writeFileSync(configFile, JSON.stringify(config, null, 2), 'utf8');

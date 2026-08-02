@@ -16,19 +16,19 @@ export type Expr =
   | "neutral"
   | "blink"
   | "happy"
+  | "hearts"
   | "thinking"
-  | "focused"
+  | "scan"
   | "sleepy"
   | "curious"
   | "sad"
-  | "success"
   | "surprised"
   | "confused";
 
 const STATE_EXPR: Record<RemiState, Expr> = {
   idle: "neutral",
   thinking: "thinking",
-  acting: "focused",
+  acting: "scan",
   sleeping: "sleepy",
   waiting_approval: "curious",
 };
@@ -36,11 +36,11 @@ const STATE_EXPR: Record<RemiState, Expr> = {
 const MOUTH: Record<string, string> = {
   neutral: "M86 120 Q100 129 114 120",
   thinking: "M94 122 Q100 125 106 122",
-  focused: "M88 120 Q100 132 112 120",
+  scan: "M88 120 Q100 132 112 120",
   sleepy: "M95 122 Q100 126 105 122",
   curious: "M95 121 Q100 126 105 121",
   happy: "M84 119 Q100 133 116 119",
-  success: "M82 118 Q100 136 118 118",
+  hearts: "M82 118 Q100 136 118 118",
   sad: "M86 128 Q100 119 114 128",
   surprised: "M94 122 Q100 132 106 122",
   confused: "M88 124 Q100 120 112 126",
@@ -55,7 +55,7 @@ const STATE_TINT: Record<RemiState, Tint> = {
 };
 
 const EMO_TINT: Partial<Record<Expr, Tint>> = {
-  success: "green",
+  hearts: "green",
   sad: "red",
   happy: "green",
   curious: "amber",
@@ -202,6 +202,14 @@ export const Remi: React.FC<{
   );
 };
 
+// cuoricino centrato in (cx,cy) con "raggio" s
+const heartPath = (cx: number, cy: number, s: number) =>
+  `M ${cx} ${cy + 0.95 * s}` +
+  ` C ${cx - 0.45 * s} ${cy + 0.45 * s}, ${cx - 1.25 * s} ${cy + 0.25 * s}, ${cx - 1.25 * s} ${cy - 0.35 * s}` +
+  ` C ${cx - 1.25 * s} ${cy - 0.95 * s}, ${cx - 0.55 * s} ${cy - 1.1 * s}, ${cx} ${cy - 0.45 * s}` +
+  ` C ${cx + 0.55 * s} ${cy - 1.1 * s}, ${cx + 1.25 * s} ${cy - 0.95 * s}, ${cx + 1.25 * s} ${cy - 0.35 * s}` +
+  ` C ${cx + 1.25 * s} ${cy + 0.25 * s}, ${cx + 0.45 * s} ${cy + 0.45 * s}, ${cx} ${cy + 0.95 * s} Z`;
+
 // Glifi occhio per espressione (porting fedele dei gruppi .expr)
 const Glyphs: React.FC<{ expr: Expr; eye: string; t: number }> = ({ expr, eye, t }) => {
   const g = { fill: eye };
@@ -237,13 +245,25 @@ const Glyphs: React.FC<{ expr: Expr; eye: string; t: number }> = ({ expr, eye, t
         </>
       );
     }
-    case "focused": {
-      const tw = 1 - 0.3 * (0.5 + 0.5 * Math.sin(t * 4.8));
-      const star = "M0 -13 L3.4 -3.4 L13 0 L3.4 3.4 L0 13 L-3.4 3.4 L-13 0 L-3.4 -3.4 Z";
+    case "hearts": {
+      // battito dei cuori: doppio thump come un cuore vero
+      const beat = t % 0.85;
+      const pulse = 1 + 0.18 * (Math.max(0, Math.sin(beat * 12)) + 0.6 * Math.max(0, Math.sin((beat - 0.18) * 12)));
+      return (
+        <g style={{ scale: `${pulse}`, transformOrigin: "100px 90px", transformBox: "view-box" as never }}>
+          <path d={heartPath(78, 90, 11)} style={g} />
+          <path d={heartPath(122, 90, 11)} style={g} />
+        </g>
+      );
+    }
+    case "scan": {
+      // occhi decisi + linea che scandaglia lo schermo (sta "leggendo" il PC)
+      const sy = 58 + ((t * 130) % 96);
       return (
         <>
-          <path transform="translate(78,90)" d={star} style={{ ...g, scale: `${tw}`, transformOrigin: "0 0" }} />
-          <path transform="translate(122,90)" d={star} style={{ ...g, scale: `${tw}`, transformOrigin: "0 0" }} />
+          <rect x="70" y="82" width="16" height="18" rx="8" style={g} />
+          <rect x="114" y="82" width="16" height="18" rx="8" style={g} />
+          <rect x="42" y={sy} width="116" height="2.4" rx="1.2" style={{ fill: eye, opacity: 0.55 }} />
         </>
       );
     }
@@ -276,18 +296,6 @@ const Glyphs: React.FC<{ expr: Expr; eye: string; t: number }> = ({ expr, eye, t
           <path d="M111 84 Q122 96 133 84" style={arc} />
         </>
       );
-    case "success": {
-      const star = "M0 -12 L3.1 -3.1 L12 0 L3.1 3.1 L0 12 L-3.1 3.1 L-12 0 L-3.1 -3.1 Z";
-      const sp = 0.2 + 0.8 * (0.5 + 0.5 * Math.sin(t * 6));
-      return (
-        <>
-          <path transform="translate(78,88)" d={star} style={g} />
-          <path transform="translate(122,88)" d={star} style={g} />
-          <circle cx="150" cy="66" r="2.4" style={{ ...g, opacity: sp }} />
-          <circle cx="52" cy="70" r="2" style={{ ...g, opacity: 1 - sp }} />
-        </>
-      );
-    }
     case "surprised":
       return (
         <>

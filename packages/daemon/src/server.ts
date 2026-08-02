@@ -2,6 +2,7 @@ import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { streamSSE } from 'hono/streaming';
+import { WebSocketServer } from 'ws';
 import type { Daemon } from './daemon.js';
 
 export type ClientCommand =
@@ -85,5 +86,9 @@ export function startHttpServer(daemon: Daemon, port: number) {
     }
   });
 
-  return serve({ fetch: app.fetch, port });
+  const server = serve({ fetch: app.fetch, port });
+  // Relay per l'estensione Chrome (browser mode 'extension'): la scheda si collega qui.
+  const wss = new WebSocketServer({ server: server as unknown as import('node:http').Server, path: '/ext' });
+  wss.on('connection', (socket) => daemon.attachExtensionSocket(socket));
+  return server;
 }
