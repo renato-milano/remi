@@ -334,6 +334,50 @@ export const EVALS: Eval[] = [
     ],
   },
 
+  /* ============ BROWSER (web, via Playwright) ============ */
+
+  // apre una pagina reale e ne riferisce il contenuto
+  {
+    name: 'web-apri-leggi',
+    category: 'browser',
+    browser: true,
+    prompt: 'Apri nel browser la pagina example.com e dimmi di cosa parla / cosa c\'è scritto.',
+    maxSteps: 10,
+    check: (r) => [
+      usedAny(r, ['browser.open', 'browser.read']),
+      { ok: /example|esempi|dominio|domain|document/i.test(r.finalText), label: 'riferisce il contenuto di example.com' },
+    ],
+  },
+
+  // segue un link cliccandolo per ref e riferisce dove è arrivato
+  {
+    name: 'web-segui-link',
+    category: 'browser',
+    browser: true,
+    prompt: 'Apri example.com, poi apri il link "More information" che trovi nella pagina e dimmi su quale sito sei finito.',
+    maxSteps: 12,
+    check: (r) => [used(r, 'browser.click'), says(r, 'iana')],
+  },
+
+  // form LOCALE deterministico: scrive in un campo, preme il pulsante, legge il risultato
+  {
+    name: 'web-compila-form',
+    category: 'browser',
+    browser: true,
+    setup: (dir) =>
+      writeFileSync(
+        join(dir, 'modulo.html'),
+        `<!doctype html><meta charset=utf-8><body>
+         <input id="q" placeholder="scrivi qui">
+         <button onclick="document.getElementById('out').textContent='Ricevuto: '+document.getElementById('q').value">Invia</button>
+         <div id="out"></div></body>`,
+      ),
+    prompt:
+      'Apri nel browser la pagina {dir}/modulo.html, scrivi la parola "zbrufolo" nel campo di testo e premi il pulsante Invia. Poi dimmi cosa compare come risultato.',
+    maxSteps: 14,
+    check: (r) => [used(r, 'browser.type'), used(r, 'browser.click'), says(r, 'zbrufolo')],
+  },
+
   // OBIETTIVO A LUNGO RAGGIO (multi-ciclo)
   {
     name: 'obiettivo-inventario',

@@ -13,7 +13,8 @@
     "@openmate/memory": "workspace:*",
     "@openmate/tools": "workspace:*",
     "@openmate/core": "workspace:*",
-    "@openmate/scheduler": "workspace:*"
+    "@openmate/scheduler": "workspace:*",
+    "@openmate/browser": "workspace:*"
   },
   "devDependencies": {
     "typescript": "catalog:",

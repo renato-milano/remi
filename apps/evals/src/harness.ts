@@ -1,6 +1,7 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { BrowserSession } from '@openmate/browser';
 import { type AgentEvent, CognitiveLoop, TaskStore } from '@openmate/core';
 import type { ReasoningBackend } from '@openmate/llm';
 import { createMemory } from '@openmate/memory';
@@ -11,6 +12,7 @@ import {
   ToolRegistry,
   codeRunTool,
   createAgentTools,
+  createBrowserTools,
   createMemoryTools,
   createProjectTools,
   createScheduleTools,
@@ -50,6 +52,8 @@ export interface Eval {
   setup?: (dir: string) => void;
   check: (r: EvalResult) => Check[];
   maxSteps?: number;
+  /** Se true, monta i tool browser.* (sessione Playwright headless) per questo eval. */
+  browser?: boolean;
 }
 
 export interface RanEval {
@@ -98,6 +102,7 @@ const POLICY: AutonomyPolicy = { shell: { allow: [], deny: [] }, files: { allow:
 export async function runEval(ev: Eval, backend: ReasoningBackend): Promise<RanEval> {
   const dir = mkdtempSync(join(tmpdir(), 'openmate-eval-')); // cartella di lavoro (pulita)
   const storageDir = mkdtempSync(join(tmpdir(), 'openmate-eval-store-')); // storage separato
+  let browserSession: BrowserSession | undefined;
   try {
     ev.setup?.(dir);
     const memory = createMemory(storageDir);
@@ -105,6 +110,11 @@ export async function runEval(ev: Eval, backend: ReasoningBackend): Promise<RanE
     const audit = new InMemoryAuditSink();
     const rec: Recorder = { schedules: [] };
     const registry = buildRegistry(memory, rec);
+    // browser (Playwright headless sul Chrome installato) solo se richiesto dall'eval
+    if (ev.browser) {
+      browserSession = new BrowserSession({ profileDir: join(storageDir, 'bprofile'), headless: true });
+      registry.registerAll(createBrowserTools(browserSession));
+    }
     const messages: string[] = [];
 
     const loop = new CognitiveLoop({
@@ -152,6 +162,7 @@ export async function runEval(ev: Eval, backend: ReasoningBackend): Promise<RanE
       usage,
     };
   } finally {
+    await browserSession?.close().catch(() => {});
     rmSync(dir, { recursive: true, force: true });
     rmSync(storageDir, { recursive: true, force: true });
   }

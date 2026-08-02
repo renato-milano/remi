@@ -33,7 +33,8 @@ export interface PageSnapshot {
 /** Normalizza l'input di navigazione: URL diretto o ricerca su Google. */
 export function toUrl(input: string): string {
   const s = input.trim();
-  if (/^https?:\/\//i.test(s)) return s;
+  if (/^(https?|file):\/\//i.test(s)) return s;
+  if (s.startsWith('/')) return `file://${s}`; // percorso assoluto → file locale
   if (/^[^\s]+\.[^\s]{2,}(\/|$)/.test(s)) return `https://${s}`; // sembra un dominio
   return `https://www.google.com/search?q=${encodeURIComponent(s)}`;
 }

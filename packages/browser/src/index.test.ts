@@ -13,4 +13,8 @@ describe('@openmate/browser — toUrl', () => {
   it('trasforma il testo libero in una ricerca Google', () => {
     expect(toUrl('ricette per cena')).toBe('https://www.google.com/search?q=ricette%20per%20cena');
   });
+  it('gestisce i percorsi locali come file://', () => {
+    expect(toUrl('/tmp/x/pagina.html')).toBe('file:///tmp/x/pagina.html');
+    expect(toUrl('file:///a/b.html')).toBe('file:///a/b.html');
+  });
 });
