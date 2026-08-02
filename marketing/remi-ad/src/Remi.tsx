@@ -2,8 +2,8 @@ import React from "react";
 import { useCurrentFrame, useVideoConfig, interpolate } from "remotion";
 import { EYE_TINT, Tint } from "./theme";
 
-// Remi — la creatura reale di OpenMate, portata 1:1 da apps/ui/renderer/character.js
-// e styles.css, ma con ogni animazione guidata da useCurrentFrame() (niente CSS anim).
+// Remi — la creatura reale (Holyn), portata 1:1 dall'app desktop
+// (character.js + styles.css), con ogni animazione guidata da useCurrentFrame().
 
 export type RemiState =
   | "idle"
@@ -23,7 +23,11 @@ export type Expr =
   | "curious"
   | "sad"
   | "surprised"
-  | "confused";
+  | "confused"
+  | "wink" // occhiolino complice
+  | "grin" // risata a bocca aperta
+  | "excited" // super gasato
+  | "cool"; // visore stile Jarvis
 
 const STATE_EXPR: Record<RemiState, Expr> = {
   idle: "neutral",
@@ -44,6 +48,10 @@ const MOUTH: Record<string, string> = {
   sad: "M86 128 Q100 119 114 128",
   surprised: "M94 122 Q100 132 106 122",
   confused: "M88 124 Q100 120 112 126",
+  wink: "M86 119 Q100 131 114 119",
+  grin: "M82 116 Q100 141 118 116",
+  excited: "M80 116 Q100 140 120 116",
+  cool: "M92 121 Q106 127 116 119",
 };
 
 const STATE_TINT: Record<RemiState, Tint> = {
@@ -59,6 +67,10 @@ const EMO_TINT: Partial<Record<Expr, Tint>> = {
   sad: "red",
   happy: "green",
   curious: "amber",
+  wink: "green",
+  grin: "green",
+  excited: "green",
+  cool: "cyan",
 };
 
 export const Remi: React.FC<{
@@ -91,7 +103,13 @@ export const Remi: React.FC<{
   const blinkLocal = t % blinkPeriod;
   const isBlinking =
     blink && state !== "sleeping" && blinkLocal < 0.12 && activeExpr !== "sleepy";
-  const shownExpr: Expr = isBlinking ? "blink" : activeExpr;
+  // idle "vivo": ogni tanto strizza l'occhio, senza input
+  const autoWink = state === "idle" && !expr && t % 5.3 < 0.16;
+  const shownExpr: Expr = isBlinking ? "blink" : autoWink ? "wink" : activeExpr;
+
+  // --- deriva morbida degli occhi: sguardo sempre vivo (stile Jarvis) ---
+  const eyeDX = 3 * Math.sin(t * 0.9 + seed) + 1.5 * Math.sin(t * 2.3);
+  const eyeDY = 2 * Math.sin(t * 1.3 + 1 + seed);
 
   // --- CRT scanline che scorre ---
   const crtY = interpolate((t % 5.5) / 5.5, [0, 1], [43, 155]);
@@ -181,7 +199,9 @@ export const Remi: React.FC<{
 
         {/* occhi + bocca */}
         <g style={{ filter: glow }}>
-          <Glyphs expr={shownExpr} eye={eye} t={t} />
+          <g style={{ translate: `${eyeDX.toFixed(2)}px ${eyeDY.toFixed(2)}px` }}>
+            <Glyphs expr={shownExpr} eye={eye} t={t} />
+          </g>
           <path
             d={mouthD}
             fill="none"
@@ -311,6 +331,47 @@ const Glyphs: React.FC<{ expr: Expr; eye: string; t: number }> = ({ expr, eye, t
           <text x="132" y="74" style={{ ...q, fontSize: 26 }}>?</text>
         </>
       );
+    case "wink": {
+      // occhio sx aperto, dx strizzato (arco all'insù)
+      return (
+        <>
+          <rect x="70" y="74" width="16" height="32" rx="8" style={g} />
+          <path d="M111 94 Q122 82 133 94" style={arc} />
+        </>
+      );
+    }
+    case "grin": {
+      // risata: occhi felici a "^ ^", chiusi verso l'alto
+      return (
+        <>
+          <path d="M66 98 Q78 78 90 98" style={arc} />
+          <path d="M110 98 Q122 78 134 98" style={arc} />
+        </>
+      );
+    }
+    case "excited": {
+      // super gasato: occhioni spalancati che rimbalzano
+      const b = 1 + 0.12 * Math.max(0, Math.sin(t * 9));
+      return (
+        <g style={{ scale: `${b}`, transformOrigin: "100px 88px", transformBox: "view-box" as never }}>
+          <circle cx="78" cy="88" r="13" style={g} />
+          <circle cx="122" cy="88" r="13" style={g} />
+          <circle cx="82" cy="84" r="3.4" style={{ fill: "#04120a" }} />
+          <circle cx="126" cy="84" r="3.4" style={{ fill: "#04120a" }} />
+        </g>
+      );
+    }
+    case "cool": {
+      // visore stile Jarvis + riflesso che scorre
+      const sx = 64 + ((t * 60) % 66);
+      return (
+        <>
+          <rect x="60" y="79" width="80" height="22" rx="11" style={{ fill: eye, opacity: 0.92 }} />
+          <rect x={sx} y="83" width="10" height="14" rx="5" style={{ fill: "#ffffff", opacity: 0.4 }} />
+          <rect x="60" y="79" width="80" height="22" rx="11" style={{ fill: "none", stroke: "#ffffff", strokeWidth: 1, opacity: 0.25 }} />
+        </>
+      );
+    }
     case "neutral":
     default:
       return (

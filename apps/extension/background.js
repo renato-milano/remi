@@ -62,6 +62,27 @@ function pageType(ref, text, submit) {
   }
   return { ok: true };
 }
+function pageScroll(amount) {
+  window.scrollBy(0, amount);
+  return { ok: true };
+}
+function pageHasText(text) {
+  return { has: (document.body && document.body.innerText || '').includes(text) };
+}
+function pageSelect(ref, value) {
+  const e = document.querySelector('[data-om-ref="' + ref + '"]');
+  if (!e) return { error: 'elemento non trovato' };
+  e.value = value;
+  e.dispatchEvent(new Event('change', { bubbles: true }));
+  return { ok: true };
+}
+function pageKey(key) {
+  const el = document.activeElement || document.body;
+  for (const type of ['keydown', 'keyup']) {
+    el.dispatchEvent(new KeyboardEvent(type, { key, bubbles: true }));
+  }
+  return { ok: true };
+}
 
 /* ---- CDP helpers ---- */
 function evalInPage(expr) {
@@ -121,9 +142,67 @@ async function handleOp(op, args) {
       await chrome.tabs.goBack(attachedTabId).catch(() => {});
       await waitTabComplete(attachedTabId, 4000);
       return call(pageSnapshot);
+    case 'scroll':
+      await call(pageScroll, Number(args.amount) || 600);
+      await new Promise((r) => setTimeout(r, 200));
+      return call(pageSnapshot);
+    case 'waitFor': {
+      const deadline = Date.now() + Math.min(30000, (Number(args.seconds) || 5) * 1000 || 5000);
+      if (args.text) {
+        while (Date.now() < deadline) {
+          const r = await call(pageHasText, String(args.text));
+          if (r && r.has) break;
+          await new Promise((res) => setTimeout(res, 400));
+        }
+      } else {
+        await new Promise((res) => setTimeout(res, Math.min(30000, (Number(args.seconds) || 3) * 1000)));
+      }
+      return call(pageSnapshot);
+    }
+    case 'key':
+      await call(pageKey, String(args.key || ''));
+      await waitTabComplete(attachedTabId, 3000);
+      return call(pageSnapshot);
+    case 'select':
+      await call(pageSelect, args.ref, String(args.value || ''));
+      return call(pageSnapshot);
+    case 'tabs': {
+      const list = await chrome.tabs.query({ currentWindow: true });
+      return list.map((t, index) => ({ index, title: t.title || '', url: t.url || '', active: t.id === attachedTabId }));
+    }
+    case 'newTab': {
+      let url = String(args.url || '');
+      if (!/^([a-z]+):/i.test(url)) url = 'https://' + url;
+      const t = await chrome.tabs.create({ url });
+      await reattach(t.id);
+      await waitTabComplete(attachedTabId);
+      return call(pageSnapshot);
+    }
+    case 'selectTab': {
+      const list = await chrome.tabs.query({ currentWindow: true });
+      const t = list[Number(args.index)];
+      if (!t) throw new Error('scheda non trovata');
+      await chrome.tabs.update(t.id, { active: true });
+      await reattach(t.id);
+      return call(pageSnapshot);
+    }
     default:
       throw new Error('operazione sconosciuta: ' + op);
   }
+}
+
+/** Sposta il debugger su un'altra scheda (per cambio/nuova scheda). */
+async function reattach(tabId) {
+  const old = attachedTabId;
+  if (old != null && old !== tabId) await chrome.debugger.detach({ tabId: old }).catch(() => {});
+  attachedTabId = tabId;
+  await new Promise((resolve) =>
+    chrome.debugger.attach({ tabId }, PROTOCOL, () => {
+      void chrome.runtime.lastError;
+      resolve();
+    }),
+  );
+  await chrome.debugger.sendCommand({ tabId }, 'Runtime.enable', {}).catch(() => {});
 }
 
 /* ---- WebSocket verso il daemon ---- */

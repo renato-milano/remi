@@ -1,5 +1,5 @@
 import type { BrowserContext, Page } from 'playwright-core';
-import type { BrowserEngine } from './engine.js';
+import type { BrowserEngine, TabInfo } from './engine.js';
 
 type PW = typeof import('playwright-core');
 let pwPromise: Promise<PW> | undefined;
@@ -137,6 +137,68 @@ export class BrowserSession implements BrowserEngine {
   async back(): Promise<PageSnapshot> {
     const page = await this.ensure();
     await page.goBack({ waitUntil: 'domcontentloaded' }).catch(() => {});
+    return this.snapshot();
+  }
+
+  async scroll(amount: number): Promise<PageSnapshot> {
+    const page = await this.ensure();
+    await page.mouse.wheel(0, amount);
+    await page.waitForTimeout(200);
+    return this.snapshot();
+  }
+
+  async waitFor(opts: { text?: string; seconds?: number }): Promise<PageSnapshot> {
+    const page = await this.ensure();
+    const ms = Math.min(30_000, Math.max(0, (opts.seconds ?? 5) * 1000));
+    if (opts.text) {
+      await page
+        .waitForFunction((t) => document.body?.innerText.includes(t), opts.text, { timeout: ms || 10_000 })
+        .catch(() => {});
+    } else {
+      await page.waitForTimeout(ms);
+    }
+    return this.snapshot();
+  }
+
+  async key(key: string): Promise<PageSnapshot> {
+    const page = await this.ensure();
+    await page.keyboard.press(key);
+    await page.waitForLoadState('domcontentloaded').catch(() => {});
+    return this.snapshot();
+  }
+
+  async select(ref: number, value: string): Promise<PageSnapshot> {
+    const page = await this.ensure();
+    await page.selectOption(sel(ref), value).catch(async () => {
+      await page.selectOption(sel(ref), { label: value }).catch(() => {});
+    });
+    return this.snapshot();
+  }
+
+  async tabs(): Promise<TabInfo[]> {
+    const ctx = this.ctx ?? (await this.ensure(), this.ctx);
+    const pages = ctx?.pages() ?? [];
+    return Promise.all(
+      pages.map(async (p, index) => ({ index, title: await p.title().catch(() => ''), url: p.url(), active: p === this.page })),
+    );
+  }
+
+  async newTab(url: string): Promise<PageSnapshot> {
+    await this.ensure();
+    const p = await this.ctx?.newPage();
+    if (p) {
+      this.page = p;
+      await p.goto(toUrl(url), { waitUntil: 'domcontentloaded', timeout: 30_000 }).catch(() => {});
+    }
+    return this.snapshot();
+  }
+
+  async selectTab(index: number): Promise<PageSnapshot> {
+    await this.ensure();
+    const p = this.ctx?.pages()[index];
+    if (!p) throw new Error(`scheda ${index} non trovata`);
+    this.page = p;
+    await p.bringToFront().catch(() => {});
     return this.snapshot();
   }
 
