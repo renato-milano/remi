@@ -132,7 +132,7 @@ function saveOnboarding(data) {
   };
   fs.writeFileSync(configFile, JSON.stringify(config, null, 2), 'utf8');
   saveKey(data.apiKey);
-  writePersona(data.name || 'OpenMate', data.tone || 'curioso');
+  writePersona(data.name || 'Remi', data.tone || 'curioso');
 }
 
 /* --------- screenshot via Electron (desktopCapturer) ---------
@@ -244,7 +244,7 @@ function openOnboarding() {
     width: 560,
     height: 640,
     resizable: false,
-    title: 'OpenMate',
+    title: 'Remi',
     backgroundColor: '#0a0c0b',
     webPreferences: {
       preload: path.join(__dirname, 'preload-onboarding.cjs'),
@@ -281,7 +281,7 @@ function openDashboard() {
   dashboardWin = new BrowserWindow({
     width: 640,
     height: 720,
-    title: 'OpenMate — Cruscotto',
+    title: 'Remi — Cruscotto',
     backgroundColor: '#0a0c0b',
     webPreferences: {
       preload: path.join(__dirname, 'preload-dashboard.cjs'),
@@ -305,7 +305,7 @@ function openSettings() {
     width: 520,
     height: 660,
     resizable: false,
-    title: 'OpenMate — Impostazioni',
+    title: 'Remi — Impostazioni',
     backgroundColor: '#0a0c0b',
     webPreferences: {
       preload: path.join(__dirname, 'preload-settings.cjs'),

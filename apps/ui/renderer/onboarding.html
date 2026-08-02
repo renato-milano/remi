@@ -14,10 +14,9 @@
     <div class="steps" id="steps">
       <!-- 1: benvenuto + nome -->
       <section class="step active">
-        <div class="egg">🥚</div>
-        <h1>Sto per <em>schiudermi</em>.</h1>
+        <h1>Sto per <em>iniziare</em>.</h1>
         <p class="sub">Sarò il tuo compagno AI, qui sul tuo dispositivo. Come vuoi chiamarmi?</p>
-        <input id="name" class="field" type="text" placeholder="es. Mate" maxlength="24" />
+        <input id="name" class="field" type="text" placeholder="es. Remi" maxlength="24" />
         <div class="chips" id="tones">
           <button class="chip active" data-tone="curioso">Curioso</button>
           <button class="chip" data-tone="conciso">Conciso</button>
@@ -27,7 +26,6 @@
 
       <!-- 2: provider + chiave -->
       <section class="step">
-        <div class="glyph">🧠</div>
         <h1>Collega il mio cervello</h1>
         <p class="sub">Scegli il provider e incolla la chiave — resta <b>cifrata sul tuo dispositivo</b>.</p>
         <select id="provider" class="field select">
@@ -50,7 +48,6 @@
 
       <!-- 3: autonomia -->
       <section class="step">
-        <div class="glyph">💓</div>
         <h1>Quanto devo essere sveglio?</h1>
         <p class="sub">Ogni tanto mi "sveglio" da solo per portare avanti le cose. Puoi cambiarlo quando vuoi.</p>
         <div class="chips col" id="beat">
@@ -69,7 +66,6 @@
 
       <!-- 4: computer-use (opt-in) -->
       <section class="step">
-        <div class="glyph">🖥️</div>
         <h1>Occhi e mani (opzionale)</h1>
         <p class="sub">Posso anche <b>vedere lo schermo</b> e usare mouse/tastiera per aiutarti nelle app. È sperimentale: ti chiederò il permesso a ogni sessione.</p>
         <label class="switch" style="justify-content:center">
@@ -80,16 +76,15 @@
         <p class="hint">Gli screenshot vengono inviati al modello. Serve un modello con capacità visive. Puoi cambiarlo dopo in Impostazioni.</p>
       </section>
 
-      <!-- 5: tutorial + schiusa -->
+      <!-- 5: tutorial + avvio -->
       <section class="step">
-        <div class="glyph">✨</div>
         <h1>Come funziono</h1>
         <ul class="how">
           <li><b>Parlami</b> con la scorciatoia <span class="kbd">⌘⇧O</span> o passandoci sopra il mouse.</li>
           <li><b>Ti chiedo il permesso</b> prima di azioni delicate, in parole semplici.</li>
           <li><b>Tasto destro</b> su di me: Dormi, Interrompi, Esci.</li>
         </ul>
-        <div class="mini-card">🟢 Leggere dei file<br><span>Posso elencare i file nella cartella Documenti?</span></div>
+        <div class="mini-card">Leggere dei file<br><span>Posso elencare i file nella cartella Documenti?</span></div>
       </section>
     </div>
 
@@ -99,10 +94,8 @@
     </div>
   </div>
 
-  <!-- overlay di schiusa -->
+  <!-- overlay di avvio -->
   <div class="hatch hidden" id="hatch">
-    <div class="hatch-egg">🥚</div>
-    <div class="hatch-bot hidden">🤖</div>
     <div class="hatch-text"></div>
   </div>
 

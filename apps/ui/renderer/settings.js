@@ -74,10 +74,10 @@ function renderPerms() {
   cuPerms.classList.remove('hidden');
   if (platform === 'darwin') {
     cuPerms.innerHTML = `
-      <p class="perm-title">Concedi i permessi macOS a “OpenMate”:</p>
+      <p class="perm-title">Concedi i permessi macOS a “Remi”:</p>
       <button class="btn ghost small" data-perm="screen">Registrazione schermo…</button>
       <button class="btn ghost small" data-perm="accessibility">Accessibilità…</button>
-      <p class="note">Dopo averli concessi potrebbe servire riavviare OpenMate.</p>`;
+      <p class="note">Dopo averli concessi potrebbe servire riavviare Remi.</p>`;
   } else if (platform === 'win32') {
     cuPerms.innerHTML = '<p class="note">Su Windows non servono permessi speciali. Alcuni antivirus potrebbero segnalare l’input automatico.</p>';
   } else {

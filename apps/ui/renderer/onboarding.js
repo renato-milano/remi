@@ -18,7 +18,7 @@ function render() {
   steps.forEach((s, i) => s.classList.toggle('active', i === current));
   dots.forEach((d, i) => d.classList.toggle('on', i === current));
   backBtn.disabled = current === 0;
-  nextBtn.textContent = current === steps.length - 1 ? 'Schiudi 🥚' : 'Avanti';
+  nextBtn.textContent = current === steps.length - 1 ? 'Inizia' : 'Avanti';
   const focusable = steps[current].querySelector('input');
   if (focusable) setTimeout(() => focusable.focus(), 60);
 }
@@ -49,7 +49,7 @@ function renderCuPerms() {
   const p = bridge.platform || 'darwin';
   if (p === 'darwin') {
     cuPerms.innerHTML = `
-      <p class="perm-title">Concedi i permessi a “OpenMate”:</p>
+      <p class="perm-title">Concedi i permessi a “Remi”:</p>
       <button class="chip" data-perm="screen">Registrazione schermo…</button>
       <button class="chip" data-perm="accessibility">Accessibilità…</button>`;
   } else if (p === 'win32') {
@@ -103,7 +103,7 @@ providerEl.addEventListener('change', (e) => selectProvider(e.target.value));
 selectProvider('anthropic');
 
 function collect() {
-  const name = document.getElementById('name').value.trim() || 'OpenMate';
+  const name = document.getElementById('name').value.trim() || 'Remi';
   const tone = document.querySelector('#tones .chip.active')?.dataset.tone || 'curioso';
   const apiKey = apiKeyEl.value.trim();
   const heartbeatMinutes = Number(document.querySelector('#beat .chip.active')?.dataset.min) || 15;
@@ -118,16 +118,13 @@ function collect() {
 function hatch() {
   const data = collect();
   const overlay = document.getElementById('hatch');
-  const egg = overlay.querySelector('.hatch-egg');
-  const bot = overlay.querySelector('.hatch-bot');
   const text = overlay.querySelector('.hatch-text');
   overlay.classList.remove('hidden');
   setTimeout(() => {
-    egg.classList.add('hidden');
-    bot.classList.remove('hidden');
-    text.textContent = `Ciao, sono ${data.name}!`;
-  }, 1100);
-  setTimeout(() => bridge.complete(data), 2100);
+    text.textContent = `Ciao, sono ${data.name}.`;
+    text.classList.add('show');
+  }, 400);
+  setTimeout(() => bridge.complete(data), 1900);
 }
 
 nextBtn.addEventListener('click', () => {

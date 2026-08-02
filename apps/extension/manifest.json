@@ -1,10 +1,10 @@
 {
   "manifest_version": 3,
-  "name": "OpenMate — controllo browser",
+  "name": "Remi — controllo browser",
   "version": "0.1.0",
-  "description": "Permette a OpenMate di pilotare la scheda attiva del tuo Chrome (con i tuoi login).",
+  "description": "Permette a Remi di pilotare la scheda attiva del tuo Chrome (con i tuoi login).",
   "permissions": ["debugger", "tabs", "activeTab"],
   "host_permissions": ["<all_urls>"],
   "background": { "service_worker": "background.js" },
-  "action": { "default_title": "OpenMate: collega/scollega questa scheda" }
+  "action": { "default_title": "Remi: collega/scollega questa scheda" }
 }
