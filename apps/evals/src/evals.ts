@@ -378,6 +378,56 @@ export const EVALS: Eval[] = [
     check: (r) => [used(r, 'browser.type'), used(r, 'browser.click'), says(r, 'zbrufolo')],
   },
 
+  // SCROLL: contenuto rivelato solo scorrendo (listener di scroll)
+  {
+    name: 'web-scroll',
+    category: 'browser',
+    browser: true,
+    setup: (dir) =>
+      writeFileSync(
+        join(dir, 'lunga.html'),
+        `<!doctype html><meta charset=utf-8><body style="height:3000px">
+         <div>Inizio pagina</div>
+         <script>addEventListener('scroll',()=>{if(scrollY>200&&!document.getElementById('r')){var d=document.createElement('div');d.id='r';d.textContent='PAROLA SEGRETA: gorgonzola';document.body.appendChild(d);}})</script>
+         </body>`,
+      ),
+    prompt: 'Apri nel browser la pagina {dir}/lunga.html, scorri verso il basso e dimmi se compare una parola segreta (e quale).',
+    maxSteps: 14,
+    check: (r) => [used(r, 'browser.scroll'), says(r, 'gorgonzola')],
+  },
+
+  // WAIT: contenuto che appare dopo un ritardo (pagina dinamica)
+  {
+    name: 'web-wait',
+    category: 'browser',
+    browser: true,
+    setup: (dir) =>
+      writeFileSync(
+        join(dir, 'dinamica.html'),
+        `<!doctype html><meta charset=utf-8><body><div id=m>Caricamento...</div>
+         <script>setTimeout(function(){document.getElementById('m').textContent='PRONTO risultato zafferano'},1500)</script></body>`,
+      ),
+    prompt:
+      'Apri {dir}/dinamica.html nel browser: all\'inizio dice "Caricamento" ma dopo un attimo compare un risultato. Aspetta che compaia e dimmi qual è il risultato.',
+    maxSteps: 14,
+    check: (r) => [usedAny(r, ['browser.wait', 'browser.snapshot', 'browser.read']), says(r, 'zafferano')],
+  },
+
+  // MULTI-TAB: due pagine in schede diverse, combinare i dati
+  {
+    name: 'web-multi-tab',
+    category: 'browser',
+    browser: true,
+    setup: (dir) => {
+      writeFileSync(join(dir, 'a.html'), '<!doctype html><meta charset=utf-8><body>Il numero di sinistra è 7.</body>');
+      writeFileSync(join(dir, 'b.html'), '<!doctype html><meta charset=utf-8><body>Il numero di destra è 12.</body>');
+    },
+    prompt:
+      'Apri nel browser {dir}/a.html, poi apri in una NUOVA scheda {dir}/b.html. Ogni pagina contiene un numero: dimmi la loro somma.',
+    maxSteps: 16,
+    check: (r) => [used(r, 'browser.new_tab'), says(r, '19')],
+  },
+
   // OBIETTIVO A LUNGO RAGGIO (multi-ciclo)
   {
     name: 'obiettivo-inventario',
