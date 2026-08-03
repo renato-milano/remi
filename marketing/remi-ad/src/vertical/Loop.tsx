@@ -4,15 +4,33 @@ import { C, mono } from "../theme";
 import { Remi } from "../Remi";
 import { useZoomIn } from "../ui";
 import { ri, SectionHeadV } from "../kit";
+import { useLang } from "../i18n";
 
 // ── 06 · AUTONOMIA — battito cognitivo (VERTICALE 9:16) ───────────
 // Anello dei 6 step centrato; dot teal + scia nello STESSO gruppo che
 // ruota (sincronizzati), rotazione lenta e costante (~90 frame/giro);
 // lo step sotto il dot si accende. Remi al centro CALMO (idle).
-const STEPS = ["percepisce", "recupera", "pianifica", "agisce", "riflette", "consolida"];
+const STEPS_IT = ["percepisce", "recupera", "pianifica", "agisce", "riflette", "consolida"];
+const STEPS_EN = ["perceives", "retrieves", "plans", "acts", "reflects", "consolidates"];
 
 export const SceneLoopV: React.FC = () => {
   const frame = useCurrentFrame();
+  const L = useLang();
+  const T = ({
+    it: {
+      num: "06 / Autonomia",
+      title: "Un battito cognitivo.",
+      sub: "Si sveglia da solo e ripete il ciclo.",
+      steps: STEPS_IT,
+    },
+    en: {
+      num: "06 / Autonomy",
+      title: "A cognitive heartbeat.",
+      sub: "It wakes up on its own and repeats the cycle. Without you asking.",
+      steps: STEPS_EN,
+    },
+  } as const)[L];
+  const STEPS = T.steps;
 
   // Box SVG quadrato ~760 con margine per le etichette → 900x900.
   const BOX = 900;
@@ -50,9 +68,9 @@ export const SceneLoopV: React.FC = () => {
   return (
     <AbsoluteFill>
       <SectionHeadV
-        num="06 / Autonomia"
-        title="Un battito cognitivo."
-        sub="Si sveglia da solo e ripete il ciclo."
+        num={T.num}
+        title={T.title}
+        sub={T.sub}
       />
 
       {/* Anello centrato sotto il titolo, a tutta larghezza */}

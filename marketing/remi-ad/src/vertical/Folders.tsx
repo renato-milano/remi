@@ -4,6 +4,7 @@ import { C, mono, sans } from "../theme";
 import { Remi } from "../Remi";
 import { useZoomIn } from "../ui";
 import { ri, SectionHeadV, Folder } from "../kit";
+import { useLang } from "../i18n";
 
 // ── 02 · FILE / CARTELLE — versione VERTICALE 9:16 ───────────────
 // Impaginazione verticale: titolo in alto (SectionHeadV), Remi al centro che
@@ -11,10 +12,10 @@ import { ri, SectionHeadV, Folder } from "../kit";
 // volano da Remi nelle cartelle con arco e atterraggio "clunk" (glow + bump).
 // Fine: fumetto DA REMI "✓ Tutto in ordine!".
 
-const FOLDERS = [
-  { name: "Cliente #1", color: C.teal },
-  { name: "Progetto A", color: "#7fe4ff" },
-  { name: "Progetto B", color: C.amber },
+const FOLDER_META = [
+  { color: C.teal },
+  { color: "#7fe4ff" },
+  { color: C.amber },
 ];
 
 const FILES = [
@@ -45,6 +46,26 @@ const FLY_END_Y = 240; // atterraggio chip (dentro le cartelle)
 export const SceneFoldersV: React.FC = () => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
+  const L = useLang();
+  const T = ({
+    it: {
+      kicker: "02 / File",
+      title: "Mette ordine.",
+      sub: "Da solo, in un attimo. Sposta, rinomina, archivia.",
+      folders: ["Cliente #1", "Progetto A", "Progetto B"],
+      files: "file",
+      done: "Tutto in ordine!",
+    },
+    en: {
+      kicker: "02 / Files",
+      title: "Keeps it tidy.",
+      sub: "On its own, in seconds. Moves, renames, archives.",
+      folders: ["Client #1", "Project A", "Project B"],
+      files: "files",
+      done: "All tidy!",
+    },
+  } as const)[L];
+  const FOLDERS = FOLDER_META.map((m, i) => ({ ...m, name: T.folders[i] }));
 
   const done = frame >= LAST_LAND + 2;
   const remiExpr = frame < 14 ? "scan" : done ? (frame < LAST_LAND + 12 ? "excited" : "grin") : "scan";
@@ -84,7 +105,7 @@ export const SceneFoldersV: React.FC = () => {
 
   return (
     <AbsoluteFill style={{ justifyContent: "center", alignItems: "center" }}>
-      <SectionHeadV num="02 / File" title={<>Mette ordine.</>} sub="Da solo, in un attimo. Sposta, rinomina, archivia." />
+      <SectionHeadV num={T.kicker} title={<>{T.title}</>} sub={T.sub} />
 
       {/* contenitore feature: al centro/basso della tela, sotto il titolo */}
       <div style={{ position: "absolute", left: "50%", top: 640, translate: "-50% 0", width: 920, height: 780, scale: `${zoom}` }}>
@@ -130,7 +151,7 @@ export const SceneFoldersV: React.FC = () => {
                   opacity: count > 0 ? 0.9 : 0,
                 }}
               >
-                {count > 0 ? `${count} file` : ""}
+                {count > 0 ? `${count} ${T.files}` : ""}
               </div>
             </div>
           );
@@ -232,7 +253,7 @@ export const SceneFoldersV: React.FC = () => {
               >
                 ✓
               </span>
-              <span style={{ fontFamily: sans, fontWeight: 700, fontSize: 44, color: C.ink, letterSpacing: "-0.01em" }}>Tutto in ordine!</span>
+              <span style={{ fontFamily: sans, fontWeight: 700, fontSize: 44, color: C.ink, letterSpacing: "-0.01em" }}>{T.done}</span>
               {/* codina verso Remi (in alto) */}
               <div
                 style={{

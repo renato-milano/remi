@@ -4,6 +4,7 @@ import { C, mono, sans } from "../theme";
 import { Remi } from "../Remi";
 import { useBeat, useMockup3D } from "../ui";
 import { ri, SectionHeadV, Check } from "../kit";
+import { useLang } from "../i18n";
 
 // ── 03 · TASK (VERTICALE 9:16) ───────────────────────────────
 // Impilato: titolo in alto (SectionHeadV), lista "oggi" al centro a
@@ -11,11 +12,17 @@ import { ri, SectionHeadV, Check } from "../kit";
 // "in corso…", "3 completati mentre eri altrove"), Remi SOTTO che si
 // compiace (grin) con fumetto "fatto!".
 
-const TASKS = [
+const TASKS_IT = [
   { t: "Rispondere alle email arretrate", done: 30 },
   { t: "Prenotare la sala riunioni", done: 44 },
   { t: "Aggiornare il foglio spese", done: 58 },
   { t: "Riepilogo settimanale per il team", done: -1 }, // in corso
+];
+const TASKS_EN = [
+  { t: "Reply to backlog emails", done: 30 },
+  { t: "Book the meeting room", done: 44 },
+  { t: "Update the expense sheet", done: 58 },
+  { t: "Weekly summary for the team", done: -1 }, // in corso
 ];
 
 export const SceneTasksV: React.FC = () => {
@@ -23,6 +30,28 @@ export const SceneTasksV: React.FC = () => {
   const { fps } = useVideoConfig();
   const beat = useBeat();
   const panel3D = useMockup3D(6, 0.06, -5, 1);
+  const L = useLang();
+  const T = ({
+    it: {
+      num: "03 / Task",
+      title: "Porta a termine.",
+      listHeader: "la tua lista · oggi",
+      inProgress: "in corso…",
+      completed: "completati",
+      whileAway: "mentre eri altrove",
+      done: "fatto!",
+    },
+    en: {
+      num: "03 / Tasks",
+      title: "Gets things done.",
+      listHeader: "your list · today",
+      inProgress: "in progress…",
+      completed: "completed",
+      whileAway: "while you were away",
+      done: "done!",
+    },
+  } as const)[L];
+  const TASKS = L === "en" ? TASKS_EN : TASKS_IT;
 
   // Remi esulta appena l'ultimo check è a segno (~frame 74)
   const grinning = frame >= 74;
@@ -31,7 +60,7 @@ export const SceneTasksV: React.FC = () => {
 
   return (
     <AbsoluteFill>
-      <SectionHeadV num="03 / Task" title={<>Porta a termine.</>} />
+      <SectionHeadV num={T.num} title={<>{T.title}</>} />
 
       {/* ── pannello lista, centrato a tutta larghezza ── */}
       <div
@@ -69,7 +98,7 @@ export const SceneTasksV: React.FC = () => {
               textTransform: "uppercase",
             }}
           >
-            la tua lista · oggi
+            {T.listHeader}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <div style={{ width: 150, height: 8, borderRadius: 999, background: "rgba(255,255,255,.10)", overflow: "hidden" }}>
@@ -176,7 +205,7 @@ export const SceneTasksV: React.FC = () => {
                     flexShrink: 0,
                   }}
                 >
-                  in corso…
+                  {T.inProgress}
                 </div>
               )}
             </div>
@@ -219,7 +248,7 @@ export const SceneTasksV: React.FC = () => {
             {Math.round(ri(frame, 80, 94, 0, 3))}
           </div>
           <div style={{ fontFamily: sans, fontWeight: 500, fontSize: 32, color: C.ink }}>
-            completati <span style={{ color: C.muted }}>mentre eri altrove</span>
+            {T.completed} <span style={{ color: C.muted }}>{T.whileAway}</span>
           </div>
         </div>
       </div>
@@ -254,7 +283,7 @@ export const SceneTasksV: React.FC = () => {
             whiteSpace: "nowrap",
           }}
         >
-          fatto!
+          {T.done}
         </div>
       </div>
     </AbsoluteFill>

@@ -4,15 +4,33 @@ import { C, mono } from "../theme";
 import { Remi } from "../Remi";
 import { useZoomIn } from "../ui";
 import { ri, SectionHead } from "../kit";
+import { useLang } from "../i18n";
 
 // ── 8 · AUTONOMIA (battito cognitivo) ────────────────────────
 // Il dot teal gira fluido, ogni step si accende (pulse) al passaggio.
 // Remi al centro "recita" il ciclo: reattivo, vivo.
-const STEPS = ["percepisce", "recupera", "pianifica", "agisce", "riflette", "consolida"];
+const STEPS_IT = ["percepisce", "recupera", "pianifica", "agisce", "riflette", "consolida"];
+const STEPS_EN = ["perceives", "retrieves", "plans", "acts", "reflects", "consolidates"];
 
 export const SceneLoop: React.FC = () => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
+  const L = useLang();
+  const T = ({
+    it: {
+      num: "06 / Autonomia",
+      title: <>Un battito<br />cognitivo.</>,
+      sub: "Percepisce, pianifica, agisce. E ricomincia da solo, senza che tu chieda nulla.",
+      steps: STEPS_IT,
+    },
+    en: {
+      num: "06 / Autonomy",
+      title: <>A cognitive<br />heartbeat.</>,
+      sub: "It wakes up on its own and repeats the cycle. Without you asking.",
+      steps: STEPS_EN,
+    },
+  } as const)[L];
+  const STEPS = T.steps;
 
   const cx = 350, cy = 350, R = 260;
 
@@ -49,9 +67,9 @@ export const SceneLoop: React.FC = () => {
   return (
     <AbsoluteFill style={{ justifyContent: "center", alignItems: "center" }}>
       <SectionHead
-        num="06 / Autonomia"
-        title={<>Un battito<br />cognitivo.</>}
-        sub="Percepisce, pianifica, agisce. E ricomincia da solo, senza che tu chieda nulla."
+        num={T.num}
+        title={T.title}
+        sub={T.sub}
       />
 
       <div style={{ position: "absolute", left: 1000, top: 170, width: 700, height: 700, scale: `${useZoomIn(8, 0.08)}` }}>

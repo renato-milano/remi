@@ -4,6 +4,7 @@ import { C, mono, sans } from "../theme";
 import { Remi } from "../Remi";
 import { HolynMark, useRise, usePop } from "../ui";
 import type { Expr } from "../Remi";
+import { useLang } from "../i18n";
 
 // ── 1 · HERO (VERTICALE 9:16) ─────────────────────────────────
 // Impilato e centrato: Remi grande in alto-centro, poi headline,
@@ -78,6 +79,12 @@ export const SceneHeroV: React.FC = () => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
+  const L = useLang();
+  const T = ({
+    it: { greet: "Ciao, sono ", sub: "l'agente che vive sul tuo dispositivo." },
+    en: { greet: "Hi, I'm ", sub: "the agent that lives on your device." },
+  } as const)[L];
+
   // entrata a molla di Remi
   const pop = usePop(2);
   // apparizione contorno (anello + particelle) leggermente ritardata
@@ -141,7 +148,7 @@ export const SceneHeroV: React.FC = () => {
           lineHeight: 1.02,
         }}
       >
-        Ciao, sono <span style={{ color: C.teal }}>Remi</span>.
+        {T.greet}<span style={{ color: C.teal }}>Remi</span>.
       </div>
       <div
         style={{
@@ -157,7 +164,7 @@ export const SceneHeroV: React.FC = () => {
           lineHeight: 1.15,
         }}
       >
-        l'agente che vive sul tuo dispositivo.
+        {T.sub}
       </div>
       <div style={{ ...holyn, marginTop: 52, display: "flex", alignItems: "center", gap: 14 }}>
         <HolynMark size={32} />

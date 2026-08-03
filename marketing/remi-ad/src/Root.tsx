@@ -49,6 +49,51 @@ export const RemotionRoot: React.FC = () => {
           height={1920}
         />
       ))}
+
+      {/* ── Versioni INGLESI (EN) ── */}
+      <Composition
+        id="RemiAd-EN"
+        component={RemiAd}
+        defaultProps={{ lang: "en" as const }}
+        durationInFrames={AD_DURATION}
+        fps={30}
+        width={1920}
+        height={1080}
+      />
+      <Composition
+        id="RemiAd-V-EN"
+        component={RemiAdVertical}
+        defaultProps={{ lang: "en" as const }}
+        durationInFrames={AD_DURATION_V}
+        fps={30}
+        width={1080}
+        height={1920}
+      />
+      {/* per-scena EN (per anteprima/verifica degli agenti) */}
+      {SCENES.map((s, i) => (
+        <Composition
+          key={`en-${s.id}`}
+          id={`Scene-${s.id}-EN`}
+          component={ScenePreview}
+          defaultProps={{ index: i, lang: "en" as const }}
+          durationInFrames={s.d}
+          fps={30}
+          width={1920}
+          height={1080}
+        />
+      ))}
+      {SCENES_V.map((s, i) => (
+        <Composition
+          key={`env-${s.id}`}
+          id={`SceneV-${s.id}-EN`}
+          component={ScenePreviewV}
+          defaultProps={{ index: i, lang: "en" as const }}
+          durationInFrames={s.d}
+          fps={30}
+          width={1080}
+          height={1920}
+        />
+      ))}
     </>
   );
 };

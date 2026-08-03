@@ -2,6 +2,7 @@ import React from "react";
 import { AbsoluteFill, Series, Sequence, useCurrentFrame, interpolate } from "remotion";
 import { Background, Scene, HolynMark } from "./ui";
 import { C, mono } from "./theme";
+import { LangContext, Lang } from "./i18n";
 import { SceneHero } from "./scenes/Hero";
 import { SceneStatement } from "./scenes/Statement";
 import { SceneAsk } from "./scenes/Ask";
@@ -44,37 +45,41 @@ const BrandMark: React.FC = () => {
   );
 };
 
-export const RemiAd: React.FC = () => {
+export const RemiAd: React.FC<{ lang?: Lang }> = ({ lang = "it" }) => {
   const firstD = SCENES[0].d;
   const lastD = SCENES[SCENES.length - 1].d;
   return (
-    <AbsoluteFill>
-      <Background />
-      <Series>
-        {SCENES.map((s) => (
-          <Series.Sequence key={s.id} durationInFrames={s.d}>
-            <Scene durationInFrames={s.d}>
-              <s.C />
-            </Scene>
-          </Series.Sequence>
-        ))}
-      </Series>
-      <Sequence from={firstD - 10} durationInFrames={AD_DURATION - firstD - lastD + 10}>
-        <BrandMark />
-      </Sequence>
-    </AbsoluteFill>
+    <LangContext.Provider value={lang}>
+      <AbsoluteFill>
+        <Background />
+        <Series>
+          {SCENES.map((s) => (
+            <Series.Sequence key={s.id} durationInFrames={s.d}>
+              <Scene durationInFrames={s.d}>
+                <s.C />
+              </Scene>
+            </Series.Sequence>
+          ))}
+        </Series>
+        <Sequence from={firstD - 10} durationInFrames={AD_DURATION - firstD - lastD + 10}>
+          <BrandMark />
+        </Sequence>
+      </AbsoluteFill>
+    </LangContext.Provider>
   );
 };
 
 // wrapper per anteprima singola scena (con sfondo brand) — usato dalle composizioni per-scena
-export const ScenePreview: React.FC<{ index: number }> = ({ index }) => {
+export const ScenePreview: React.FC<{ index: number; lang?: Lang }> = ({ index, lang = "it" }) => {
   const s = SCENES[index];
   return (
-    <AbsoluteFill>
-      <Background />
-      <Scene durationInFrames={s.d}>
-        <s.C />
-      </Scene>
-    </AbsoluteFill>
+    <LangContext.Provider value={lang}>
+      <AbsoluteFill>
+        <Background />
+        <Scene durationInFrames={s.d}>
+          <s.C />
+        </Scene>
+      </AbsoluteFill>
+    </LangContext.Provider>
   );
 };

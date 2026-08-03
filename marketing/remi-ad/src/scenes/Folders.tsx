@@ -4,15 +4,16 @@ import { C, mono, sans } from "../theme";
 import { Remi } from "../Remi";
 import { useZoomIn } from "../ui";
 import { ri, SectionHead, Folder } from "../kit";
+import { useLang } from "../i18n";
 
 // ── 4 · FILE / CARTELLE ──────────────────────────────────────
 // Remi riordina i file: chip che sfrecciano nelle 3 cartelle con
 // atterraggio "clunk" (scale bump + glow), poi orgoglioso: "12 file in ordine".
 
-const FOLDERS = [
-  { name: "Cliente #1", color: C.teal },
-  { name: "Progetto A", color: "#7fe4ff" },
-  { name: "Progetto B", color: C.amber },
+const FOLDER_META = [
+  { color: C.teal },
+  { color: "#7fe4ff" },
+  { color: C.amber },
 ];
 
 // 6 file (contiamo fino a 12: il badge finale "raddoppia" il senso di lavoro svolto)
@@ -35,6 +36,26 @@ const LAST_LAND = FILE_START + (FILES.length - 1) * FILE_GAP + FLY;
 export const SceneFolders: React.FC = () => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
+  const L = useLang();
+  const T = ({
+    it: {
+      kicker: "02 / File",
+      title: "Mette ordine.",
+      sub: "Da solo, in un attimo. Sposta, rinomina, archivia.",
+      folders: ["Cliente #1", "Progetto A", "Progetto B"],
+      files: "file",
+      done: "Tutto in ordine!",
+    },
+    en: {
+      kicker: "02 / Files",
+      title: "Keeps it tidy.",
+      sub: "On its own, in seconds. Moves, renames, archives.",
+      folders: ["Client #1", "Project A", "Project B"],
+      files: "files",
+      done: "All tidy!",
+    },
+  } as const)[L];
+  const FOLDERS = FOLDER_META.map((m, i) => ({ ...m, name: T.folders[i] }));
 
   // quanti file sono già atterrati (per il conteggio a schermo)
   const landed = FILES.filter((_, i) => frame >= FILE_START + i * FILE_GAP + FLY).length;
@@ -76,7 +97,7 @@ export const SceneFolders: React.FC = () => {
 
   return (
     <AbsoluteFill style={{ justifyContent: "center", alignItems: "center" }}>
-      <SectionHead num="02 / File" title={<>Mette ordine.</>} sub="Da solo, in un attimo. Sposta, rinomina, archivia." />
+      <SectionHead num={T.kicker} title={<>{T.title}</>} sub={T.sub} />
 
       <div style={{ position: "relative", width: 1240, height: 640, marginTop: 130, scale: `${1.1 * useZoomIn(6, 0.07)}` }}>
         {/* Remi che smista */}
@@ -130,7 +151,7 @@ export const SceneFolders: React.FC = () => {
                   opacity: count > 0 ? 0.9 : 0,
                 }}
               >
-                {count > 0 ? `${count} file` : ""}
+                {count > 0 ? `${count} ${T.files}` : ""}
               </div>
             </div>
           );
@@ -206,7 +227,7 @@ export const SceneFolders: React.FC = () => {
               }}
             >
               <span style={{ width: 30, height: 30, borderRadius: "50%", background: C.teal, display: "flex", alignItems: "center", justifyContent: "center", color: "#04120a", fontWeight: 800, fontSize: 18 }}>✓</span>
-              <span style={{ fontFamily: sans, fontWeight: 700, fontSize: 36, color: C.ink, letterSpacing: "-0.01em" }}>Tutto in ordine!</span>
+              <span style={{ fontFamily: sans, fontWeight: 700, fontSize: 36, color: C.ink, letterSpacing: "-0.01em" }}>{T.done}</span>
               {/* codina verso Remi */}
               <div style={{ position: "absolute", left: -9, top: "50%", width: 16, height: 16, background: C.bubbleBg, borderLeft: `1px solid ${C.teal}`, borderBottom: `1px solid ${C.teal}`, translate: "0 -50%", rotate: "45deg" }} />
             </div>

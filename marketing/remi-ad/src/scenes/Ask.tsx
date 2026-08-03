@@ -5,18 +5,25 @@ import { Remi } from "../Remi";
 import type { Expr } from "../Remi";
 import { EASE } from "../kit";
 import { FakeDesktop } from "../desktopChrome";
+import { GlassPill } from "../ui";
+import { useLang } from "../i18n";
 
 // ── 2b · INTERAZIONE — Remi vive sul desktop ─────────────────
 // Finto desktop + Remi in basso a sinistra → ZOOM su Remi → chat:
 // l'utente scrive "Mi aiuti con le task di oggi?", Remi risponde
 // "Nessun problema, partiamo!" con l'occhiolino → parte il Computer use.
 const cl = { extrapolateLeft: "clamp" as const, extrapolateRight: "clamp" as const };
-const USER_MSG = "Mi aiuti con le task di oggi?";
-const REMI_MSG = "Nessun problema, partiamo!";
 
 export const SceneAsk: React.FC = () => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
+  const L = useLang();
+  const T = ({
+    it: { userMsg: "Mi aiuti con le task di oggi?", remiMsg: "Nessun problema, partiamo!", intro: "👋 Remi vive sul tuo desktop" },
+    en: { userMsg: "Can you help with today's tasks?", remiMsg: "No problem, let's go!", intro: "👋 Remi lives on your desktop" },
+  } as const)[L];
+  const USER_MSG = T.userMsg;
+  const REMI_MSG = T.remiMsg;
 
   // camera: desktop largo → ZOOM su Remi (+ area chat)
   const camZ = interpolate(frame, [26, 52], [1, 1.45], { ...cl, easing: EASE });
@@ -55,9 +62,7 @@ export const SceneAsk: React.FC = () => {
 
         {/* Remi companion in basso a sinistra */}
         <div style={{ position: "absolute", left: 150, bottom: 118 }}>
-          <div style={{ position: "absolute", left: 6, bottom: 250, opacity: introCap, background: "rgba(8,12,10,.92)", border: `1px solid ${C.line2}`, color: C.ink, fontFamily: sans, fontSize: 20, padding: "9px 16px", borderRadius: 999, whiteSpace: "nowrap" }}>
-            👋 Remi vive sul tuo desktop
-          </div>
+          <GlassPill accent={C.teal} size={20} style={{ position: "absolute", left: 6, bottom: 250, opacity: introCap, color: C.ink, fontFamily: sans }}>{T.intro}</GlassPill>
           <div style={{ rotate: `${tilt}deg`, scale: `${breathe}`, transformOrigin: "50% 100%" }}>
             <Remi state="idle" expr={expr} size={230} seed={2} />
           </div>

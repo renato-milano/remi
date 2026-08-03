@@ -5,15 +5,22 @@ import { Remi } from "../Remi";
 import type { Expr } from "../Remi";
 import { EASE } from "../kit";
 import { FakeDesktop } from "../desktopChrome";
+import { GlassPill } from "../ui";
+import { useLang } from "../i18n";
 
 // ── 2b · INTERAZIONE (VERTICALE) — Remi vive sul desktop ─────
 const cl = { extrapolateLeft: "clamp" as const, extrapolateRight: "clamp" as const };
-const USER_MSG = "Mi aiuti con le task di oggi?";
-const REMI_MSG = "Nessun problema, partiamo!";
 
 export const SceneAskV: React.FC = () => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
+  const L = useLang();
+  const T = ({
+    it: { userMsg: "Mi aiuti con le task di oggi?", remiMsg: "Nessun problema, partiamo!", intro: "👋 Remi vive qui" },
+    en: { userMsg: "Can you help with today's tasks?", remiMsg: "No problem, let's go!", intro: "👋 Remi lives here" },
+  } as const)[L];
+  const USER_MSG = T.userMsg;
+  const REMI_MSG = T.remiMsg;
 
   // camera: desktop verticale → leggero zoom verso Remi + chat.
   // Focus SEMPRE centrato in orizzontale (cfx=540) così la chat non deriva verso i bordi.
@@ -70,9 +77,7 @@ export const SceneAskV: React.FC = () => {
 
         {/* Remi companion in basso a sinistra */}
         <div style={{ position: "absolute", left: 120, bottom: 360 }}>
-          <div style={{ position: "absolute", left: 6, bottom: 300, opacity: introCap, background: "rgba(8,12,10,.92)", border: `1px solid ${C.line2}`, color: C.ink, fontFamily: sans, fontSize: 26, padding: "11px 20px", borderRadius: 999, whiteSpace: "nowrap" }}>
-            👋 Remi vive qui
-          </div>
+          <GlassPill accent={C.teal} size={26} style={{ position: "absolute", left: 6, bottom: 300, opacity: introCap, color: C.ink, fontFamily: sans }}>{T.intro}</GlassPill>
           <div style={{ rotate: `${tilt}deg`, scale: `${breathe}`, transformOrigin: "50% 100%" }}>
             <Remi state="idle" expr={expr} size={280} seed={2} />
           </div>

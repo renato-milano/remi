@@ -2,6 +2,7 @@ import React from "react";
 import { AbsoluteFill, useCurrentFrame, useVideoConfig, interpolate, spring, Easing } from "remotion";
 import { C, sans } from "../theme";
 import { useBeat } from "../ui";
+import { useLang } from "../i18n";
 
 // ── 2 · STATEMENT (kinetic) — VERTICALE 9:16 ─────────────────
 // "Non è un chatbot." (muted, sbarrato) → "È il tuo assistente"
@@ -12,12 +13,18 @@ export const SceneStatementV: React.FC = () => {
   const { fps } = useVideoConfig();
   const beat = useBeat();
 
+  const L = useLang();
+  const T = ({
+    it: { line1: ["Non", "è", "un", "chatbot."], line2: "È il tuo assistente", big: "personale" },
+    en: { line1: ["Not", "a", "chatbot."], line2: "It's your personal", big: "assistant" },
+  } as const)[L];
+
   // Snap-in a molla per ogni parola (entrata scattante, poco overshoot)
   const snap = (from: number) =>
     spring({ frame: frame - from, fps, config: { damping: 15, mass: 0.5, stiffness: 200 } });
 
   // Riga 1 — "Non è un chatbot." parola per parola (scatti serrati)
-  const w1 = ["Non", "è", "un", "chatbot."];
+  const w1 = T.line1;
   const line1From = 3;
 
   // Riga 2 — "È il tuo assistente" arriva col beat
@@ -120,7 +127,7 @@ export const SceneStatementV: React.FC = () => {
             }),
           }}
         >
-          <div style={{ fontSize: 82, color: C.ink, lineHeight: 1.0 }}>È il tuo assistente</div>
+          <div style={{ fontSize: 82, color: C.ink, lineHeight: 1.0 }}>{T.line2}</div>
           <div
             style={{
               position: "relative",
@@ -132,7 +139,7 @@ export const SceneStatementV: React.FC = () => {
               textShadow: `0 0 44px ${C.tealGlowStrong}, 0 0 90px ${C.tealGlow}`,
             }}
           >
-            personale
+            {T.big}
             {/* swipe teal che sottolinea "personale" */}
             <div
               style={{

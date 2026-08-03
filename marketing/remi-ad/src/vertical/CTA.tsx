@@ -3,6 +3,7 @@ import { AbsoluteFill, useCurrentFrame, useVideoConfig, interpolate, spring } fr
 import { C, mono, sans } from "../theme";
 import { Remi } from "../Remi";
 import { HolynMark, Heartbeat, useRise, usePop, useBeat } from "../ui";
+import { useLang } from "../i18n";
 import type { Expr } from "../Remi";
 
 // ── CTA finale · VERTICALE 9:16 ───────────────────────────────
@@ -13,6 +14,11 @@ export const SceneCTAV: React.FC = () => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const beat = useBeat(128, 8);
+  const L = useLang();
+  const T = ({
+    it: { open: "aperto", tryNow: "prova Remi oggi" },
+    en: { open: "open", tryNow: "try Remi today" },
+  } as const)[L];
 
   // Entrata a molla di Remi
   const pop = usePop(2, 12, 0.7);
@@ -165,7 +171,7 @@ export const SceneCTAV: React.FC = () => {
             boxShadow: `0 0 ${14 + tryGlow * 20}px rgba(0,255,200,${0.15 + tryGlow * 0.2})`,
           }}
         >
-          prova Remi oggi
+          {T.tryNow}
         </div>
 
         {/* footer mono */}
@@ -183,7 +189,7 @@ export const SceneCTAV: React.FC = () => {
           }}
         >
           <Heartbeat size={16} />
-          <span>aperto</span>
+          <span>{T.open}</span>
           <span>·</span>
           <span>open source</span>
           <span>·</span>

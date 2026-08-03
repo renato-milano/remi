@@ -4,32 +4,67 @@ import { C, mono, sans } from "../theme";
 import { Remi } from "../Remi";
 import { useMockup3D } from "../ui";
 import { ri, SectionHeadV } from "../kit";
+import { useLang } from "../i18n";
 
 // ── 05 · MEMORIA (verticale 9:16) ────────────────────────────
 // In verticale si impila: titolo in alto, il pannello memoria al centro
 // (card ordinate → query che si digita → risultati), Remi GRANDE sotto
 // che pensa e annuisce quando "ricorda". Tutto sul dispositivo.
 
-const MEM = [
-  { k: "core", d: "chi sei, cosa ti serve", c: C.teal },
-  { k: "semantic", d: "fatti su di te, versionati", c: "#7fe4ff" },
-  { k: "episodic", d: "cosa è successo, e quando", c: C.amber },
-];
-
-// query che si digita a caratteri, guidata dal frame
-const QUERY = "cosa preferisce";
 const TYPE_FROM = 40; // frame d'inizio digitazione
 const TYPE_TO = 62; // frame di fine digitazione
-
-const RESULTS = [
-  { c: C.teal, t: "tono asciutto, niente fronzoli" },
-  { c: "#7fe4ff", t: "lavora la sera, fuso CET" },
-  { c: C.amber, t: "preferisce i riepiloghi brevi" },
-];
 
 export const SceneMemoryV: React.FC = () => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
+  const L = useLang();
+
+  const T = ({
+    it: {
+      num: "05 / Memoria",
+      title: "Ricorda tutto.",
+      onDevice: "sul tuo dispositivo",
+      query: "cosa preferisce",
+      mem: {
+        core: "chi sei, cosa ti serve",
+        semantic: "fatti su di te, versionati",
+        episodic: "cosa è successo, e quando",
+      },
+      results: [
+        "tono asciutto, niente fronzoli",
+        "lavora la sera, fuso CET",
+        "preferisce i riepiloghi brevi",
+      ],
+    },
+    en: {
+      num: "05 / Memory",
+      title: "Remembers everything.",
+      onDevice: "on your device",
+      query: "what they prefer",
+      mem: {
+        core: "who you are, what you need",
+        semantic: "facts about you, versioned",
+        episodic: "what happened, and when",
+      },
+      results: [
+        "dry tone, no fluff",
+        "works evenings, CET timezone",
+        "prefers short summaries",
+      ],
+    },
+  } as const)[L];
+
+  const MEM = [
+    { k: "core", d: T.mem.core, c: C.teal },
+    { k: "semantic", d: T.mem.semantic, c: "#7fe4ff" },
+    { k: "episodic", d: T.mem.episodic, c: C.amber },
+  ];
+  const RESULTS = [
+    { c: C.teal, t: T.results[0] },
+    { c: "#7fe4ff", t: T.results[1] },
+    { c: C.amber, t: T.results[2] },
+  ];
+  const QUERY = T.query;
 
   // testo digitato in base al frame
   const chars = Math.round(
@@ -53,7 +88,7 @@ export const SceneMemoryV: React.FC = () => {
 
   return (
     <AbsoluteFill>
-      <SectionHeadV num="05 / Memoria" title={<>Ricorda tutto.</>} />
+      <SectionHeadV num={T.num} title={<>{T.title}</>} />
 
       {/* Pannello memoria: on-device + card + ricerca + risultati */}
       <div
@@ -92,7 +127,7 @@ export const SceneMemoryV: React.FC = () => {
               boxShadow: `0 0 12px ${C.tealGlow}`,
             }}
           />
-          sul tuo dispositivo
+          {T.onDevice}
         </div>
 
         {MEM.map((m, i) => {

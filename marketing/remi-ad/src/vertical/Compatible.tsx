@@ -2,9 +2,10 @@ import React from "react";
 import { AbsoluteFill, useCurrentFrame, useVideoConfig, interpolate, spring, Img, staticFile } from "remotion";
 import { C, sans, mono } from "../theme";
 import { useRise } from "../ui";
+import { useLang } from "../i18n";
 
 // ── 07 · COMPATIBILE CON (VERTICALE) — loghi ufficiali ───────
-const PROVIDERS = [
+const providers = (ollamaTag: string) => [
   { f: "openai", n: "OpenAI", k: "GPT" },
   { f: "anthropic", n: "Anthropic", k: "Claude" },
   { f: "gemini", n: "Google", k: "Gemini" },
@@ -14,20 +15,30 @@ const PROVIDERS = [
   { f: "xai", n: "xAI", k: "Grok" },
   { f: "groq", n: "Groq", k: "" },
   { f: "cohere", n: "Cohere", k: "" },
-  { f: "ollama", n: "Ollama", k: "locale" },
+  { f: "ollama", n: "Ollama", k: ollamaTag },
 ];
 
 export const SceneCompatibleV: React.FC = () => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
+  const L = useLang();
+  const T = ({
+    it: { kicker: "Compatibile con", sub: "e con qualunque endpoint OpenAI compatibile.", ollama: "locale" },
+    en: { kicker: "Compatible with", sub: "and any OpenAI compatible endpoint.", ollama: "local" },
+  } as const)[L];
+  const PROVIDERS = providers(T.ollama);
   const k = useRise(6, 10);
   const h = useRise(12, 10);
   const sub = useRise(82, 10);
   return (
     <AbsoluteFill style={{ justifyContent: "center", alignItems: "center", padding: "0 80px" }}>
-      <div style={{ ...k, fontFamily: mono, fontSize: 28, letterSpacing: "0.28em", textTransform: "uppercase", color: C.teal, marginBottom: 16 }}>Compatibile con</div>
+      <div style={{ ...k, fontFamily: mono, fontSize: 28, letterSpacing: "0.28em", textTransform: "uppercase", color: C.teal, marginBottom: 16 }}>{T.kicker}</div>
       <div style={{ ...h, fontFamily: sans, fontWeight: 800, fontSize: 76, color: C.ink, letterSpacing: "-0.03em", marginBottom: 46, textAlign: "center", lineHeight: 1.05 }}>
-        I migliori modelli <span style={{ color: C.teal }}>AI</span>.
+        {L === "it" ? (
+          <>I migliori modelli <span style={{ color: C.teal }}>AI</span>.</>
+        ) : (
+          <>The best <span style={{ color: C.teal }}>AI</span> models.</>
+        )}
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 22, width: 900 }}>
@@ -50,7 +61,7 @@ export const SceneCompatibleV: React.FC = () => {
       </div>
 
       <div style={{ ...sub, marginTop: 44, fontFamily: sans, fontSize: 32, color: C.muted, textAlign: "center", maxWidth: 860, lineHeight: 1.4 }}>
-        e con qualunque endpoint OpenAI compatibile.
+        {T.sub}
       </div>
     </AbsoluteFill>
   );

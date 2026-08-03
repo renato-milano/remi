@@ -2,6 +2,7 @@ import React from "react";
 import { AbsoluteFill, Series, Sequence, useCurrentFrame, interpolate } from "remotion";
 import { Background, Scene, HolynMark } from "./ui";
 import { C, mono } from "./theme";
+import { LangContext, Lang } from "./i18n";
 import { SceneHeroV } from "./vertical/Hero";
 import { SceneStatementV } from "./vertical/Statement";
 import { SceneAskV } from "./vertical/Ask";
@@ -43,41 +44,45 @@ const BrandMarkV: React.FC = () => {
   );
 };
 
-export const RemiAdVertical: React.FC = () => {
+export const RemiAdVertical: React.FC<{ lang?: Lang }> = ({ lang = "it" }) => {
   const firstD = SCENES_V[0].d;
   const lastD = SCENES_V[SCENES_V.length - 1].d;
   return (
-    <AbsoluteFill>
-      <Background />
-      {/* padding di sicurezza: i social croppano/zoomano ~8-10% → tengo il contenuto
-          rientrato (lo sfondo/griglia riempie comunque i bordi). */}
-      <AbsoluteFill style={{ scale: "0.9" }}>
-        <Series>
-          {SCENES_V.map((s) => (
-            <Series.Sequence key={s.id} durationInFrames={s.d}>
-              <Scene durationInFrames={s.d}>
-                <s.C />
-              </Scene>
-            </Series.Sequence>
-          ))}
-        </Series>
-        <Sequence from={firstD - 10} durationInFrames={AD_DURATION_V - firstD - lastD + 10}>
-          <BrandMarkV />
-        </Sequence>
+    <LangContext.Provider value={lang}>
+      <AbsoluteFill>
+        <Background />
+        {/* padding di sicurezza: i social croppano/zoomano ~8-10% → tengo il contenuto
+            rientrato (lo sfondo/griglia riempie comunque i bordi). */}
+        <AbsoluteFill style={{ scale: "0.9" }}>
+          <Series>
+            {SCENES_V.map((s) => (
+              <Series.Sequence key={s.id} durationInFrames={s.d}>
+                <Scene durationInFrames={s.d}>
+                  <s.C />
+                </Scene>
+              </Series.Sequence>
+            ))}
+          </Series>
+          <Sequence from={firstD - 10} durationInFrames={AD_DURATION_V - firstD - lastD + 10}>
+            <BrandMarkV />
+          </Sequence>
+        </AbsoluteFill>
       </AbsoluteFill>
-    </AbsoluteFill>
+    </LangContext.Provider>
   );
 };
 
 // wrapper per anteprima singola scena verticale
-export const ScenePreviewV: React.FC<{ index: number }> = ({ index }) => {
+export const ScenePreviewV: React.FC<{ index: number; lang?: Lang }> = ({ index, lang = "it" }) => {
   const s = SCENES_V[index];
   return (
-    <AbsoluteFill>
-      <Background />
-      <Scene durationInFrames={s.d}>
-        <s.C />
-      </Scene>
-    </AbsoluteFill>
+    <LangContext.Provider value={lang}>
+      <AbsoluteFill>
+        <Background />
+        <Scene durationInFrames={s.d}>
+          <s.C />
+        </Scene>
+      </AbsoluteFill>
+    </LangContext.Provider>
   );
 };

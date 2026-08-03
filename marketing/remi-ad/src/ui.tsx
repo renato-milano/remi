@@ -83,6 +83,32 @@ export const Heartbeat: React.FC<{ size?: number }> = ({ size = 11 }) => {
   );
 };
 
+// Pill "glass" riutilizzabile: bordo teal semi-trasparente, backdrop-filter
+// (blur + saturate), glow morbido e highlight interno → look smooth/vetro.
+export const GlassPill: React.FC<{ children: React.ReactNode; accent?: string; size?: number; style?: React.CSSProperties }> = ({ children, accent = C.teal, size = 18, style }) => (
+  <div
+    style={{
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 10,
+      padding: "10px 20px",
+      borderRadius: 999,
+      color: accent,
+      fontFamily: mono,
+      fontSize: size,
+      whiteSpace: "nowrap",
+      background: `linear-gradient(180deg, ${accent}1f, ${accent}0d)`,
+      border: `1px solid ${accent}3d`,
+      backdropFilter: "blur(16px) saturate(150%)",
+      WebkitBackdropFilter: "blur(16px) saturate(150%)",
+      boxShadow: `0 10px 34px rgba(0,0,0,.4), 0 0 24px ${accent}2b, inset 0 1px 0 rgba(255,255,255,.16), inset 0 0 22px ${accent}14`,
+      ...style,
+    }}
+  >
+    {children}
+  </div>
+);
+
 export const Chip: React.FC<{ children: React.ReactNode; accent?: string }> = ({ children, accent }) => (
   <div
     style={{

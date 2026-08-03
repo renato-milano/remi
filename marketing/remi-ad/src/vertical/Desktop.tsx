@@ -4,9 +4,10 @@ import { C, mono } from "../theme";
 import { Remi } from "../Remi";
 import { useRise, useMockup3D } from "../ui";
 import { ri, SectionHeadV } from "../kit";
+import { useLang } from "../i18n";
 import {
   AppGmail, AppSlack, AppExcel, AppVSCode,
-  Window, STARTS, STAGE, WIN_W, WIN_H, ACTION_TEXT,
+  Window, STARTS, STAGE, WIN_W, WIN_H, actionText,
 } from "../scenes/Desktop";
 
 // ── 01 · COMPUTER-USE (verticale 9:16) ───────────────────────
@@ -19,6 +20,12 @@ const WIN_TOP = 384;
 const WIN_BOTTOM = WIN_TOP + WIN_H; // 954
 
 export const SceneDesktopV: React.FC = () => {
+  const L = useLang();
+  const T = ({
+    it: { title: "Vede il tuo schermo, agisce.", badge: "🖥️ controllo schermo attivo" },
+    en: { title: "Sees your screen, takes action.", badge: "🖥️ screen control active" },
+  } as const)[L];
+  const ACTION_TEXT = actionText(L);
   const frame = useCurrentFrame();
 
   const pill = ri(frame, 14, 26, 0, 1);
@@ -41,7 +48,7 @@ export const SceneDesktopV: React.FC = () => {
 
   return (
     <AbsoluteFill>
-      <SectionHeadV num="01 / Computer use" title={<>Vede il tuo schermo, agisce.</>} />
+      <SectionHeadV num="01 / Computer use" title={<>{T.title}</>} />
 
       {/* pannello montaggio app (mockup 3D) — centrato orizzontalmente */}
       <div
@@ -160,7 +167,7 @@ export const SceneDesktopV: React.FC = () => {
               boxShadow: `0 0 10px ${C.teal}`,
             }}
           />
-          🖥️ controllo schermo attivo
+          {T.badge}
         </div>
         {/* tail dal badge verso Remi */}
         <div

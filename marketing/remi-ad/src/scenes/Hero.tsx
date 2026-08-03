@@ -4,6 +4,7 @@ import { C, mono, sans } from "../theme";
 import { Remi } from "../Remi";
 import { HolynMark, useRise, usePop } from "../ui";
 import type { Expr } from "../Remi";
+import { useLang } from "../i18n";
 
 // ── 1 · HERO ──────────────────────────────────────────────────
 // Remi entra a molla, fa un "saluto" (rimbalzo + inclinazione) e
@@ -77,6 +78,12 @@ export const SceneHero: React.FC = () => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
+  const L = useLang();
+  const T = ({
+    it: { greet: "Ciao, sono ", sub: "l'agente che vive sul tuo dispositivo." },
+    en: { greet: "Hi, I'm ", sub: "the agent that lives on your device." },
+  } as const)[L];
+
   // entrata a molla di Remi
   const pop = usePop(2);
   // apparizione contorno (anello + particelle) leggermente ritardata
@@ -128,10 +135,10 @@ export const SceneHero: React.FC = () => {
       </div>
 
       <div style={{ ...h, fontFamily: sans, fontWeight: 800, fontSize: 118, color: C.ink, letterSpacing: "-0.045em", lineHeight: 1 }}>
-        Ciao, sono <span style={{ color: C.teal }}>Remi</span>.
+        {T.greet}<span style={{ color: C.teal }}>Remi</span>.
       </div>
       <div style={{ ...s, marginTop: 22, fontFamily: sans, fontWeight: 400, fontSize: 36, color: C.muted, letterSpacing: "-0.01em" }}>
-        l'agente che vive sul tuo dispositivo.
+        {T.sub}
       </div>
       <div style={{ ...holyn, marginTop: 40, display: "flex", alignItems: "center", gap: 12 }}>
         <HolynMark size={26} />

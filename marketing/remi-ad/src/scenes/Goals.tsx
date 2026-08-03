@@ -4,15 +4,12 @@ import { C, mono, sans } from "../theme";
 import { Remi } from "../Remi";
 import { useMockup3D } from "../ui";
 import { ri, SectionHead, Bar } from "../kit";
+import { useLang } from "../i18n";
 
 // ── 6 · OBIETTIVI (autonomia a lungo raggio) ─────────────────
 // Le barre avanzano fluide mentre Remi DORME: "lavora per te anche
 // mentre dormi". Atmosfera notturna/ambient, Zzz che salgono.
-const GOALS = [
-  { t: "Inbox sempre a zero", p: 1.0 },
-  { t: "Report mensile pronto in tempo", p: 0.72 },
-  { t: "Backup settimanale garantito", p: 0.46 },
-];
+const GOALS_P = [1.0, 0.72, 0.46];
 
 // stelle statiche pseudo-casuali (seed fisso, niente Math.random a runtime)
 const STARS = Array.from({ length: 26 }, (_, i) => {
@@ -29,6 +26,39 @@ const STARS = Array.from({ length: 26 }, (_, i) => {
 export const SceneGoals: React.FC = () => {
   const frame = useCurrentFrame();
   const t = frame / 30;
+
+  const L = useLang();
+  const T = ({
+    it: {
+      num: "06 / Obiettivi",
+      title: (
+        <>
+          Insegue i tuoi
+          <br />
+          obiettivi.
+        </>
+      ),
+      sub: "Progetti a lungo raggio che porta avanti da solo, anche mentre dormi.",
+      goals: [
+        "Inbox sempre a zero",
+        "Report mensile pronto in tempo",
+        "Backup settimanale garantito",
+      ],
+      sleep: "…mentre dormi",
+    },
+    en: {
+      num: "04 / Goals",
+      title: <>Chases your goals.</>,
+      sub: "Ongoing projects it moves forward on its own, even while you sleep.",
+      goals: [
+        "Inbox always at zero",
+        "Monthly report ready on time",
+        "Weekly backup guaranteed",
+      ],
+      sleep: "…while you sleep",
+    },
+  } as const)[L];
+  const GOALS = GOALS_P.map((p, i) => ({ t: T.goals[i], p }));
 
   // respiro lento del sonno per il gruppo Remi
   const breath = Math.sin(t * 0.9) * 0.5 + 0.5; // 0..1
@@ -89,11 +119,7 @@ export const SceneGoals: React.FC = () => {
         }}
       />
 
-      <SectionHead
-        num="06 / Obiettivi"
-        title={<>Insegue i tuoi<br />obiettivi.</>}
-        sub="Progetti a lungo raggio che porta avanti da solo, anche mentre dormi."
-      />
+      <SectionHead num={T.num} title={T.title} sub={T.sub} />
 
       {/* barre di avanzamento */}
       <div
@@ -208,7 +234,7 @@ export const SceneGoals: React.FC = () => {
             letterSpacing: "0.04em",
           }}
         >
-          …mentre dormi
+          {T.sleep}
         </div>
       </div>
     </AbsoluteFill>

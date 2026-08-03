@@ -4,16 +4,13 @@ import { C, mono, sans } from "../theme";
 import { Remi } from "../Remi";
 import { useMockup3D } from "../ui";
 import { ri, SectionHeadV, Bar } from "../kit";
+import { useLang } from "../i18n";
 
 // ── 04 · OBIETTIVI (VERTICALE 9:16) ──────────────────────────
 // Impilato: titolo in alto (SectionHeadV), le 3 barre di avanzamento
 // centrate a tutta larghezza (i numeri % contano su), Remi SOTTO che
 // DORME con Zzz che salgono, in atmosfera notturna (stelle + luna).
-const GOALS = [
-  { t: "Inbox sempre a zero", p: 1.0 },
-  { t: "Report mensile pronto in tempo", p: 0.72 },
-  { t: "Backup settimanale garantito", p: 0.46 },
-];
+const GOALS_P = [1.0, 0.72, 0.46];
 
 // stelle statiche pseudo-casuali (seed fisso, niente Math.random a runtime)
 const STARS = Array.from({ length: 30 }, (_, i) => {
@@ -30,6 +27,33 @@ const STARS = Array.from({ length: 30 }, (_, i) => {
 export const SceneGoalsV: React.FC = () => {
   const frame = useCurrentFrame();
   const t = frame / 30;
+
+  const L = useLang();
+  const T = ({
+    it: {
+      num: "04 / Obiettivi",
+      title: <>Insegue i tuoi obiettivi.</>,
+      sub: "…anche mentre dormi.",
+      goals: [
+        "Inbox sempre a zero",
+        "Report mensile pronto in tempo",
+        "Backup settimanale garantito",
+      ],
+      sleep: "…mentre dormi",
+    },
+    en: {
+      num: "04 / Goals",
+      title: <>Chases your goals.</>,
+      sub: "…even while you sleep.",
+      goals: [
+        "Inbox always at zero",
+        "Monthly report ready on time",
+        "Weekly backup guaranteed",
+      ],
+      sleep: "…while you sleep",
+    },
+  } as const)[L];
+  const GOALS = GOALS_P.map((p, i) => ({ t: T.goals[i], p }));
 
   // respiro lento del sonno per il gruppo Remi
   const breath = Math.sin(t * 0.9) * 0.5 + 0.5; // 0..1
@@ -91,11 +115,7 @@ export const SceneGoalsV: React.FC = () => {
         }}
       />
 
-      <SectionHeadV
-        num="04 / Obiettivi"
-        title={<>Insegue i tuoi obiettivi.</>}
-        sub="…anche mentre dormi."
-      />
+      <SectionHeadV num={T.num} title={T.title} sub={T.sub} />
 
       {/* ── barre di avanzamento, centrate a tutta larghezza ── */}
       <div
@@ -231,7 +251,7 @@ export const SceneGoalsV: React.FC = () => {
             letterSpacing: "0.04em",
           }}
         >
-          …mentre dormi
+          {T.sleep}
         </div>
       </div>
     </AbsoluteFill>
