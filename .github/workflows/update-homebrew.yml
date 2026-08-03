@@ -1,0 +1,67 @@
+name: Update Homebrew tap
+
+# Quando una Release viene PUBBLICATA, aggiorna il cask nel tap renato-milano/homebrew-remi:
+# scarica i due .dmg mac, calcola gli sha256, aggiorna version + sha256 e fa push.
+# Richiede il secret HOMEBREW_TAP_TOKEN (PAT con write sul repo homebrew-remi).
+# Senza il secret il job si salta senza errori.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag della release (es. v0.1.0)"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  update-cask:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Risolvi tag e versione
+        id: v
+        run: |
+          TAG="${{ github.event.release.tag_name || github.event.inputs.tag }}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Scarica i DMG mac dalla release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release download "${{ steps.v.outputs.tag }}" --repo "${{ github.repository }}" --pattern "Remi-mac-*.dmg" --dir .
+
+      - name: Calcola sha256
+        id: sha
+        run: |
+          echo "arm=$(shasum -a 256 Remi-mac-arm64.dmg | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          echo "intel=$(shasum -a 256 Remi-mac-x64.dmg | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: Aggiorna il cask nel tap
+        env:
+          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          VERSION: ${{ steps.v.outputs.version }}
+          ARM: ${{ steps.sha.outputs.arm }}
+          INTEL: ${{ steps.sha.outputs.intel }}
+        run: |
+          if [ -z "$TAP_TOKEN" ]; then
+            echo "HOMEBREW_TAP_TOKEN mancante → salto l'aggiornamento del tap."
+            exit 0
+          fi
+          git clone "https://x-access-token:${TAP_TOKEN}@github.com/renato-milano/homebrew-remi.git" tap
+          cd tap
+          sed -i -E "s/^(  version \").*(\")/\1${VERSION}\2/" Casks/remi.rb
+          sed -i -E "s/(sha256 arm:[[:space:]]*\").*(\")/\1${ARM}\2/" Casks/remi.rb
+          # ancora la riga sha 'intel:' a inizio riga: NON toccare 'arch …, intel: "x64"'
+          sed -i -E "s/^([[:space:]]*intel:[[:space:]]*\").*(\")/\1${INTEL}\2/" Casks/remi.rb
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Casks/remi.rb
+          if git diff --cached --quiet; then
+            echo "Nessuna modifica al cask."
+          else
+            git commit -m "cask: Remi ${VERSION}"
+            git push
+            echo "Cask aggiornato a ${VERSION}."
+          fi

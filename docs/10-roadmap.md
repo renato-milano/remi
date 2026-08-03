@@ -54,6 +54,12 @@ Il nucleo funzionante, senza UI grafica. **Piano dettagliato ed eseguibile:** [1
 - Portabilità computer-use oltre macOS ([05](05-device-interaction.md)).
 - Eventuale registry pubblico di skill.
 
+## Fase 6 — Packaging e distribuzione ✅
+
+Installer a doppio clic per macOS/Windows/Linux (electron-builder), release
+automatiche via CI su GitHub Releases, canale Homebrew per macOS. Dettagli:
+[12 — Packaging e Distribuzione](12-packaging-and-distribution.md).
+
 ## Principio di sequenziamento
 
 Ogni fase produce qualcosa di **utilizzabile** e costruisce sulla precedente. La memoria cresce di sofisticazione in parallelo (base in Fase 1, completa in Fase 3) perché è il differenziatore centrale del progetto ([03](03-memory-architecture.md)).

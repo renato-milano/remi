@@ -174,6 +174,7 @@ Architecture docs live under [`docs/`](docs/) (in Italian):
 | 09 | [Tech Stack & Repo Layout](docs/09-tech-stack-and-repo-layout.md) |
 | 10 | [Roadmap](docs/10-roadmap.md) |
 | 11 | [MVP Implementation Plan](docs/11-mvp-implementation-plan.md) |
+| 12 | [Packaging & Distribution](docs/12-packaging-and-distribution.md) |
 | — | [Architecture Decision Records](docs/adr/) |
 
 ## Security
