@@ -96,8 +96,8 @@ Download `Remi-win-x64.exe` and run it — it's a **one-click, per-user** instal
 ### Linux
 
 Download either:
-- **AppImage** — `chmod +x Remi-linux-x64.AppImage` then run it.
-- **.deb** (Debian/Ubuntu) — `sudo dpkg -i Remi-linux-x64.deb`.
+- **AppImage** — `chmod +x Remi-linux.AppImage` then run it.
+- **.deb** (Debian/Ubuntu) — `sudo dpkg -i Remi-linux.deb`.
 
 Requires an **X11** session for computer-use. Install **Google Chrome** for the browser features.
 

@@ -73,7 +73,8 @@ linux:
     - AppImage
     - deb
   category: Utility
-  artifactName: "Remi-linux-${arch}.${ext}"
+  # linux solo x64: nome fisso senza arch (${arch} darebbe x86_64/amd64 diversi per target)
+  artifactName: "Remi-linux.${ext}"
   icon: build/icon.png
 
 # Firma condizionale via env (vedi build/notarize.cjs). Senza credenziali → build non firmata.
