@@ -15,4 +15,12 @@ Componente **isolato e distribuibile a parte**: un'estensione Chrome (Manifest V
 > Nota: Chrome mostrerà un avviso "…è in fase di debug". È normale (è `chrome.debugger`). Scollega dall'icona per farlo sparire.
 
 ## Distribuzione
-Per gli utenti finali si pubblica sul Chrome Web Store (o si distribuisce come `.crx`/cartella). Resta un pacchetto a sé, versionato indipendentemente dal resto di OpenMate.
+- **Oggi (zip + carica non pacchettizzata):** ogni Release allega
+  `remi-chrome-extension.zip` — link stabile
+  `https://github.com/renato-milano/remi/releases/latest/download/remi-chrome-extension.zip`.
+  L'utente lo scompatta e fa "Carica non pacchettizzata" sulla cartella
+  `Remi Browser Extension`. Lo zip è generato dal job `extension` in
+  `.github/workflows/release.yml`. Adatto a tester/utenti che accettano la
+  Modalità sviluppatore (Chrome tiene un banner "in debug" e ogni tanto avvisa).
+- **Domani (un clic):** pubblicazione sul **Chrome Web Store** → "Aggiungi a
+  Chrome" (serve account dev $5 + review). Unica via senza Modalità sviluppatore.

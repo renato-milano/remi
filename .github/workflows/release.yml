@@ -61,3 +61,21 @@ jobs:
           # --- Firma Windows (opzionali) ---
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+
+  # Allega alla Release lo zip dell'estensione Chrome (da caricare non pacchettizzata).
+  extension:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Zip estensione
+        run: |
+          mkdir -p "Remi Browser Extension"
+          cp apps/extension/manifest.json apps/extension/background.js "Remi Browser Extension"/
+          zip -r remi-chrome-extension.zip "Remi Browser Extension"
+      - name: Carica sulla Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=$(node -p "require('./apps/ui/package.json').version")
+          gh release upload "v$VERSION" remi-chrome-extension.zip --repo "${{ github.repository }}" --clobber

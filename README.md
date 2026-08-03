@@ -102,6 +102,17 @@ Download either:
 
 Requires an **X11** session for computer-use. Install **Google Chrome** for the browser features.
 
+### Browser extension (optional)
+
+Only needed for the **"live Chrome" browser mode** (drive your real Chrome with your logins). The autonomous browser mode needs nothing. It isn't on the Chrome Web Store yet, so install it unpacked:
+
+1. Download **`remi-chrome-extension.zip`** from the [latest release](https://github.com/renato-milano/remi/releases/latest/download/remi-chrome-extension.zip) and unzip it (keep the folder somewhere permanent).
+2. Open `chrome://extensions`, enable **Developer mode** (top-right).
+3. Click **Load unpacked** and select the unzipped **`Remi Browser Extension`** folder.
+4. In Remi → Settings → Browser control, choose **Extension (live Chrome)** mode. Click the extension icon on the tab you want Remi to drive.
+
+> Chrome keeps developer-mode extensions and shows a "…is being debugged" banner while active — that's normal (`chrome.debugger`). A one-click Web Store version is planned.
+
 ### First run
 
 Onboarding walks you through:
