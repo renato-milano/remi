@@ -1,0 +1,51 @@
+name: Release
+
+# Builda gli installer per macOS/Windows/Linux e li pubblica sulla Release al tag v*.
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write   # per pubblicare gli asset sulla Release
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.5.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # Install pulito → con node-linker=hoisted (.npmrc) electron-builder trova
+      # un node_modules flat da impacchettare e ricompilare per l'ABI di Electron.
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm build
+
+      # Bundle del daemon + electron-builder (targeta l'OS host) → pubblica sulla Release.
+      - name: Build & publish installer
+        run: pnpm --filter @openmate/ui release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # --- Firma macOS (opzionali: assenti → build non firmata) ---
+          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # --- Firma Windows (opzionali) ---
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}

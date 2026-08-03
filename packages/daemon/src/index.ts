@@ -25,6 +25,9 @@ export async function main(): Promise<void> {
   console.log(`OpenMate daemon in ascolto su http://127.0.0.1:${port}`);
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+// Auto-run solo se eseguito direttamente come ESM (dev: `node dist/index.js`).
+// Nel bundle esbuild CJS `import.meta.url` è undefined: il typeof lo neutralizza
+// così questo blocco non parte (l'avvio lì lo fa entry.ts). Vedi entry.ts.
+if (typeof import.meta.url === 'string' && process.argv[1] === fileURLToPath(import.meta.url)) {
   void main();
 }

@@ -18,3 +18,10 @@ openmate.db-*
 
 # Memoria di progetto per cartella (locale, generata dall'agente)
 .remi/
+
+# Packaging (electron-builder)
+apps/ui/build/daemon/
+apps/ui/dist/
+
+# Storage local-first del daemon se avviato dalla root del repo (test/dev)
+/memory/

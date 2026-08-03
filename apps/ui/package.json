@@ -1,15 +1,33 @@
 {
   "name": "@openmate/ui",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
-  "description": "Overlay tamagotchi (Electron) — companion 'senza finestra'",
+  "description": "Remi — overlay tamagotchi (Electron), companion 'senza finestra'",
+  "author": "Holyn <tools.holyn@gmail.com>",
+  "homepage": "https://github.com/renato-milano/remi",
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "electron .",
     "start": "electron .",
-    "demo": "node demo/demo-daemon.mjs"
+    "demo": "node demo/demo-daemon.mjs",
+    "bundle:daemon": "esbuild ../../packages/daemon/src/entry.ts --bundle --platform=node --format=cjs --target=node22 --outfile=build/daemon/daemon.cjs --external:better-sqlite3 --external:@nut-tree-fork/nut-js --external:@nut-tree-fork/* --external:playwright-core --external:electron --sourcemap",
+    "icons": "png2icons build/icon.png build/icon -allp -i",
+    "dist:mac": "pnpm run bundle:daemon && electron-builder --mac",
+    "dist:win": "pnpm run bundle:daemon && electron-builder --win",
+    "dist:linux": "pnpm run bundle:daemon && electron-builder --linux",
+    "dist": "pnpm run bundle:daemon && electron-builder -mwl",
+    "release": "pnpm run bundle:daemon && electron-builder --publish always"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.2.0",
+    "@nut-tree-fork/nut-js": "^4.2.6",
+    "playwright-core": "^1.48.0"
   },
   "devDependencies": {
-    "electron": "^33.0.0"
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8",
+    "@electron/notarize": "^2.5.0",
+    "esbuild": "^0.24.0",
+    "png2icons": "^2.0.1"
   }
 }

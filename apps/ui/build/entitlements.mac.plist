@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- V8 JIT sotto hardened runtime -->
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
+  <!-- Carica i .node auto-compilati (better-sqlite3, libnut): senza questo,
+       le build notarizzate crashano al primo require di un modulo nativo. -->
+  <key>com.apple.security.cs.disable-library-validation</key>
+  <true/>
+  <!-- Passiamo ELECTRON_RUN_AS_NODE / NODE_PATH al processo figlio (daemon). -->
+  <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+  <true/>
+  <!-- osascript per l'albero di accessibilità (computer.list_elements). -->
+  <key>com.apple.security.automation.apple-events</key>
+  <true/>
+</dict>
+</plist>

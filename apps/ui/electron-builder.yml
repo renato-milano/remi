@@ -1,0 +1,80 @@
+appId: com.holyn.remi
+productName: Remi
+copyright: © 2026 Holyn
+electronVersion: 33.4.11        # pin: i nativi vengono ricompilati per questo ABI
+
+directories:
+  output: dist                  # apps/ui/dist -> .dmg/.exe/.AppImage
+  buildResources: build         # icone + entitlements + notarize.cjs
+
+# File dentro l'app. Includiamo node_modules (deps di produzione del daemon):
+# i nativi e i loro helper pure-JS (es. `bindings`) devono stare insieme.
+files:
+  - electron/**
+  - renderer/**
+  - assets/**
+  - package.json
+  - node_modules/**
+  - "!**/*.map"
+  - "!build/**"
+
+# Il daemon (bundle esbuild) viaggia FUORI dall'asar: è un processo figlio.
+extraResources:
+  - from: build/daemon
+    to: daemon
+    filter: ["**/*.cjs"]
+
+asar: true
+# I nativi (.node) non si caricano dentro l'asar e il daemon li risolve via
+# NODE_PATH da disco: spacchettiamo l'intero node_modules così ogni nativo sta
+# insieme ai suoi helper pure-JS (es. `bindings` richiesto da better-sqlite3).
+asarUnpack:
+  - "node_modules/**"
+
+npmRebuild: true                # ricompila i nativi per l'ABI di Electron
+
+mac:
+  category: public.app-category.productivity
+  target:
+    - target: dmg
+      arch: [arm64, x64]        # due DMG separati (niente universal: .node dual-arch fragile)
+  icon: build/icon.icns
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  extendInfo:
+    NSScreenCaptureUsageDescription: "Remi cattura lo schermo per assisterti con quello che vedi."
+    NSAppleEventsUsageDescription: "Remi usa l'automazione di sistema per leggere gli elementi sullo schermo e agire per te."
+    NSAccessibilityUsageDescription: "Remi usa l'accessibilità per muovere il mouse e digitare al posto tuo."
+
+dmg:
+  title: "Remi ${version}"
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  icon: build/icon.ico
+
+nsis:
+  oneClick: true                # installazione a un clic (utenti non tecnici)
+  perMachine: false             # per-utente: nessun prompt admin
+  allowToChangeInstallationDirectory: false
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+
+linux:
+  target:
+    - AppImage
+    - deb
+  category: Utility
+  icon: build/icon.png
+
+# Firma condizionale via env (vedi build/notarize.cjs). Senza credenziali → build non firmata.
+afterSign: build/notarize.cjs
+
+publish:
+  provider: github
+  owner: renato-milano
+  repo: remi

@@ -58,6 +58,21 @@ Monorepo (pnpm + Turborepo, TypeScript, Node 22). The daemon is the single state
 | `apps/extension` | Chrome MV3 extension (drive your live Chrome) |
 | `apps/evals` | End-to-end evaluation harness (real tokens) |
 
+## Install
+
+Download the latest installer from [**Releases**](https://github.com/renato-milano/remi/releases).
+
+**macOS** — install via Homebrew (opens cleanly; the app is not yet notarized):
+```sh
+brew tap renato-milano/remi
+brew install --cask remi
+```
+> Prefer the `.dmg` directly? Because the app isn't code-signed yet, macOS Gatekeeper will block it on first open — go to **System Settings → Privacy & Security → Open Anyway**. The Homebrew cask handles this for you.
+
+**Windows** — download `Remi-Setup-<version>.exe` and run it (one-click, per-user, no admin). Unsigned for now, so SmartScreen may warn: **More info → Run anyway**.
+
+**Linux** — download the `.AppImage` (`chmod +x` and run) or the `.deb` (`sudo dpkg -i`). Requires an X11 session for computer-use. Google Chrome must be installed for the browser features.
+
 ## Quick start (dev)
 
 Requires **Node 22** and **pnpm**.
@@ -79,7 +94,7 @@ pnpm typecheck   # type-check all packages
 
 ## Status
 
-**Alpha.** The core is working end-to-end: memory, heartbeat autonomy, shell/file/code tools, computer-use, browser control, scheduling, and multi-provider inference including Claude subscription login. Packaging & code-signing for a clean end-user install are still in progress; in dev, macOS permissions are attributed to the launching terminal.
+**Alpha.** The core is working end-to-end: memory, heartbeat autonomy, shell/file/code tools, computer-use, browser control, scheduling, and multi-provider inference including Claude subscription login. Installers for macOS, Windows and Linux are produced by CI (see [Install](#install)); code-signing/notarization is wired but not yet enabled, so the current builds are unsigned.
 
 ## Documentation
 

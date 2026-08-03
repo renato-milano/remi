@@ -37,7 +37,18 @@ const userData = app.getPath('userData');
 const configFile = path.join(userData, 'openmate.config.json');
 const keyFile = path.join(userData, 'openmate.key');
 const storageRoot = path.join(userData, 'data');
-const daemonEntry = path.join(__dirname, '..', '..', '..', 'packages', 'daemon', 'dist', 'index.js');
+
+// Il daemon è un processo Node separato. In dev restiamo sull'ESM del monorepo
+// spawnato con `node` di sistema (ABI dei nativi = node dev). In pacchetto usiamo
+// il bundle esbuild eseguito dal binario Electron in modalità Node
+// (ELECTRON_RUN_AS_NODE), con NODE_PATH ai nativi ricompilati e spacchettati.
+const isPackaged = app.isPackaged;
+const daemonEntry = isPackaged
+  ? path.join(process.resourcesPath, 'daemon', 'daemon.cjs')
+  : path.join(__dirname, '..', '..', '..', 'packages', 'daemon', 'dist', 'index.js');
+const nativeModulesDir = isPackaged
+  ? path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules')
+  : path.join(__dirname, '..', '..', '..', 'node_modules');
 
 /* ---------------- persistenza config + chiave (safeStorage) ---------------- */
 function isOnboarded() {
@@ -211,17 +222,22 @@ function startShotServer() {
 function startDaemon() {
   if (EXTERNAL || daemonProc) return;
   startShotServer();
-  const node = process.env.OPENMATE_NODE || 'node';
+  // Pacchetto: binario Electron come Node. Dev: `node` di sistema (override OPENMATE_NODE).
+  const node = isPackaged ? process.execPath : process.env.OPENMATE_NODE || 'node';
   // In modalità abbonamento il daemon legge il token da Claude Code: niente API key.
   const usesSubscription = readConfig().provider?.auth === 'claude-subscription';
   daemonProc = spawn(node, [daemonEntry], {
     env: {
       ...process.env,
+      // Solo in pacchetto: esegui il binario Electron come Node puro e risolvi i
+      // moduli nativi (better-sqlite3, @nut-tree-fork/*, playwright-core) via NODE_PATH.
+      ...(isPackaged ? { ELECTRON_RUN_AS_NODE: '1', NODE_PATH: nativeModulesDir } : {}),
       OPENMATE_CONFIG: configFile,
       OPENMATE_API_KEY: usesSubscription ? '' : loadKey(),
       OPENMATE_PORT: String(PORT),
       OPENMATE_SHOT_URL: `http://127.0.0.1:${SHOT_PORT}/shot`,
     },
+    cwd: path.dirname(daemonEntry),
     stdio: 'inherit',
   });
   daemonProc.on('exit', (code) => {
