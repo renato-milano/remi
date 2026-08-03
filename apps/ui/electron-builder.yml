@@ -38,6 +38,9 @@ mac:
   target:
     - target: dmg
       arch: [arm64, x64]        # due DMG separati (niente universal: .node dual-arch fragile)
+  # Nome fisso (senza versione) → URL stabili per la landing:
+  # github.com/renato-milano/remi/releases/latest/download/Remi-mac-arm64.dmg
+  artifactName: "Remi-mac-${arch}.${ext}"
   icon: build/icon.icns
   hardenedRuntime: true
   gatekeeperAssess: false
@@ -55,6 +58,7 @@ win:
   target:
     - target: nsis
       arch: [x64]
+  artifactName: "Remi-win-${arch}.${ext}"
   icon: build/icon.ico
 
 nsis:
@@ -69,6 +73,7 @@ linux:
     - AppImage
     - deb
   category: Utility
+  artifactName: "Remi-linux-${arch}.${ext}"
   icon: build/icon.png
 
 # Firma condizionale via env (vedi build/notarize.cjs). Senza credenziali → build non firmata.

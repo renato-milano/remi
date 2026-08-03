@@ -1,0 +1,47 @@
+<!--
+  Widget di download per la landing (holyn.it).
+  I file NON sono ospitati qui: puntano a GitHub Releases via gli URL stabili
+  "releases/latest/download/<nome-fisso>" (redirect all'ultima release pubblicata).
+  Nessuna chiamata API → nessun rate limit. Copia/adatta stile a piacere.
+
+  Nota macOS: dal browser non si distingue Apple Silicon da Intel in modo
+  affidabile → default Apple Silicon (arm64) + link "Mac Intel" secondario.
+-->
+<div id="remi-download" class="remi-dl">
+  <a id="remi-dl-primary" class="remi-dl-btn" href="#" rel="noopener">Scarica Remi</a>
+  <div class="remi-dl-alt">
+    <a data-dl="mac-arm64" href="#">macOS (Apple Silicon)</a> ·
+    <a data-dl="mac-x64" href="#">macOS (Intel)</a> ·
+    <a data-dl="win" href="#">Windows</a> ·
+    <a data-dl="linux" href="#">Linux (.AppImage)</a>
+  </div>
+</div>
+
+<script>
+(function () {
+  var BASE = "https://github.com/renato-milano/remi/releases/latest/download/";
+  var FILES = {
+    "mac-arm64": "Remi-mac-arm64.dmg",
+    "mac-x64":   "Remi-mac-x64.dmg",
+    "win":       "Remi-win-x64.exe",
+    "linux":     "Remi-linux-x64.AppImage",
+  };
+  var url = function (k) { return BASE + FILES[k]; };
+
+  // rileva l'OS per il bottone principale
+  var ua = navigator.userAgent;
+  var os = /Windows/i.test(ua) ? "win"
+         : (/Mac/i.test(ua) ? "mac-arm64"        // default Apple Silicon
+         : (/Linux/i.test(ua) && !/Android/i.test(ua) ? "linux" : "mac-arm64"));
+  var label = { "win": "Scarica per Windows", "mac-arm64": "Scarica per macOS", "linux": "Scarica per Linux" }[os];
+
+  var primary = document.getElementById("remi-dl-primary");
+  primary.href = url(os);
+  primary.textContent = label;
+
+  // link espliciti per ogni piattaforma
+  document.querySelectorAll("#remi-download [data-dl]").forEach(function (a) {
+    a.href = url(a.getAttribute("data-dl"));
+  });
+})();
+</script>

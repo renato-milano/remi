@@ -78,7 +78,7 @@ brew tap renato-milano/remi
 brew install --cask remi
 ```
 
-**Or the `.dmg` directly** — download `Remi-<version>-arm64.dmg` (Apple Silicon) or `Remi-<version>-x64.dmg` (Intel), open it, and drag **Remi** into **Applications**. On first launch macOS will say the app "cannot be opened" — this is expected for an unsigned app:
+**Or the `.dmg` directly** — download `Remi-mac-arm64.dmg` (Apple Silicon) or `Remi-mac-x64.dmg` (Intel), open it, and drag **Remi** into **Applications**. On first launch macOS will say the app "cannot be opened" — this is expected for an unsigned app:
 1. Open **System Settings → Privacy & Security**.
 2. Scroll to the security notice about Remi and click **Open Anyway**.
 3. Confirm once more. Subsequent launches open normally.
@@ -91,13 +91,13 @@ Remi prompts for these when needed; you can also grant them upfront in Settings.
 
 ### Windows
 
-Download `Remi-Setup-<version>.exe` and run it — it's a **one-click, per-user** install (no admin rights). Because it's unsigned, **SmartScreen** may warn: click **More info → Run anyway**. Remi then appears in the Start menu and on the desktop.
+Download `Remi-win-x64.exe` and run it — it's a **one-click, per-user** install (no admin rights). Because it's unsigned, **SmartScreen** may warn: click **More info → Run anyway**. Remi then appears in the Start menu and on the desktop.
 
 ### Linux
 
 Download either:
-- **AppImage** — `chmod +x Remi-<version>.AppImage` then run it.
-- **.deb** (Debian/Ubuntu) — `sudo dpkg -i remi_<version>_amd64.deb`.
+- **AppImage** — `chmod +x Remi-linux-x64.AppImage` then run it.
+- **.deb** (Debian/Ubuntu) — `sudo dpkg -i Remi-linux-x64.deb`.
 
 Requires an **X11** session for computer-use. Install **Google Chrome** for the browser features.
 

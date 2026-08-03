@@ -6,7 +6,7 @@ cask "remi" do
   sha256 arm:   "REPLACE_WITH_ARM64_DMG_SHA256",
          intel: "REPLACE_WITH_X64_DMG_SHA256"
 
-  url "https://github.com/renato-milano/remi/releases/download/v#{version}/Remi-#{version}-#{arch}.dmg",
+  url "https://github.com/renato-milano/remi/releases/download/v#{version}/Remi-mac-#{arch}.dmg",
       verified: "github.com/renato-milano/remi/"
   name "Remi"
   desc "Compagno AI personale local-first e autonomo"
