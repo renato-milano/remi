@@ -11,10 +11,22 @@ export const ri = (frame: number, a: number, b: number, from: number, to: number
 export const SectionHead: React.FC<{ num: string; title: React.ReactNode; sub?: string }> = ({ num, title, sub }) => {
   const k = useRise(2, 8), t = useRise(8, 10), s = useRise(16, 10);
   return (
-    <div style={{ position: "absolute", top: 96, left: 110 }}>
+    <div style={{ position: "absolute", top: 116, left: 110 }}>
       <div style={k}><Kicker>{num}</Kicker></div>
-      <div style={{ ...t, fontFamily: sans, fontWeight: 700, fontSize: 76, color: C.ink, letterSpacing: "-0.03em", marginTop: 12, lineHeight: 1.0 }}>{title}</div>
-      {sub && <div style={{ ...s, fontFamily: sans, fontWeight: 400, fontSize: 28, color: C.muted, marginTop: 16, maxWidth: 640, letterSpacing: "-0.01em" }}>{sub}</div>}
+      <div style={{ ...t, fontFamily: sans, fontWeight: 700, fontSize: 94, color: C.ink, letterSpacing: "-0.03em", marginTop: 14, lineHeight: 1.0 }}>{title}</div>
+      {sub && <div style={{ ...s, fontFamily: sans, fontWeight: 400, fontSize: 36, color: C.muted, marginTop: 18, maxWidth: 780, letterSpacing: "-0.01em", lineHeight: 1.35 }}>{sub}</div>}
+    </div>
+  );
+};
+
+// intestazione di sezione per il formato VERTICALE (in alto, largo)
+export const SectionHeadV: React.FC<{ num: string; title: React.ReactNode; sub?: string }> = ({ num, title, sub }) => {
+  const k = useRise(2, 8), t = useRise(8, 10), s = useRise(16, 10);
+  return (
+    <div style={{ position: "absolute", top: 150, left: 80, right: 80 }}>
+      <div style={k}><Kicker>{num}</Kicker></div>
+      <div style={{ ...t, fontFamily: sans, fontWeight: 700, fontSize: 74, color: C.ink, letterSpacing: "-0.03em", marginTop: 16, lineHeight: 1.03 }}>{title}</div>
+      {sub && <div style={{ ...s, fontFamily: sans, fontWeight: 400, fontSize: 32, color: C.muted, marginTop: 18, maxWidth: 900, lineHeight: 1.35 }}>{sub}</div>}
     </div>
   );
 };

@@ -4,29 +4,29 @@ import { Background, Scene, HolynMark } from "./ui";
 import { C, mono } from "./theme";
 import { SceneHero } from "./scenes/Hero";
 import { SceneStatement } from "./scenes/Statement";
+import { SceneAsk } from "./scenes/Ask";
 import { SceneDesktop } from "./scenes/Desktop";
 import { SceneFolders } from "./scenes/Folders";
 import { SceneTasks } from "./scenes/Tasks";
 import { SceneGoals } from "./scenes/Goals";
 import { SceneMemory } from "./scenes/Memory";
 import { SceneLoop } from "./scenes/Loop";
-import { SceneApproval } from "./scenes/Approval";
-import { SceneLocalFirst } from "./scenes/LocalFirst";
+import { SceneCompatible } from "./scenes/Compatible";
 import { SceneCTA } from "./scenes/CTA";
 
 // id = usato anche per registrare una composizione singola per scena
 export const SCENES = [
-  { id: "Hero", C: SceneHero, d: 78 },
-  { id: "Statement", C: SceneStatement, d: 54 },
-  { id: "Desktop", C: SceneDesktop, d: 120 },
-  { id: "Folders", C: SceneFolders, d: 102 },
-  { id: "Tasks", C: SceneTasks, d: 108 },
-  { id: "Goals", C: SceneGoals, d: 114 },
-  { id: "Memory", C: SceneMemory, d: 84 },
-  { id: "Loop", C: SceneLoop, d: 96 },
-  { id: "Approval", C: SceneApproval, d: 96 },
-  { id: "LocalFirst", C: SceneLocalFirst, d: 60 },
-  { id: "CTA", C: SceneCTA, d: 108 },
+  { id: "Hero", C: SceneHero, d: 90 },
+  { id: "Statement", C: SceneStatement, d: 84 },
+  { id: "Ask", C: SceneAsk, d: 186 },
+  { id: "Desktop", C: SceneDesktop, d: 240 },
+  { id: "Folders", C: SceneFolders, d: 114 },
+  { id: "Tasks", C: SceneTasks, d: 126 },
+  { id: "Goals", C: SceneGoals, d: 126 },
+  { id: "Memory", C: SceneMemory, d: 132 },
+  { id: "Loop", C: SceneLoop, d: 120 },
+  { id: "Compatible", C: SceneCompatible, d: 126 },
+  { id: "CTA", C: SceneCTA, d: 120 },
 ] as const;
 
 export const AD_DURATION = SCENES.reduce((a, s) => a + s.d, 0);

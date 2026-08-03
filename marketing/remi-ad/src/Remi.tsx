@@ -317,10 +317,11 @@ const Glyphs: React.FC<{ expr: Expr; eye: string; t: number }> = ({ expr, eye, t
         </>
       );
     case "surprised":
+      // occhi ben aperti (arrotondati), non più due palline: sguardo attento
       return (
         <>
-          <circle cx="78" cy="88" r="12" style={g} />
-          <circle cx="122" cy="88" r="12" style={g} />
+          <rect x="67" y="76" width="22" height="26" rx="11" style={g} />
+          <rect x="111" y="76" width="22" height="26" rx="11" style={g} />
         </>
       );
     case "confused":
@@ -350,14 +351,12 @@ const Glyphs: React.FC<{ expr: Expr; eye: string; t: number }> = ({ expr, eye, t
       );
     }
     case "excited": {
-      // super gasato: occhioni spalancati che rimbalzano
-      const b = 1 + 0.12 * Math.max(0, Math.sin(t * 9));
+      // gasato ma pulito: occhi sorridenti che rimbalzano (niente pupille nere)
+      const b = 1 + 0.1 * Math.max(0, Math.sin(t * 9));
       return (
-        <g style={{ scale: `${b}`, transformOrigin: "100px 88px", transformBox: "view-box" as never }}>
-          <circle cx="78" cy="88" r="13" style={g} />
-          <circle cx="122" cy="88" r="13" style={g} />
-          <circle cx="82" cy="84" r="3.4" style={{ fill: "#04120a" }} />
-          <circle cx="126" cy="84" r="3.4" style={{ fill: "#04120a" }} />
+        <g style={{ scale: `${b}`, transformOrigin: "100px 90px", transformBox: "view-box" as never }}>
+          <path d="M66 98 Q78 75 90 98" style={arc} />
+          <path d="M110 98 Q122 75 134 98" style={arc} />
         </g>
       );
     }

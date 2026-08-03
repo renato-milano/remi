@@ -1,5 +1,5 @@
 import React from "react";
-import { AbsoluteFill, useCurrentFrame, useVideoConfig, interpolate, spring } from "remotion";
+import { AbsoluteFill, useCurrentFrame, useVideoConfig, interpolate, spring, Easing } from "remotion";
 import { C, mono, sans } from "./theme";
 
 // ── Motion helpers ────────────────────────────────────────────
@@ -97,7 +97,7 @@ export const Chip: React.FC<{ children: React.ReactNode; accent?: string }> = ({
 );
 
 export const Kicker: React.FC<{ children: React.ReactNode; color?: string }> = ({ children, color }) => (
-  <div style={{ fontFamily: mono, fontSize: 22, letterSpacing: "0.28em", textTransform: "uppercase", color: color ?? C.teal }}>
+  <div style={{ fontFamily: mono, fontSize: 26, letterSpacing: "0.28em", textTransform: "uppercase", color: color ?? C.teal }}>
     {children}
   </div>
 );
@@ -107,9 +107,10 @@ export const Scene: React.FC<{ children: React.ReactNode; durationInFrames: numb
   children, durationInFrames, style,
 }) => {
   const frame = useCurrentFrame();
+  const d = durationInFrames;
   const opacity = interpolate(
     frame,
-    [0, 6, durationInFrames - 6, durationInFrames],
+    [0, 6, d - 6, d],
     [0, 1, 1, 0],
     { extrapolateLeft: "clamp", extrapolateRight: "clamp" }
   );
@@ -118,4 +119,42 @@ export const Scene: React.FC<{ children: React.ReactNode; durationInFrames: numb
       {children}
     </AbsoluteFill>
   );
+};
+
+// Zoom mirato SULLA box della feature (non su tutta la scena): entra a molla,
+// poi fa un lento push-in per portare il riquadro "più nel dettaglio".
+// Ritorna un fattore di scala da applicare al contenitore della feature.
+export const useZoomIn = (from = 2, amount = 0.12) => {
+  const frame = useCurrentFrame();
+  const { durationInFrames: d } = useVideoConfig();
+  const enter = interpolate(frame, [from, from + 16], [0.9, 1], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+    easing: Easing.bezier(0.16, 1, 0.3, 1),
+  });
+  const push = interpolate(frame, [from + 16, d - 8], [0, amount], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
+  return enter * (1 + push);
+};
+
+// Effetto "mockup 3D": la superficie della feature (finestra app, lista, card) è
+// inclinata in prospettiva ed effettua un lento scorrimento/rotazione mentre la
+// feature si anima. Ritorna una stringa `transform` da applicare al riquadro.
+export const useMockup3D = (from = 6, zoomAmount = 0.1, restRy = -7, base = 1) => {
+  const frame = useCurrentFrame();
+  const { durationInFrames: d } = useVideoConfig();
+  const clampE = { extrapolateLeft: "clamp" as const, extrapolateRight: "clamp" as const };
+  const ease = Easing.bezier(0.16, 1, 0.3, 1);
+  const p = interpolate(frame, [from, from + 22], [0, 1], { ...clampE, easing: ease });
+  const scale = base * (0.9 + p * 0.1) * (1 + interpolate(frame, [from + 22, d - 8], [0, zoomAmount], clampE));
+  const t = frame - from;
+  // entra ruotato → si assesta → "scorre" piano verso una posa più frontale, + micro-oscillazione viva
+  const ry =
+    interpolate(frame, [from, from + 22, d - 8], [restRy - 9, restRy, restRy + 4], { ...clampE, easing: ease }) +
+    Math.sin(t / 26) * 1.1;
+  const rx =
+    interpolate(frame, [from, from + 22], [5.5, 3], { ...clampE, easing: ease }) + Math.cos(t / 32) * 0.7;
+  return `perspective(1700px) rotateX(${rx.toFixed(2)}deg) rotateY(${ry.toFixed(2)}deg) scale(${scale.toFixed(3)})`;
 };
