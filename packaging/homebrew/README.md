@@ -27,7 +27,12 @@ Dopo che la CI ha pubblicato i `.dmg` sulla Release `vX.Y.Z`:
 
 ```sh
 brew tap renato-milano/remi
+brew trust --cask renato-milano/remi/remi
 brew install --cask remi
 ```
+
+Il passo `brew trust` è richiesto da Homebrew perché il cask esegue un comando
+(`xattr`, per rimuovere la quarantena dell'app non firmata). Con la
+notarizzazione (futura) il postflight si può togliere e `brew trust` non serve più.
 
 Poi `Remi` compare in Applicazioni e si apre al doppio clic.

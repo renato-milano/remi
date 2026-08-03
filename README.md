@@ -72,16 +72,17 @@ Grab the latest installer for your OS from the [**Releases**](https://github.com
 
 ### macOS
 
-**Recommended — Homebrew** (handles the Gatekeeper warning for you):
-```sh
-brew tap renato-milano/remi
-brew install --cask remi
-```
-
-**Or the `.dmg` directly** — download `Remi-mac-arm64.dmg` (Apple Silicon) or `Remi-mac-x64.dmg` (Intel), open it, and drag **Remi** into **Applications**. On first launch macOS will say the app "cannot be opened" — this is expected for an unsigned app:
+**Download the `.dmg`** — `Remi-mac-arm64.dmg` (Apple Silicon) or `Remi-mac-x64.dmg` (Intel), open it, and drag **Remi** into **Applications**. On first launch macOS will say the app "cannot be opened" — this is expected for an unsigned app:
 1. Open **System Settings → Privacy & Security**.
 2. Scroll to the security notice about Remi and click **Open Anyway**.
 3. Confirm once more. Subsequent launches open normally.
+
+**Alternatively — Homebrew** (for terminal users). The cask strips the quarantine so it opens without the step above, but it runs a command, so Homebrew asks you to trust the tap first:
+```sh
+brew tap renato-milano/remi
+brew trust --cask renato-milano/remi/remi
+brew install --cask remi
+```
 
 **Permissions for computer-use** (optional feature). If you enable "let Remi see the screen and use mouse/keyboard", macOS will ask for:
 - **Screen Recording** — System Settings → Privacy & Security → Screen Recording → enable **Remi**.
