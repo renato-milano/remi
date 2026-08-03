@@ -36,15 +36,23 @@ jobs:
       - run: pnpm build
 
       # Bundle del daemon + electron-builder (targeta l'OS host) → pubblica sulla Release.
+      # Su macOS senza certificato disabilitiamo esplicitamente la firma
+      # (-c.mac.identity=null): altrimenti electron-builder tenta un ad-hoc sign
+      # sul runner e fallisce con "apps/ui not a file". Con MAC_CSC_LINK impostato
+      # in futuro la firma avviene normalmente — nessun cambio di codice.
       - name: Build & publish installer
-        run: pnpm --filter @openmate/ui release
+        shell: bash
+        run: |
+          pnpm --filter @openmate/ui bundle:daemon
+          EXTRA=""
+          if [ "$RUNNER_OS" = "macOS" ] && [ -z "$MAC_CSC_LINK" ]; then
+            EXTRA="-c.mac.identity=null"
+          fi
+          pnpm --filter @openmate/ui exec electron-builder --publish always $EXTRA
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # macOS: niente auto-discovery di identità nel keychain del runner
-          # (altrimenti electron-builder tenta un ad-hoc sign e fallisce). Con
-          # CSC_LINK impostato in futuro la firma avviene comunque.
-          CSC_IDENTITY_AUTO_DISCOVERY: false
           # --- Firma macOS (opzionali: assenti → build non firmata) ---
+          MAC_CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
           CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
