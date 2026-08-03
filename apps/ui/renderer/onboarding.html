@@ -30,6 +30,7 @@
         <p class="sub">Scegli il provider e incolla la chiave — resta <b>cifrata sul tuo dispositivo</b>.</p>
         <select id="provider" class="field select">
           <option value="anthropic">Claude (Anthropic)</option>
+          <option value="claudeSub">Claude — abbonamento Pro/Max (avanzato)</option>
           <option value="openai">OpenAI</option>
           <option value="openrouter">OpenRouter</option>
           <option value="vercel">Vercel AI Gateway</option>
@@ -42,8 +43,12 @@
           <input id="model" class="field mono" type="text" placeholder="modello" />
           <a class="link" id="modelsLink" href="#" target="_blank" rel="noreferrer">Modelli ↗</a>
         </div>
+        <div id="subBox" class="hidden">
+          <p class="hint" id="subStatus">Controllo il login di Claude Code…</p>
+          <p class="hint">⚠️ Modalità avanzata, per uso personale: riuso il login di <b>Claude Code</b> sul tuo Mac. Non è ufficialmente supportata da Anthropic e potrebbe smettere di funzionare. Serve avere Claude Code installato e loggato (<span class="mono">claude</span> oppure <span class="mono">claude setup-token</span>).</p>
+        </div>
         <a class="link" id="provHelp" href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer">Dove trovo la chiave?</a>
-        <p class="hint">La chiave resta cifrata in locale. Puoi anche saltare e inserirla dopo.</p>
+        <p class="hint" id="keyHint">La chiave resta cifrata in locale. Puoi anche saltare e inserirla dopo.</p>
       </section>
 
       <!-- 3: autonomia -->

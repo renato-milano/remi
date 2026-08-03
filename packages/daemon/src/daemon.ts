@@ -7,6 +7,7 @@ import {
   DirectProviderBackend,
   type ReasoningBackend,
   createProvider,
+  makeSubscriptionTokenProvider,
 } from '@openmate/llm';
 import { type Memory, createMemory } from '@openmate/memory';
 import {
@@ -445,10 +446,18 @@ export class Daemon {
 }
 
 function buildBackend(config: OpenMateConfig, secrets?: Secrets): ReasoningBackend {
+  // Modalità abbonamento Claude: riusa il login di Claude Code (nessuna API key).
+  const subscription =
+    config.provider.auth === 'claude-subscription'
+      ? makeSubscriptionTokenProvider()
+      : undefined;
   const provider = createProvider({
-    name: config.provider.name,
+    name: subscription ? 'anthropic' : config.provider.name,
     baseURL: config.provider.baseURL,
-    apiKey: secrets?.apiKey,
+    apiKey: subscription ? undefined : secrets?.apiKey,
+    subscription,
   });
-  return new DirectProviderBackend(provider.languageModel(config.provider.model));
+  return new DirectProviderBackend(provider.languageModel(config.provider.model), {
+    systemPrefix: provider.systemPrefix,
+  });
 }

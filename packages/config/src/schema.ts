@@ -6,6 +6,13 @@ export const providerSchema = z.object({
   model: z.string().default('claude-sonnet-4-5'),
   /** Base URL per provider OpenAI-compatible (OpenRouter/Vercel/Ollama/LiteLLM…). */
   baseURL: z.string().url().optional(),
+  /**
+   * Come autenticarsi:
+   *  - 'api-key': chiave a consumo (default).
+   *  - 'claude-subscription': riusa il login di Claude Code (abbonamento Pro/Max),
+   *    valido solo con name === 'anthropic'. Modalità avanzata/opt-in.
+   */
+  auth: z.enum(['api-key', 'claude-subscription']).default('api-key'),
 });
 
 /** Budget di un ciclo cognitivo (anti loop-runaway, vedi docs/02). */

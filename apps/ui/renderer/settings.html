@@ -16,6 +16,7 @@
       <label>Cervello (provider)</label>
       <select id="provider" class="field select">
         <option value="anthropic">Claude (Anthropic)</option>
+        <option value="claudeSub">Claude — abbonamento Pro/Max (avanzato)</option>
         <option value="openai">OpenAI</option>
         <option value="openrouter">OpenRouter</option>
         <option value="vercel">Vercel AI Gateway</option>
@@ -27,6 +28,10 @@
       <div class="model-row">
         <input id="model" class="field mono" type="text" placeholder="modello" />
         <a class="link" id="modelsLink" href="#" target="_blank" rel="noreferrer">Modelli ↗</a>
+      </div>
+      <div id="subBox" class="hidden">
+        <p class="note" id="subStatus">Controllo il login di Claude Code…</p>
+        <p class="note">⚠️ Modalità avanzata, uso personale: riuso il login di <b>Claude Code</b>. Non ufficialmente supportata da Anthropic, può smettere di funzionare. Serve Claude Code loggato (<span class="mono">claude</span> o <span class="mono">claude setup-token</span>).</p>
       </div>
       <a class="link" id="provHelp" href="#" target="_blank" rel="noreferrer">Dove trovo la chiave?</a>
     </section>

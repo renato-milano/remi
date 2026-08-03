@@ -12,7 +12,8 @@ const {
 } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
-const { spawn } = require('node:child_process');
+const os = require('node:os');
+const { spawn, execFileSync } = require('node:child_process');
 
 const WIDTH = 500; // largo: robot su un lato, fumetto sull'altro (verso il centro)
 const HEIGHT = 540;
@@ -60,6 +61,7 @@ function saveSettings(data) {
   if (p.model) config.provider.model = p.model;
   if (p.baseURL) config.provider.baseURL = p.baseURL;
   else delete config.provider.baseURL;
+  config.provider.auth = p.auth === 'claude-subscription' ? 'claude-subscription' : 'api-key';
   config.autonomy = config.autonomy || { shell: { allow: [], deny: [] }, files: { allow: [] } };
   config.autonomy.autoApprove = ['none', 'read', 'write'].includes(data.autoApprove)
     ? data.autoApprove
@@ -96,6 +98,44 @@ function loadKey() {
   }
 }
 
+/* ---------------- login abbonamento Claude (riuso Claude Code) ---------------- */
+// Legge (senza rinnovare) le credenziali di Claude Code per mostrare lo stato in
+// UI. Versione JS leggera del probe in @openmate/llm (che è ESM, non richiedibile
+// da questo main CommonJS). Vedi packages/llm/src/claude-subscription.ts.
+function probeClaudeLogin() {
+  const parse = (text) => {
+    try {
+      const o = JSON.parse(text)?.claudeAiOauth;
+      if (!o?.accessToken || typeof o.expiresAt !== 'number') return null;
+      return { loggedIn: true, expiresAt: o.expiresAt };
+    } catch {
+      return null;
+    }
+  };
+  try {
+    const file = path.join(os.homedir(), '.claude', '.credentials.json');
+    const fromFile = parse(fs.readFileSync(file, 'utf8'));
+    if (fromFile) return fromFile;
+  } catch {
+    /* prova il Keychain */
+  }
+  if (process.platform === 'darwin') {
+    try {
+      const out = execFileSync(
+        'security',
+        ['find-generic-password', '-s', 'Claude Code-credentials', '-a', os.userInfo().username, '-w'],
+        { encoding: 'utf8' },
+      );
+      const fromKc = parse(out.trim());
+      if (fromKc) return fromKc;
+    } catch {
+      /* non loggato */
+    }
+  }
+  return { loggedIn: false };
+}
+ipcMain.handle('claude-subscription-status', () => probeClaudeLogin());
+
 function writePersona(name, tone) {
   const memDir = path.join(storageRoot, 'memory');
   fs.mkdirSync(memDir, { recursive: true });
@@ -118,6 +158,7 @@ function saveOnboarding(data) {
   const p = data.provider || { name: 'anthropic', model: 'claude-sonnet-4-5' };
   const provider = { name: p.name || 'anthropic', model: p.model || 'claude-sonnet-4-5' };
   if (p.baseURL) provider.baseURL = p.baseURL;
+  provider.auth = p.auth === 'claude-subscription' ? 'claude-subscription' : 'api-key';
   const config = {
     provider,
     heartbeat: { intervalMs: minutes * 60000, cron: [] },
@@ -171,11 +212,13 @@ function startDaemon() {
   if (EXTERNAL || daemonProc) return;
   startShotServer();
   const node = process.env.OPENMATE_NODE || 'node';
+  // In modalità abbonamento il daemon legge il token da Claude Code: niente API key.
+  const usesSubscription = readConfig().provider?.auth === 'claude-subscription';
   daemonProc = spawn(node, [daemonEntry], {
     env: {
       ...process.env,
       OPENMATE_CONFIG: configFile,
-      OPENMATE_API_KEY: loadKey(),
+      OPENMATE_API_KEY: usesSubscription ? '' : loadKey(),
       OPENMATE_PORT: String(PORT),
       OPENMATE_SHOT_URL: `http://127.0.0.1:${SHOT_PORT}/shot`,
     },

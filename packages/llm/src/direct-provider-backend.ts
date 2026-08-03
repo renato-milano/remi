@@ -1,6 +1,14 @@
 import { type LanguageModel, type ModelMessage, stepCountIs, streamText } from 'ai';
 import type { ReasoningBackend, ReasoningEvent, ReasoningInput } from './types.js';
 
+export interface DirectProviderOptions {
+  /**
+   * Prefisso da anteporre come primo blocco system (es. il marker "You are
+   * Claude Code…" richiesto dai token di abbonamento Claude).
+   */
+  systemPrefix?: string;
+}
+
 /**
  * Alcuni provider (Anthropic via gateway) rifiutano un tool_use.input che non
  * sia un oggetto: i tool senza parametri possono serializzarsi come "" → errore
@@ -31,15 +39,25 @@ function sanitizeToolInputs(messages: ModelMessage[]): ModelMessage[] {
  */
 export class DirectProviderBackend implements ReasoningBackend {
   readonly id = 'direct-provider';
+  private readonly systemPrefix?: string;
 
-  constructor(private readonly model: LanguageModel) {}
+  constructor(
+    private readonly model: LanguageModel,
+    opts: DirectProviderOptions = {},
+  ) {
+    this.systemPrefix = opts.systemPrefix;
+  }
 
   async *run(input: ReasoningInput): AsyncIterable<ReasoningEvent> {
     const startedAt = Date.now();
     const takeImage = input.takeImage;
+    // Il marker (se presente) deve essere il PRIMO blocco system.
+    const system = this.systemPrefix
+      ? [this.systemPrefix, input.system].filter(Boolean).join('\n\n')
+      : input.system;
     const result = streamText({
       model: this.model,
-      system: input.system,
+      system,
       messages: input.messages,
       tools: input.tools,
       stopWhen: stepCountIs(input.budget.maxSteps),

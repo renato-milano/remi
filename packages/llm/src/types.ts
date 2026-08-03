@@ -11,6 +11,11 @@ export interface Provider {
   id: string;
   capabilities: ProviderCapabilities;
   languageModel(modelId: string): LanguageModel;
+  /**
+   * Prefisso obbligatorio da anteporre come primo blocco system. Usato dalla
+   * modalità abbonamento Claude, che richiede il marker "You are Claude Code…".
+   */
+  systemPrefix?: string;
 }
 
 /** Budget di un ciclo (anti loop-runaway, vedi docs/02). */

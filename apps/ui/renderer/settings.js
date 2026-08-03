@@ -3,6 +3,7 @@ const api = window.settings || { onData() {}, save() {}, close() {} };
 
 const PROVIDERS = {
   anthropic: { name: 'anthropic', key: 'sk-ant-…', model: 'claude-sonnet-4-5', help: 'https://console.anthropic.com/settings/keys', models: 'https://docs.anthropic.com/en/docs/about-claude/models', base: null, showBase: false },
+  claudeSub: { name: 'anthropic', auth: 'claude-subscription', subscription: true, key: '', model: 'claude-sonnet-4-5', help: null, models: 'https://docs.anthropic.com/en/docs/about-claude/models', base: null, showBase: false },
   openai: { name: 'openai', key: 'sk-…', model: 'gpt-4o', help: 'https://platform.openai.com/api-keys', models: 'https://platform.openai.com/docs/models', base: null, showBase: false },
   openrouter: { name: 'openai-compatible', key: 'sk-or-…', model: 'anthropic/claude-3.5-sonnet', help: 'https://openrouter.ai/keys', models: 'https://openrouter.ai/models', base: 'https://openrouter.ai/api/v1', showBase: true },
   vercel: { name: 'openai-compatible', key: 'chiave Vercel AI Gateway', model: 'openai/gpt-4o', help: 'https://vercel.com/docs/ai-gateway', models: 'https://vercel.com/ai-gateway/models', base: 'https://ai-gateway.vercel.sh/v1', showBase: true },
@@ -16,6 +17,8 @@ const baseURLEl = document.getElementById('baseURL');
 const modelEl = document.getElementById('model');
 const provHelp = document.getElementById('provHelp');
 const modelsLink = document.getElementById('modelsLink');
+const subBox = document.getElementById('subBox');
+const subStatus = document.getElementById('subStatus');
 let provKey = 'anthropic';
 
 function toggleLink(el, href) {
@@ -26,15 +29,30 @@ function toggleLink(el, href) {
     el.classList.add('hidden');
   }
 }
+async function refreshSubStatus() {
+  if (!api.claudeStatus) return;
+  try {
+    const s = await api.claudeStatus();
+    subStatus.innerHTML = s?.loggedIn
+      ? '✓ Claude Code è loggato — userò il tuo abbonamento.'
+      : '✗ Claude Code non risulta loggato. Esegui <span class="mono">claude</span> (login) o <span class="mono">claude setup-token</span>.';
+  } catch {
+    subStatus.textContent = 'Non riesco a controllare il login di Claude Code.';
+  }
+}
 function selectProvider(key) {
   provKey = key;
   const P = PROVIDERS[key];
+  const sub = Boolean(P.subscription);
   apiKeyEl.placeholder = P.key;
+  apiKeyEl.classList.toggle('hidden', sub);
+  subBox.classList.toggle('hidden', !sub);
   modelEl.value = P.model || '';
   baseURLEl.classList.toggle('hidden', !P.showBase);
   baseURLEl.value = P.base || '';
-  toggleLink(provHelp, P.help);
+  toggleLink(provHelp, sub ? null : P.help);
   toggleLink(modelsLink, P.models);
+  if (sub) refreshSubStatus();
 }
 providerEl.addEventListener('change', (e) => selectProvider(e.target.value));
 
@@ -92,6 +110,7 @@ cuPerms.addEventListener('click', (e) => {
 
 function configToPreset(pv) {
   if (!pv) return 'anthropic';
+  if (pv.auth === 'claude-subscription') return 'claudeSub';
   if (pv.name === 'anthropic') return 'anthropic';
   if (pv.name === 'openai') return 'openai';
   const b = pv.baseURL || '';
@@ -124,8 +143,9 @@ function collect() {
   const baseURL = P.showBase ? baseURLEl.value.trim() || P.base || undefined : P.base || undefined;
   const autoApprove = document.querySelector('#trust .chip.active')?.dataset.trust || 'read';
   const heartbeatMinutes = Number(document.querySelector('#beat .chip.active')?.dataset.min) || 15;
+  const auth = P.auth === 'claude-subscription' ? 'claude-subscription' : 'api-key';
   return {
-    provider: { name: P.name, model, baseURL },
+    provider: { name: P.name, model, baseURL, auth },
     autoApprove,
     heartbeatMinutes,
     computerUse: computerUseEl.checked,

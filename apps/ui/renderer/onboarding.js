@@ -67,6 +67,7 @@ cuPerms.addEventListener('click', (e) => {
 // --- provider (menu a tendina) ---
 const PROVIDERS = {
   anthropic: { name: 'anthropic', key: 'sk-ant-…', model: 'claude-sonnet-4-5', help: 'https://console.anthropic.com/settings/keys', models: 'https://docs.anthropic.com/en/docs/about-claude/models', base: null, showBase: false },
+  claudeSub: { name: 'anthropic', auth: 'claude-subscription', subscription: true, key: '', model: 'claude-sonnet-4-5', help: null, models: 'https://docs.anthropic.com/en/docs/about-claude/models', base: null, showBase: false },
   openai: { name: 'openai', key: 'sk-…', model: 'gpt-4o', help: 'https://platform.openai.com/api-keys', models: 'https://platform.openai.com/docs/models', base: null, showBase: false },
   openrouter: { name: 'openai-compatible', key: 'sk-or-…', model: 'anthropic/claude-3.5-sonnet', help: 'https://openrouter.ai/keys', models: 'https://openrouter.ai/models', base: 'https://openrouter.ai/api/v1', showBase: true },
   vercel: { name: 'openai-compatible', key: 'chiave Vercel AI Gateway', model: 'openai/gpt-4o', help: 'https://vercel.com/docs/ai-gateway', models: 'https://vercel.com/ai-gateway/models', base: 'https://ai-gateway.vercel.sh/v1', showBase: true },
@@ -80,16 +81,36 @@ const baseURLEl = document.getElementById('baseURL');
 const modelEl = document.getElementById('model');
 const provHelp = document.getElementById('provHelp');
 const modelsLink = document.getElementById('modelsLink');
+const subBox = document.getElementById('subBox');
+const subStatus = document.getElementById('subStatus');
+const keyHint = document.getElementById('keyHint');
+
+async function refreshSubStatus() {
+  if (!bridge.claudeStatus) return;
+  try {
+    const s = await bridge.claudeStatus();
+    subStatus.innerHTML = s?.loggedIn
+      ? '✓ Claude Code è loggato — userò il tuo abbonamento.'
+      : '✗ Claude Code non risulta loggato. Apri il terminale ed esegui <span class="mono">claude</span> (login) o <span class="mono">claude setup-token</span>.';
+  } catch {
+    subStatus.textContent = 'Non riesco a controllare il login di Claude Code.';
+  }
+}
 
 function selectProvider(key) {
   provKey = key;
   const P = PROVIDERS[key];
+  const sub = Boolean(P.subscription);
   apiKeyEl.placeholder = P.key;
+  apiKeyEl.classList.toggle('hidden', sub);
+  keyHint.classList.toggle('hidden', sub);
+  subBox.classList.toggle('hidden', !sub);
   modelEl.value = P.model || '';
   baseURLEl.classList.toggle('hidden', !P.showBase);
   baseURLEl.value = P.base || '';
-  toggleLink(provHelp, P.help);
+  toggleLink(provHelp, sub ? null : P.help);
   toggleLink(modelsLink, P.models);
+  if (sub) refreshSubStatus();
 }
 function toggleLink(el, href) {
   if (href) {
@@ -112,7 +133,8 @@ function collect() {
   const model = modelEl.value.trim() || P.model || 'claude-sonnet-4-5';
   const baseURL = P.showBase ? baseURLEl.value.trim() || P.base || undefined : P.base || undefined;
   const computerUse = computerUseEl.checked;
-  return { name, tone, apiKey, heartbeatMinutes, autoApprove, computerUse, provider: { name: P.name, model, baseURL } };
+  const auth = P.auth === 'claude-subscription' ? 'claude-subscription' : 'api-key';
+  return { name, tone, apiKey, heartbeatMinutes, autoApprove, computerUse, provider: { name: P.name, model, baseURL, auth } };
 }
 
 function hatch() {
