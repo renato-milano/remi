@@ -1,54 +1,114 @@
-# OpenMate 🥚
+<p align="center">
+  <img src="assets/banner.png" alt="Remi — by Holyn" width="100%" />
+</p>
 
-> Un agente AI personale, **local-first**, autonomo e "vivo" — con una gestione della memoria di livello cognitivo e un'esperienza d'uso simil-**tamagotchi**.
+<h1 align="center">Remi</h1>
 
-**Stato:** 📄 *Documentazione fondativa (pre-alpha)* — non c'è ancora codice. Questa fase serve a validare le scelte architetturali che guideranno lo sviluppo.
+<p align="center">
+  <strong>A local-first, autonomous personal AI companion that lives on your device.</strong><br />
+  Cognitive memory, heartbeat autonomy, and a tamagotchi-like presence — it runs in the background, reasons about its goals, and acts on its own.
+</p>
+
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License: MIT" /></a>
+  <img src="https://img.shields.io/badge/status-alpha-orange.svg" alt="Status: alpha" />
+  <img src="https://img.shields.io/badge/node-22-blue.svg" alt="Node 22" />
+</p>
 
 ---
 
-## Cos'è OpenMate
+## What is Remi
 
-OpenMate è un compagno AI che **vive sul tuo dispositivo**. Gira come un daemon in background, si sveglia a intervalli periodici (*heartbeat*), ragiona sui propri obiettivi, e agisce autonomamente:
+Remi is an AI companion that **lives on your device**. It runs as a background daemon, wakes up on a periodic *heartbeat*, reasons about its own goals, and acts autonomously — with a permission and audit layer so you stay in control.
 
-- 🧠 **Memoria cognitiva** — non un semplice storico chat, ma un cervello a livelli (core, working, episodic, semantic) con una *wiki* leggibile che l'agente cura da solo.
-- 💓 **Autonomia con heartbeat** — un ciclo cognitivo periodico: percepisce → recupera → pianifica → agisce → riflette → consolida.
-- 🖥️ **Controllo del dispositivo** — interagisce con il sistema tramite *computer-use* (vede lo schermo e usa mouse/tastiera).
-- 🐚 **Accesso alla shell** — esegue comandi, con un layer di permessi e audit.
-- 🥚 **Esperienza tamagotchi** *(in arrivo)* — una UI in cui l'agente è una presenza viva, con stati d'animo e iniziativa propria.
+- 🧠 **Cognitive memory** — not a chat history, but a layered brain (core, working, episodic, semantic) stored as a readable markdown *wiki* the agent curates itself.
+- 💓 **Heartbeat autonomy** — a periodic cognitive cycle: perceive → recall → plan → act → reflect → consolidate.
+- 🖥️ **Computer use** — sees the screen and drives mouse/keyboard to help you inside apps (vision models).
+- 🌐 **Browser control** — drives a Playwright session *or* your live Chrome via the Remi extension (with your logins). Works even without a vision model, via DOM snapshots.
+- 🐚 **Shell & files** — runs commands and edits files, behind a trust/approval gate with a full audit trail.
+- ⏰ **Scheduling** — recurring tasks (cron) and self-scheduled follow-ups.
+- 🥚 **Tamagotchi UI** — a companion overlay where the agent is a living presence with moods and its own initiative.
 
-## Filosofia
+## Model providers
 
-OpenMate si ispira all'obiettivo core di [OpenClaw](https://github.com/openclaw/openclaw) — un agente personale local-first con daemon, tool autonomi ed estensibilità — ma **rinuncia deliberatamente all'infrastruttura pesante** (decine di canali di messaggistica, sandboxing multi-utente Docker/SSH, pairing di dispositivi mobili). OpenMate è **mono-utente, personale, e memory-centric**.
+Remi owns its own agent loop and talks to models through a thin provider abstraction:
 
-## Principi
+- **Anthropic** (Claude), **OpenAI**, and any **OpenAI-compatible** endpoint (OpenRouter, Vercel AI Gateway, Ollama, LiteLLM, Groq…).
+- 🔑 **Claude subscription login (advanced)** — use your **Claude Pro/Max** plan instead of a metered API key, by reusing an existing **Claude Code** login on your machine. Opt-in mode; see the note below.
 
-1. **Local-first** — i tuoi dati e la tua memoria restano sul tuo dispositivo.
-2. **Memoria trasparente** — la conoscenza durevole è markdown leggibile e versionabile, non un DB opaco.
-3. **Agente attivo, non passivo** — gestisce da sé cosa ricordare, cosa dimenticare, cosa fare.
-4. **Sicurezza by-design** — autonomia + shell + controllo device richiedono permessi, approval gate e audit.
+> **Note on subscription mode.** This reuses the OAuth token from a local Claude Code login. It is an advanced, personal-use option: using subscription tokens from third-party apps is not officially supported by Anthropic and may stop working at any time. The default remains a standard API key.
 
-## Documentazione
+## Architecture
 
-| # | Documento | Contenuto |
-|---|---|---|
-| 00 | [Visione e Principi](docs/00-vision-and-principles.md) | Cosa è e cosa non è OpenMate |
-| 01 | [Panoramica Architetturale](docs/01-architecture-overview.md) | Componenti, data-flow, monorepo |
-| 02 | [Loop dell'Agente e Autonomia](docs/02-agent-loop-and-autonomy.md) | Cognitive cycle, heartbeat |
-| 03 | [Architettura della Memoria](docs/03-memory-architecture.md) | **Documento cardine** |
-| 04 | [Tool e Capacità](docs/04-tools-and-capabilities.md) | Registry, shell, computer-use |
-| 05 | [Interazione col Dispositivo](docs/05-device-interaction.md) | Computer-use vision |
-| 06 | [Sicurezza e Permessi](docs/06-security-and-permissions.md) | Trust, approval, audit |
-| 07 | [Reasoning Backend e Provider](docs/07-llm-provider-abstraction.md) | OpenMate possiede il loop; multi-provider, default Claude |
-| 08 | [UI Tamagotchi](docs/08-ui-tamagotchi.md) | Contratto d'interfaccia (design futuro) |
-| 09 | [Stack e Layout Repo](docs/09-tech-stack-and-repo-layout.md) | TS/Node, pnpm, package |
-| 10 | [Roadmap](docs/10-roadmap.md) | Fasi di sviluppo, MVP |
-| 11 | [Piano di Implementazione MVP](docs/11-mvp-implementation-plan.md) | Task, milestone, contratti, test |
-| — | [Architecture Decision Records](docs/adr/) | Le decisioni chiave tracciate |
+Monorepo (pnpm + Turborepo, TypeScript, Node 22). The daemon is the single stateful process; everything else plugs into it.
 
-## Contribuire
+| Package | Role |
+|---|---|
+| `packages/core` | Cognitive loop, task store, agent state machine |
+| `packages/llm` | Provider abstraction, direct-provider backend, subscription auth |
+| `packages/memory` | Layered markdown memory |
+| `packages/tools` | Tool registry: shell, files, code, memory, computer-use, browser, scheduling |
+| `packages/computer` | Screenshot + input control (macOS / Windows / Linux) |
+| `packages/browser` | Playwright control + Chrome extension relay |
+| `packages/scheduler` | Heartbeat & cron |
+| `packages/daemon` | Wires it all together; HTTP/WebSocket surface |
+| `packages/config` | Config schema + secrets resolution |
+| `apps/ui` | Electron desktop app (companion overlay, onboarding, settings, dashboard) |
+| `apps/cli` | Command-line interface |
+| `apps/extension` | Chrome MV3 extension (drive your live Chrome) |
+| `apps/evals` | End-to-end evaluation harness (real tokens) |
 
-Vedi [CONTRIBUTING.md](CONTRIBUTING.md). In questa fase il contributo più utile è **feedback sulla documentazione architetturale**.
+## Quick start (dev)
 
-## Licenza
+Requires **Node 22** and **pnpm**.
 
-[MIT](LICENSE).
+```bash
+pnpm install
+pnpm build
+
+# launch the Electron app (from the repo root)
+apps/ui/node_modules/.bin/electron apps/ui
+```
+
+On first run, onboarding walks you through choosing a provider (paste an API key, or pick **Claude — Pro/Max subscription** to reuse your Claude Code login) and your autonomy level.
+
+```bash
+pnpm test        # run the test suites
+pnpm typecheck   # type-check all packages
+```
+
+## Status
+
+**Alpha.** The core is working end-to-end: memory, heartbeat autonomy, shell/file/code tools, computer-use, browser control, scheduling, and multi-provider inference including Claude subscription login. Packaging & code-signing for a clean end-user install are still in progress; in dev, macOS permissions are attributed to the launching terminal.
+
+## Documentation
+
+Architecture docs live under [`docs/`](docs/) (in Italian):
+
+| # | Document |
+|---|---|
+| 00 | [Vision & Principles](docs/00-vision-and-principles.md) |
+| 01 | [Architecture Overview](docs/01-architecture-overview.md) |
+| 02 | [Agent Loop & Autonomy](docs/02-agent-loop-and-autonomy.md) |
+| 03 | [Memory Architecture](docs/03-memory-architecture.md) |
+| 04 | [Tools & Capabilities](docs/04-tools-and-capabilities.md) |
+| 05 | [Device Interaction](docs/05-device-interaction.md) |
+| 06 | [Security & Permissions](docs/06-security-and-permissions.md) |
+| 07 | [Reasoning Backend & Providers](docs/07-llm-provider-abstraction.md) |
+| 08 | [Tamagotchi UI](docs/08-ui-tamagotchi.md) |
+| 09 | [Tech Stack & Repo Layout](docs/09-tech-stack-and-repo-layout.md) |
+| 10 | [Roadmap](docs/10-roadmap.md) |
+| 11 | [MVP Implementation Plan](docs/11-mvp-implementation-plan.md) |
+| — | [Architecture Decision Records](docs/adr/) |
+
+## Security
+
+Autonomy + shell + device control are gated by a trust policy, per-session approval prompts, and an audit log. Your data and memory stay on your device (local-first). Secrets are kept out of the config file and encrypted at rest.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## License
+
+[MIT](LICENSE) · Remi is built by **Holyn**.
