@@ -44,6 +44,10 @@ jobs:
         shell: bash
         run: |
           pnpm --filter @openmate/ui bundle:daemon
+          # whisper-server per la trascrizione locale della voce (universale su macOS:
+          # lo stesso runner produce il DMG arm64 e quello x64)
+          if [ "$RUNNER_OS" = "macOS" ]; then export CMAKE_OSX_ARCHITECTURES="arm64;x86_64"; fi
+          packaging/build-whisper.sh
           EXTRA=""
           if [ "$RUNNER_OS" = "macOS" ] && [ -z "$MAC_CSC_LINK" ]; then
             EXTRA="-c.mac.identity=null"

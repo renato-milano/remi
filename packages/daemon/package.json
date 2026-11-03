@@ -31,7 +31,8 @@
     "@openmate/core": "workspace:*",
     "@openmate/scheduler": "workspace:*",
     "@openmate/computer": "workspace:*",
-    "@openmate/browser": "workspace:*"
+    "@openmate/browser": "workspace:*",
+    "@openmate/voice": "workspace:*"
   },
   "devDependencies": {
     "typescript": "catalog:",

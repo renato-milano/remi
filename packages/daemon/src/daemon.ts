@@ -43,6 +43,7 @@ import {
   shellRunTool,
 } from '@openmate/tools';
 import { SqliteAuditSink } from './audit-sqlite.js';
+import { VoiceService, type VoiceStatus } from './voice-service.js';
 import { type Schedule, ScheduleStore } from './schedule-store.js';
 
 /** Auto-nega di un'approvazione senza risposta (evita blocchi della coda). */
@@ -55,7 +56,8 @@ export type DaemonEvent =
   | AgentEvent
   | { kind: 'approval_request'; requestId: string; request: ApprovalRequest }
   | { kind: 'overlay'; op: 'draw'; items: OverlayItem[]; clear: boolean }
-  | { kind: 'overlay'; op: 'clear' };
+  | { kind: 'overlay'; op: 'clear' }
+  | { kind: 'voice'; status: VoiceStatus };
 
 /**
  * "Indica e chiedi": l'utente preme la hotkey puntando qualcosa (o, tenendola
@@ -80,6 +82,8 @@ export interface DaemonOptions {
   secrets?: Secrets;
   /** Override del backend (test/Fake). Default: DirectProviderBackend su Claude. */
   backend?: ReasoningBackend;
+  /** Binario whisper-server per la trascrizione locale (passato dall'app). */
+  whisperBin?: string;
   /** Path del file di config, per persistere i cambi di heartbeat dal cruscotto. */
   configPath?: string;
 }
@@ -111,6 +115,8 @@ export class Daemon {
   private readonly configPath?: string;
   /** Stato del computer-use (per l'overlay). */
   readonly computerUse: { enabled: boolean; reason?: string };
+  /** Voce: trascrizione e sintesi vocale. */
+  readonly voice: VoiceService;
   /** Il modello vede le immagini? Senza vision "indica e chiedi" manda solo il testo. */
   readonly vision: boolean;
   /** Geometria dell'ultima immagine dello schermo vista dal modello (per overlay.*). */
@@ -233,6 +239,13 @@ export class Daemon {
     const built = opts.backend ? { backend: opts.backend, vision: true } : buildBackend(opts.config, opts.secrets);
     const backend = built.backend;
     this.vision = built.vision;
+
+    this.voice = new VoiceService(opts.config, {
+      apiKey: opts.secrets?.apiKey,
+      whisperBin: opts.whisperBin,
+      onStatus: (status) => this.emit({ kind: 'voice', status }),
+    });
+    void this.voice.ensureModel();
     this.policy = opts.config.autonomy;
     const budget: Budget = opts.config.budget;
 
@@ -358,6 +371,7 @@ export class Daemon {
     const size = pngSize(msg.image);
     if (!size) throw new Error('screenshot non valido (atteso PNG)');
     this.screenFrame = { imageW: size.w, imageH: size.h, ...msg.frame };
+    const t0 = Date.now();
     const area = msg.path && msg.path.length > 2 ? msg.path : undefined;
     const images = [
       area
@@ -370,6 +384,7 @@ export class Daemon {
         label: 'Ingrandimento della zona indicata (solo per leggere i dettagli, NON usarne le coordinate):',
       });
     }
+    if (process.env.OPENMATE_UI_DEBUG) console.log(`[tempi daemon] marcatura immagini ${Date.now() - t0} ms`);
     await this.scheduler.submitUserMessage(pointPrompt(question, msg.cursor, area), { images, fast: true });
   }
 
@@ -520,6 +535,7 @@ export class Daemon {
       this.pendingApprovals.delete(id);
       entry.resolve(false);
     }
+    this.voice.stop();
     this.audit.close();
     this.tasks.close();
     this.schedules.close();

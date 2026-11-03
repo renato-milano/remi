@@ -30,6 +30,7 @@ export function startHttpServer(daemon: Daemon, port: number) {
     c.json({
       computerUse: daemon.computerUse,
       vision: daemon.vision,
+      voice: daemon.voice.status(),
       heartbeatSeconds: daemon.heartbeatSeconds(),
       scheduleCount: daemon.listSchedules().length,
       paused: daemon.isPaused(),
@@ -54,6 +55,32 @@ export function startHttpServer(daemon: Daemon, port: number) {
       }
     }),
   );
+
+  // Voce: la registrazione arriva come WAV (base64) dall'interfaccia.
+  app.post('/voice/warm', (c) => {
+    daemon.voice.warm();
+    return c.json({ ok: true });
+  });
+  app.post('/voice/transcribe', async (c) => {
+    const { audio } = (await c.req.json()) as { audio?: string };
+    if (typeof audio !== 'string') return c.json({ ok: false, error: 'audio mancante' }, 400);
+    try {
+      return c.json({ ok: true, text: await daemon.voice.transcribe(Buffer.from(audio, 'base64')) });
+    } catch (err) {
+      return c.json({ ok: false, error: err instanceof Error ? err.message : String(err) }, 503);
+    }
+  });
+  app.post('/voice/speak', async (c) => {
+    const { text } = (await c.req.json()) as { text?: string };
+    if (typeof text !== 'string' || !text.trim()) return c.json({ ok: false, error: 'testo mancante' }, 400);
+    try {
+      const out = await daemon.voice.speak(text);
+      // nessun audio: l'interfaccia usa la voce di sistema (o tace)
+      return c.json(out ? { ok: true, ...out } : { ok: true, tts: daemon.voice.status().tts });
+    } catch (err) {
+      return c.json({ ok: false, error: err instanceof Error ? err.message : String(err) }, 503);
+    }
+  });
 
   app.post('/command', async (c) => {
     const cmd = (await c.req.json()) as ClientCommand;

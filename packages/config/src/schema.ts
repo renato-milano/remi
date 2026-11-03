@@ -65,6 +65,19 @@ export const browserSchema = z.object({
   headed: z.boolean().default(true),
 });
 
+/** Voce: parli tenendo premuta la hotkey "indica", Remi risponde anche a voce. Default off
+ *  (il modello di trascrizione locale va scaricato: ~465 MB). */
+export const voiceSchema = z.object({
+  enabled: z.boolean().default(false),
+  /** Trascrizione: 'local' = whisper.cpp sul dispositivo (ripiego cloud se manca), 'cloud' = gateway. */
+  stt: z.enum(['local', 'cloud']).default('local'),
+  model: z.enum(['small']).default('small'),
+  /** Lingua parlata ('it', 'en', … o 'auto'). */
+  language: z.string().default('it'),
+  /** Voce di Remi: 'auto' = cloud se c'è il gateway, altrimenti voce di sistema. */
+  tts: z.enum(['auto', 'cloud', 'system', 'off']).default('auto'),
+});
+
 export const configSchema = z.object({
   provider: providerSchema.default({}),
   heartbeat: heartbeatSchema.default({}),
@@ -73,10 +86,12 @@ export const configSchema = z.object({
   storage: storageSchema.default({}),
   computerUse: computerUseSchema.default({}),
   browser: browserSchema.default({}),
+  voice: voiceSchema.default({}),
 });
 
 export type ProviderConfig = z.infer<typeof providerSchema>;
 export type BudgetConfig = z.infer<typeof budgetSchema>;
 export type AutonomyConfig = z.infer<typeof autonomySchema>;
 export type HeartbeatConfig = z.infer<typeof heartbeatSchema>;
+export type VoiceConfig = z.infer<typeof voiceSchema>;
 export type OpenMateConfig = z.infer<typeof configSchema>;

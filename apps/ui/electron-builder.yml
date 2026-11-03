@@ -23,6 +23,9 @@ extraResources:
   - from: build/daemon
     to: daemon
     filter: ["**/*.cjs"]
+  # whisper-server (trascrizione locale della voce), da packaging/build-whisper.sh
+  - from: build/whisper
+    to: whisper
 
 asar: true
 # I nativi (.node) non si caricano dentro l'asar e il daemon li risolve via
@@ -50,6 +53,7 @@ mac:
     NSScreenCaptureUsageDescription: "Remi cattura lo schermo per assisterti con quello che vedi."
     NSAppleEventsUsageDescription: "Remi usa l'automazione di sistema per leggere gli elementi sullo schermo e agire per te."
     NSAccessibilityUsageDescription: "Remi usa l'accessibilità per muovere il mouse e digitare al posto tuo."
+    NSMicrophoneUsageDescription: "Remi ascolta la tua voce solo mentre tieni premuta la scorciatoia per parlargli."
 
 dmg:
   title: "Remi ${version}"

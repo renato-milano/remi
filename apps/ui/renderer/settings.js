@@ -134,7 +134,10 @@ api.onData(({ config, hasKey }) => {
   computerUseEl.checked = Boolean(config.computerUse?.enabled);
   document.getElementById('browserEnabled').checked = Boolean(config.browser?.enabled);
   document.getElementById('browserMode').value = config.browser?.mode || 'auto';
+  document.getElementById('voiceEnabled').checked = Boolean(config.voice?.enabled);
+  document.getElementById('voiceTts').value = config.voice?.tts === 'cloud' ? 'auto' : config.voice?.tts || 'auto';
   renderPerms();
+  void showVoiceStatus();
 });
 
 function collect() {
@@ -151,8 +154,35 @@ function collect() {
     computerUse: computerUseEl.checked,
     browser: document.getElementById('browserEnabled').checked,
     browserMode: document.getElementById('browserMode').value,
+    voice: document.getElementById('voiceEnabled').checked,
+    voiceTts: document.getElementById('voiceTts').value,
     apiKey: apiKeyEl.value.trim(), // vuoto = non cambiare
   };
+}
+
+/** Stato della voce dal daemon: modello pronto, in download o trascrizione cloud. */
+async function showVoiceStatus() {
+  const el = document.getElementById('voiceStatus');
+  try {
+    const { voice } = await (await fetch(`${api.daemonUrl}/status`)).json();
+    if (!voice?.enabled) {
+      el.textContent = '';
+    } else if (voice.downloading !== undefined) {
+      el.textContent = `Scarico il modello vocale… ${Math.round(voice.downloading * 100)}%`;
+      setTimeout(showVoiceStatus, 1500);
+    } else if (voice.error) {
+      el.textContent = `⚠️ ${voice.error}`;
+    } else {
+      el.textContent =
+        voice.stt === 'local'
+          ? '✓ Trascrizione locale pronta.'
+          : voice.stt === 'cloud'
+            ? 'Trascrizione via cloud (whisper locale non disponibile).'
+            : '⚠️ Trascrizione non disponibile.';
+    }
+  } catch {
+    el.textContent = '';
+  }
 }
 
 document.getElementById('save').addEventListener('click', () => api.save(collect()));

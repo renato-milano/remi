@@ -48,6 +48,11 @@ const isPackaged = app.isPackaged;
 const daemonEntry = isPackaged
   ? path.join(process.resourcesPath, 'daemon', 'daemon.cjs')
   : path.join(__dirname, '..', '..', '..', 'packages', 'daemon', 'dist', 'index.js');
+// whisper-server (trascrizione locale della voce): compilato da packaging/build-whisper.sh
+const whisperBin = path.join(
+  isPackaged ? path.join(process.resourcesPath, 'whisper') : path.join(__dirname, '..', 'build', 'whisper'),
+  process.platform === 'win32' ? 'whisper-server.exe' : 'whisper-server',
+);
 const nativeModulesDir = isPackaged
   ? path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules')
   : path.join(__dirname, '..', '..', '..', 'node_modules');
@@ -87,6 +92,11 @@ function saveSettings(data) {
     ...(config.browser || {}),
     enabled: Boolean(data.browser),
     mode: data.browserMode === 'extension' ? 'extension' : 'auto',
+  };
+  config.voice = {
+    ...(config.voice || {}),
+    enabled: Boolean(data.voice),
+    tts: ['auto', 'system', 'off'].includes(data.voiceTts) ? data.voiceTts : config.voice?.tts || 'auto',
   };
   if (!config.storage) config.storage = { root: storageRoot };
   if (!config.budget) config.budget = { maxSteps: 12, wallClockMs: 120000 };
@@ -238,6 +248,7 @@ function startDaemon() {
       OPENMATE_API_KEY: usesSubscription ? '' : loadKey(),
       OPENMATE_PORT: String(PORT),
       OPENMATE_SHOT_URL: `http://127.0.0.1:${SHOT_PORT}/shot`,
+      ...(fs.existsSync(whisperBin) ? { OPENMATE_WHISPER_BIN: whisperBin } : {}),
     },
     cwd: path.dirname(daemonEntry),
     stdio: 'inherit',
@@ -386,6 +397,7 @@ function openSettings() {
 
 ipcMain.on('settings-save', (_e, data) => {
   saveSettings(data);
+  if (data.voice) void askMicrophone();
   stopDaemon();
   startDaemon(); // riparte con la nuova config/chiave
   if (settingsWin) {
@@ -623,6 +635,10 @@ const TRACE_MIN_SIZE = 24; // sotto questa dimensione (punti) è un punto, non u
 let hook;
 let lastHookKeyDown = 0;
 const pointDebug = (...args) => process.env.OPENMATE_UI_DEBUG && console.log('[point]', ...args);
+// tempi delle fasi di un turno, misurati dal rilascio della hotkey (log di debug)
+let releasedAt = 0;
+const phase = (name) =>
+  process.env.OPENMATE_UI_DEBUG && releasedAt && console.log(`[tempi] +${Date.now() - releasedAt} ms  ${name}`);
 let tracing; // { display, points, grab, timer, maxTimer, done }
 
 function startKeyHook() {
@@ -658,7 +674,8 @@ async function startPoint() {
   }
   const cur = screen.getCursorScreenPoint();
   const display = screen.getDisplayNearestPoint(cur);
-  const t = { display, points: [cur], done: false };
+  const t = { display, points: [cur], done: false, pressedAt: Date.now() };
+  releasedAt = 0;
   tracing = t;
   // i disegni precedenti non devono finire nello screenshot
   if (pointerWin?.isVisible()) {
@@ -670,6 +687,12 @@ async function startPoint() {
   if (!hookAlive()) {
     await endTrace();
     return;
+  }
+  // voce: registra finché la hotkey resta premuta (serve il rilascio, quindi l'hook)
+  if (voiceEnabled() && (await askMicrophone()) && !t.done) {
+    t.recording = true;
+    sendPointer('pointer-rec-start');
+    void postJson('/voice/warm').catch(() => {});
   }
   // registra il percorso del mouse finché la hotkey resta premuta
   t.timer = setInterval(() => {
@@ -731,6 +754,8 @@ async function endTrace() {
   clearInterval(t.timer);
   clearTimeout(t.maxTimer);
   tracing = undefined;
+  releasedAt = Date.now();
+  phase(`rilascio (tenuto ${releasedAt - t.pressedAt} ms)`);
 
   let full;
   try {
@@ -753,26 +778,48 @@ async function endTrace() {
   const end = points[points.length - 1];
   pointDebug(isArea ? `area (${points.length} punti)` : 'punto');
   const area = isArea ? sweptArea(points, 20) : undefined;
-  pendingPoint = buildPointPayload(full, display, isArea ? end : points[0], area);
+  phase('screenshot pronto');
+  const capture = buildPointPayload(full, display, isArea ? end : points[0], area);
+  phase('immagini preparate (ridimensiona + ingrandimento)');
+  const at = isArea ? end : points[0];
+  const local = { x: at.x - display.bounds.x, y: at.y - display.bounds.y, area: isArea };
 
+  // ha parlato? allora niente casella: trascrivi e invia
+  const rec = t.recording ? await stopRecording() : null;
+  if (rec) phase(`audio ricevuto (${rec.durationMs} ms, ${rec.wav ? Math.round(rec.wav.byteLength / 1024) : 0} kB)`);
+  pointDebug('voce', rec ? `${rec.durationMs} ms, parlato: ${rec.speech}` : 'nessuna registrazione');
+  if (rec?.speech && rec.wav) {
+    await ensurePointerWin(display);
+    pointerWin.setIgnoreMouseEvents(true, { forward: true });
+    pointerWin.showInactive();
+    sendPointer('pointer-anchor', local);
+    if (await submitVoice(capture, rec.wav)) return;
+  }
+
+  pendingPoint = capture;
   await ensurePointerWin(display);
   pointerWin.setIgnoreMouseEvents(false);
   pointerWin.show();
   pointerWin.focus();
   if (process.platform === 'darwin') app.focus({ steal: true });
-  const at = isArea ? end : points[0];
-  sendPointer('pointer-ask', { x: at.x - display.bounds.x, y: at.y - display.bounds.y, area: isArea });
+  sendPointer('pointer-ask', local);
 }
 
-ipcMain.on('pointer-submit', async (_e, text) => {
+ipcMain.on('pointer-submit', (_e, text) => {
   const capture = pendingPoint;
   pendingPoint = undefined;
   releaseFocus();
   if (!capture) return;
   clearTimeout(lingerTimer);
+  sendPointer('pointer-thinking');
+  void submitPoint(capture, text, false);
+});
+
+/** Invia il turno "indica" al daemon. `voiceTurn`: domanda a voce → risposta anche a voce. */
+async function submitPoint(capture, text, voiceTurn) {
   pointMuted = false;
   setPointTurn(true);
-  sendPointer('pointer-thinking');
+  pointVoiceTurn = voiceTurn;
   try {
     const res = await fetch(`${DAEMON_URL}/command`, {
       method: 'POST',
@@ -780,13 +827,114 @@ ipcMain.on('pointer-submit', async (_e, text) => {
       body: JSON.stringify({ kind: 'point_message', content: text, ...capture }),
     });
     if (!res.ok) throw new Error(`daemon ${res.status}`);
+    phase('turno inviato al daemon');
   } catch (err) {
     console.error('[point] invio fallito', err);
     setPointTurn(false);
     sendPointer('pointer-answer', 'Non riesco a raggiungere Remi in questo momento.');
     lingerTimer = setTimeout(hidePointer, 6000);
   }
-});
+}
+
+/* --- voce: si registra mentre la hotkey è premuta, si trascrive al rilascio --- */
+let pointVoiceTurn = false;
+let speakChain = Promise.resolve();
+let recWaiter;
+
+function voiceEnabled() {
+  return Boolean(readConfig().voice?.enabled);
+}
+
+/** macOS: chiede il permesso del microfono la prima volta. */
+async function askMicrophone() {
+  if (process.platform !== 'darwin') return true;
+  const status = systemPreferences.getMediaAccessStatus('microphone');
+  if (status === 'granted') return true;
+  if (status === 'not-determined') return systemPreferences.askForMediaAccess('microphone');
+  return false;
+}
+
+async function postJson(pathname, body) {
+  const res = await fetch(`${DAEMON_URL}${pathname}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body ?? {}),
+  });
+  return res.json().catch(() => ({ ok: false }));
+}
+
+/** Ferma la registrazione e attende l'audio dalla lavagna ({ wav, speech } o null). */
+function stopRecording() {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      recWaiter = undefined;
+      resolve(null);
+    }, 1500);
+    recWaiter = (data) => {
+      clearTimeout(timer);
+      recWaiter = undefined;
+      resolve(data);
+    };
+    sendPointer('pointer-rec-stop');
+  });
+}
+ipcMain.on('pointer-rec-data', (_e, data) => recWaiter?.(data));
+ipcMain.on('pointer-speaking', () => phase('voce: inizia a parlare'));
+
+/** Domanda a voce: trascrive e invia, senza casella di testo. Torna false se non c'è parlato utile. */
+async function submitVoice(capture, wav) {
+  sendPointer('pointer-thinking');
+  sendPointer('pointer-status', 'trascrivo…');
+  let out;
+  try {
+    out = await postJson('/voice/transcribe', { audio: Buffer.from(wav).toString('base64') });
+  } catch {
+    out = { ok: false, error: 'Remi non è raggiungibile' };
+  }
+  const text = out.ok ? String(out.text || '').trim() : '';
+  phase(`trascrizione: "${text}"`);
+  if (!text) {
+    if (!out.ok) console.warn('[voice] trascrizione fallita:', out.error);
+    sendPointer('pointer-status', out.ok ? 'non ho capito, scrivi pure' : `voce non disponibile: ${out.error}`);
+    return false;
+  }
+  sendPointer('pointer-question', text);
+  void submitPoint(capture, text, true);
+  return true;
+}
+
+/** Divide la risposta in frasi (unendo quelle troppo corte): la prima si sente prima. */
+function splitSentences(text) {
+  const parts = text.match(/[^.!?…]+[.!?…]+[»")\]]*\s*|[^.!?…]+$/g) || [text];
+  const out = [];
+  for (const p of parts.map((x) => x.trim()).filter(Boolean)) {
+    if (out.length && out[out.length - 1].length < 30) out[out.length - 1] += ` ${p}`;
+    else out.push(p);
+  }
+  return out;
+}
+
+/**
+ * Legge una risposta: audio dal daemon (voce cloud) o voce di sistema nella lavagna.
+ * Le frasi si sintetizzano in parallelo e si riproducono in ordine, così la prima
+ * parte appena è pronta invece di aspettare l'audio dell'intera risposta.
+ */
+function speakAnswer(text) {
+  const sentences = splitSentences(text);
+  phase(`voce: richiesta audio (${sentences.length} frasi)`);
+  const pending = sentences.map((sentence) => postJson('/voice/speak', { text: sentence }).catch(() => ({ ok: false })));
+  speakChain = speakChain.then(async () => {
+    for (const [i, req] of pending.entries()) {
+      const out = await req;
+      if (i === 0) phase(out.audio ? 'voce: audio della prima frase pronto' : 'voce: nessun audio cloud');
+      if (!out.ok || pointMuted) return;
+      if (out.audio) sendPointer('pointer-speak', { audio: out.audio, mediaType: out.mediaType });
+      else if (out.tts === 'system') {
+        sendPointer('pointer-speak', { text: sentences[i], lang: readConfig().voice?.language || 'it' });
+      }
+    }
+  });
+}
 
 // la scheda della risposta è cliccabile (✕): il resto della lavagna lascia passare i click
 ipcMain.on('pointer-interactive', (_e, on) => {
@@ -806,6 +954,7 @@ ipcMain.on('pointer-cancel', () => {
 function setPointTurn(on) {
   pointTurn = on;
   pointBusy = false;
+  if (!on) pointVoiceTurn = false; // le risposte già in coda vengono comunque lette
   // il companion non ripete nel fumetto le risposte mostrate sulla lavagna
   win?.webContents.send('point-active', on);
 }
@@ -834,6 +983,11 @@ function sameBounds(a, b) {
 
 function handleDaemonEvent(e) {
   if (e.kind === 'state' && e.state?.status === 'idle') pointMuted = false;
+  if (pointTurn) {
+    if (e.kind === 'state') phase(`daemon: stato ${e.state?.status}`);
+    else if (e.kind === 'overlay') phase(`daemon: disegno (${e.items?.length ?? 0} elementi)`);
+    else if (e.kind === 'message') phase('daemon: testo della risposta');
+  }
   if (pointMuted) return;
   if (e.kind === 'overlay') {
     if (e.op === 'clear') sendPointer('pointer-clear');
@@ -843,6 +997,7 @@ function handleDaemonEvent(e) {
   if (!pointTurn) return;
   if (e.kind === 'message') {
     sendPointer('pointer-answer', e.content);
+    if (pointVoiceTurn) speakAnswer(e.content);
   } else if (e.kind === 'action' && typeof e.summary === 'string' && !e.summary.startsWith('overlay.')) {
     sendPointer('pointer-status', `· ${e.summary}`);
   } else if (e.kind === 'state' && e.state?.status !== 'idle') {
@@ -938,6 +1093,8 @@ app.whenReady().then(() => {
   }
   startKeyHook();
   void subscribeDaemon();
+  // lavagna pronta (nascosta): il microfono deve poter partire alla prima pressione
+  if (EXTERNAL || isOnboarded()) void ensurePointerWin(screen.getPrimaryDisplay());
   if (EXTERNAL || isOnboarded()) {
     startDaemon();
     createCompanion();

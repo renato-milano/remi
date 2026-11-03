@@ -63,12 +63,14 @@ function paintTrail() {
     tctx.stroke();
   }
   if (halo) {
-    const g = tctx.createRadialGradient(halo.x, halo.y, 0, halo.x, halo.y, 46);
-    g.addColorStop(0, 'rgba(94,242,160,.35)');
+    // mentre parli l'alone si allarga col volume della voce
+    const r = 46 + 40 * mic.level;
+    const g = tctx.createRadialGradient(halo.x, halo.y, 0, halo.x, halo.y, r);
+    g.addColorStop(0, `rgba(94,242,160,${0.35 + 0.25 * mic.level})`);
     g.addColorStop(1, 'rgba(94,242,160,0)');
     tctx.fillStyle = g;
     tctx.beginPath();
-    tctx.arc(halo.x, halo.y, 46, 0, Math.PI * 2);
+    tctx.arc(halo.x, halo.y, r, 0, Math.PI * 2);
     tctx.fill();
   }
   trailFrame = trail.length || halo ? requestAnimationFrame(paintTrail) : 0;
@@ -86,7 +88,146 @@ function endTrail() {
   if (!trailFrame) trailFrame = requestAnimationFrame(paintTrail);
 }
 
+/* --- microfono: PCM 16 kHz mono finché la hotkey è premuta --- */
+const SAMPLE_RATE = 16000;
+const MIC_WARM_MS = 30000; // il microfono resta aperto un po' dopo l'uso: la frase successiva non perde l'inizio
+const SPEECH_RMS = 0.015; // soglia di "parlato" per blocco
+const SPEECH_MIN_MS = 350; // quanto parlato serve per considerarla una domanda a voce
+const WORKLET = `registerProcessor('rec', class extends AudioWorkletProcessor {
+  process(inputs) { const ch = inputs[0][0]; if (ch) this.port.postMessage(ch.slice(0)); return true; }
+});`;
+const mic = { level: 0, recording: false, chunks: [], speechMs: 0 };
+
+async function micOpen() {
+  if (mic.ctx) return;
+  mic.stream = await navigator.mediaDevices.getUserMedia({
+    audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+  });
+  mic.ctx = new AudioContext({ sampleRate: SAMPLE_RATE });
+  await mic.ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([WORKLET], { type: 'text/javascript' })));
+  const node = new AudioWorkletNode(mic.ctx, 'rec');
+  node.port.onmessage = (e) => {
+    const block = e.data;
+    let sum = 0;
+    for (let i = 0; i < block.length; i++) sum += block[i] * block[i];
+    const rms = Math.sqrt(sum / block.length);
+    mic.level = mic.level * 0.7 + Math.min(1, rms * 12) * 0.3;
+    if (!mic.recording) return;
+    mic.chunks.push(block);
+    if (rms > SPEECH_RMS) mic.speechMs += (block.length / SAMPLE_RATE) * 1000;
+  };
+  mic.ctx.createMediaStreamSource(mic.stream).connect(node);
+}
+
+function micClose() {
+  for (const t of mic.stream?.getTracks() ?? []) t.stop();
+  void mic.ctx?.close();
+  mic.ctx = undefined;
+  mic.stream = undefined;
+  mic.level = 0;
+}
+
+bridge.onRecStart(async () => {
+  clearTimeout(mic.warmTimer);
+  mic.chunks = [];
+  mic.speechMs = 0;
+  mic.recording = true;
+  mic.startedAt = performance.now();
+  try {
+    await micOpen();
+    await mic.ctx.resume();
+  } catch (err) {
+    console.warn('microfono non disponibile', err);
+    mic.recording = false;
+  }
+});
+
+bridge.onRecStop(() => {
+  const durationMs = Math.round(performance.now() - (mic.startedAt || performance.now()));
+  mic.recording = false;
+  mic.level = 0;
+  const speech = mic.speechMs >= SPEECH_MIN_MS;
+  bridge.sendRecData({ wav: speech ? encodeWav(mic.chunks) : null, speech, durationMs });
+  mic.chunks = [];
+  clearTimeout(mic.warmTimer);
+  mic.warmTimer = setTimeout(micClose, MIC_WARM_MS);
+});
+
+/** WAV PCM 16 bit mono dai blocchi Float32. */
+function encodeWav(chunks) {
+  const n = chunks.reduce((s, c) => s + c.length, 0);
+  const buf = new ArrayBuffer(44 + n * 2);
+  const v = new DataView(buf);
+  const str = (o, t) => {
+    for (let i = 0; i < t.length; i++) v.setUint8(o + i, t.charCodeAt(i));
+  };
+  str(0, 'RIFF');
+  v.setUint32(4, 36 + n * 2, true);
+  str(8, 'WAVE');
+  str(12, 'fmt ');
+  v.setUint32(16, 16, true);
+  v.setUint16(20, 1, true); // PCM
+  v.setUint16(22, 1, true); // mono
+  v.setUint32(24, SAMPLE_RATE, true);
+  v.setUint32(28, SAMPLE_RATE * 2, true);
+  v.setUint16(32, 2, true);
+  v.setUint16(34, 16, true);
+  str(36, 'data');
+  v.setUint32(40, n * 2, true);
+  let o = 44;
+  for (const c of chunks) {
+    for (let i = 0; i < c.length; i++, o += 2) {
+      const x = Math.max(-1, Math.min(1, c[i]));
+      v.setInt16(o, x < 0 ? x * 0x8000 : x * 0x7fff, true);
+    }
+  }
+  return buf;
+}
+
+/* --- voce di Remi: audio dal cloud o voce di sistema, una frase dopo l'altra --- */
+const speech = { queue: [], playing: undefined };
+
+function speakNext() {
+  if (speech.playing || !speech.queue.length) return;
+  const item = speech.queue.shift();
+  const done = () => {
+    speech.playing = undefined;
+    speakNext();
+  };
+  if (item.audio) {
+    const a = new Audio(`data:${item.mediaType || 'audio/wav'};base64,${item.audio}`);
+    speech.playing = a;
+    a.onended = done;
+    a.onerror = done;
+    a.onplaying = () => bridge.speaking();
+    void a.play().catch(done);
+  } else if (item.text) {
+    const u = new SpeechSynthesisUtterance(item.text);
+    u.lang = item.lang && item.lang !== 'auto' ? item.lang : 'it'; // il sistema sceglie una voce di quella lingua
+    u.onend = done;
+    u.onerror = done;
+    u.onstart = () => bridge.speaking();
+    speech.playing = u;
+    speechSynthesis.speak(u);
+  } else {
+    done();
+  }
+}
+
+function stopSpeaking() {
+  speech.queue = [];
+  if (speech.playing instanceof Audio) speech.playing.pause();
+  speechSynthesis.cancel();
+  speech.playing = undefined;
+}
+
+bridge.onSpeak((item) => {
+  speech.queue.push(item);
+  speakNext();
+});
+
 function reset() {
+  stopSpeaking();
   endTrail();
   clearDrawings();
   ask.classList.add('hidden');
@@ -131,6 +272,24 @@ document.addEventListener('mousedown', (ev) => {
   if (ask.classList.contains('hidden') || ask.contains(ev.target)) return;
   reset();
   bridge.cancel();
+});
+
+// domanda a voce: nessuna casella, ma l'ancora della risposta e il punto indicato
+bridge.onAnchor((p) => {
+  reset();
+  at = p;
+  anchor.style.left = `${p.x}px`;
+  anchor.style.top = `${p.y}px`;
+  anchor.classList.toggle('hidden', Boolean(p.area));
+});
+
+bridge.onQuestion((text) => {
+  const q = document.createElement('p');
+  q.className = 'q';
+  q.textContent = `«${text}»`;
+  cardBody.prepend(q);
+  card.classList.remove('hidden');
+  place(card, at);
 });
 
 bridge.onThinking(() => {

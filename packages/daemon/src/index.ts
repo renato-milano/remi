@@ -15,8 +15,20 @@ process.on('uncaughtException', (err) => console.error('[daemon] uncaughtExcepti
 export async function main(): Promise<void> {
   const config = loadConfig({ configPath: process.env.OPENMATE_CONFIG });
   const secrets = resolveSecrets(config);
-  const daemon = new Daemon({ config, secrets, configPath: process.env.OPENMATE_CONFIG });
+  const daemon = new Daemon({
+    config,
+    secrets,
+    configPath: process.env.OPENMATE_CONFIG,
+    whisperBin: process.env.OPENMATE_WHISPER_BIN,
+  });
   daemon.start();
+  // chiusura pulita (spegne anche whisper-server): l'app ferma il daemon con SIGTERM
+  const shutdown = () => {
+    daemon.stop();
+    process.exit(0);
+  };
+  process.once('SIGTERM', shutdown);
+  process.once('SIGINT', shutdown);
   const port = Number(process.env.OPENMATE_PORT ?? 8787);
   startHttpServer(daemon, port);
   if (!secrets.apiKey) {

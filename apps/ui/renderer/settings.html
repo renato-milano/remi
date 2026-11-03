@@ -78,6 +78,21 @@
       <p class="note">Funziona anche senza modello vision. Ti chiederò il permesso alla prima azione (clic/scrittura) di ogni sessione. La modalità "Estensione" richiede di installare l'estensione Remi in Chrome.</p>
     </section>
 
+    <section>
+      <label>Voce (sperimentale)</label>
+      <label class="switch">
+        <input type="checkbox" id="voiceEnabled" />
+        <span>Parlami tenendo premuto Ctrl+Option+Spazio mentre indichi qualcosa</span>
+      </label>
+      <select id="voiceTts" class="field select" style="margin-top:8px">
+        <option value="auto">Ti rispondo a voce (voce naturale se uso Vercel AI Gateway)</option>
+        <option value="system">Ti rispondo con la voce di sistema</option>
+        <option value="off">Rispondo solo per iscritto</option>
+      </select>
+      <p class="note">La trascrizione avviene sul tuo computer: la prima volta scarico il modello vocale (circa 465 MB). Serve il permesso Microfono.</p>
+      <p class="note" id="voiceStatus"></p>
+    </section>
+
     <div class="nav">
       <button id="cancel" class="btn ghost">Annulla</button>
       <button id="save" class="btn primary">Salva e riavvia</button>
