@@ -1,4 +1,5 @@
 import type { TokenUsage } from '@openmate/llm';
+import type { PanelStreamEvent } from './panel-stream.js';
 
 export type AgentStatus = 'idle' | 'thinking' | 'acting' | 'sleeping' | 'waiting_approval';
 
@@ -15,7 +16,7 @@ export interface TriggerImage {
 }
 
 export type Trigger =
-  | { kind: 'user_message'; content: string; images?: TriggerImage[]; fast?: boolean }
+  | { kind: 'user_message'; content: string; images?: TriggerImage[]; fast?: boolean; model?: string }
   | { kind: 'heartbeat' }
   | { kind: 'cron'; name: string };
 
@@ -25,8 +26,11 @@ export type Trigger =
  */
 export type AgentEvent =
   | { kind: 'state'; state: AgentState }
-  | { kind: 'message'; role: 'agent'; content: string }
-  | { kind: 'action'; summary: string };
+  /** `channel: 'panel'`: il testo è già mostrato (e letto) dal pannello di spiegazione. */
+  | { kind: 'message'; role: 'agent'; content: string; channel?: 'panel' }
+  | { kind: 'action'; summary: string }
+  /** Pannello di spiegazione in streaming (vedi panel-stream.ts). */
+  | ({ kind: 'panel' } & PanelStreamEvent);
 
 export interface CycleResult {
   taskId?: string;

@@ -17,6 +17,24 @@
     <div id="cardStatus" class="card-status"></div>
     <div id="cardBody" class="card-body"></div>
   </div>
+  <div id="panel" class="panel hidden">
+    <button id="panelClose" class="card-close" title="Chiudi">✕</button>
+    <div id="panelQ" class="panel-q"></div>
+    <h2 id="panelTitle" class="panel-title"></h2>
+    <svg id="panelSvg" class="panel-svg" viewBox="0 0 600 380">
+      <defs>
+        <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M1 1 L9 5 L1 9" fill="none" stroke="#1f2a24" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+        </marker>
+        <!-- tratto "a mano": leggera irregolarità sulle linee -->
+        <filter id="rough" x="-5%" y="-5%" width="110%" height="110%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="2" seed="7" />
+          <feDisplacementMap in="SourceGraphic" scale="2.2" />
+        </filter>
+      </defs>
+      <g id="panelDraw" filter="url(#rough)"></g>
+    </svg>
+  </div>
   <script src="pointer.js"></script>
 </body>
 </html>

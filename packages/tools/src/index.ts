@@ -14,6 +14,8 @@ export { createComputerTools } from './computer-tools.js';
 export { createBrowserTools } from './browser-tools.js';
 export {
   createOverlayTools,
+  NORMALIZED,
+  toScreen,
   type OverlayItem,
   type OverlayOptions,
   type ScreenFrame,

@@ -6,7 +6,8 @@
 const GATEWAY = 'https://ai-gateway.vercel.sh/v4/ai';
 
 export const GATEWAY_STT_MODEL = 'openai/whisper-1';
-export const GATEWAY_TTS_MODEL = 'google/gemini-3.8-flash-lite-tts';
+/** Misurato via gateway: ~0,5 s per una frase (Gemini flash-lite TTS: ~2,2 s). */
+export const GATEWAY_TTS_MODEL = 'elevenlabs/eleven-flash-v2.5';
 
 /** Il provider configurato è il Vercel AI Gateway? */
 export function isVercelGateway(baseURL?: string): boolean {
@@ -43,12 +44,17 @@ export async function gatewayTranscribe(
 export async function gatewaySpeak(
   apiKey: string,
   text: string,
-  opts: { model?: string; voice?: string; signal?: AbortSignal } = {},
+  opts: { model?: string; voice?: string; language?: string; signal?: AbortSignal } = {},
 ): Promise<{ audio: string; mediaType: string }> {
   const res = await fetch(`${GATEWAY}/speech-model`, {
     method: 'POST',
     headers: headers(apiKey, opts.model ?? GATEWAY_TTS_MODEL, 'speech'),
-    body: JSON.stringify({ text, ...(opts.voice ? { voice: opts.voice } : {}) }),
+    // la lingua evita l'accento della voce predefinita (inglese) quando parla italiano
+    body: JSON.stringify({
+      text,
+      ...(opts.voice ? { voice: opts.voice } : {}),
+      ...(opts.language && opts.language !== 'auto' ? { language: opts.language } : {}),
+    }),
     signal: opts.signal,
   });
   if (!res.ok) throw new Error(`sintesi vocale gateway ${res.status}`);

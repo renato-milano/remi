@@ -9,10 +9,17 @@ const card = document.getElementById('card');
 const cardStatus = document.getElementById('cardStatus');
 const cardBody = document.getElementById('cardBody');
 const cardClose = document.getElementById('cardClose');
+const panel = document.getElementById('panel');
+const panelQ = document.getElementById('panelQ');
+const panelTitle = document.getElementById('panelTitle');
+const panelDraw = document.getElementById('panelDraw');
+const panelSvg = document.getElementById('panelSvg');
+const panelClose = document.getElementById('panelClose');
 
 const BOX_W = 380;
 const GAP = 22;
 let at = { x: 0, y: 0 };
+let focusBox; // zona indicata (se l'utente ha circoscritto un'area)
 
 /** Posiziona un box vicino al punto indicato, restando dentro lo schermo. */
 function place(el, p) {
@@ -142,6 +149,30 @@ bridge.onRecStart(async () => {
   }
 });
 
+/** "Ti ho sentito": due note brevi e morbide, generate al momento (niente file audio). */
+function playAck() {
+  try {
+    const ctx = mic.ctx && mic.ctx.state !== 'closed' ? mic.ctx : new AudioContext();
+    const t = ctx.currentTime;
+    for (const [i, freq] of [660, 990].entries()) {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      const start = t + i * 0.09;
+      gain.gain.setValueAtTime(0, start);
+      gain.gain.linearRampToValueAtTime(0.12, start + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.001, start + 0.22);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(start);
+      osc.stop(start + 0.25);
+    }
+  } catch {
+    /* audio non disponibile: resta il riscontro visivo */
+  }
+}
+bridge.onAck(playAck);
+
 bridge.onRecStop(() => {
   const durationMs = Math.round(performance.now() - (mic.startedAt || performance.now()));
   mic.recording = false;
@@ -199,14 +230,21 @@ function speakNext() {
     speech.playing = a;
     a.onended = done;
     a.onerror = done;
-    a.onplaying = () => bridge.speaking();
+    a.onplaying = () => {
+      bridge.speaking();
+      // il passo si disegna per tutta la durata della frase
+      if (item.step !== undefined) drawStep(item.step, (Number.isFinite(a.duration) ? a.duration * 1000 : 0) || sayMs(item.text));
+    };
     void a.play().catch(done);
   } else if (item.text) {
     const u = new SpeechSynthesisUtterance(item.text);
     u.lang = item.lang && item.lang !== 'auto' ? item.lang : 'it'; // il sistema sceglie una voce di quella lingua
     u.onend = done;
     u.onerror = done;
-    u.onstart = () => bridge.speaking();
+    u.onstart = () => {
+      bridge.speaking();
+      if (item.step !== undefined) drawStep(item.step, sayMs(item.text));
+    };
     speech.playing = u;
     speechSynthesis.speak(u);
   } else {
@@ -226,7 +264,205 @@ bridge.onSpeak((item) => {
   speakNext();
 });
 
+/* --- pannello di spiegazione: SVG disegnato mentre la voce spiega --- */
+const PANEL_W = 520;
+const SVG_NS = 'http://www.w3.org/2000/svg';
+const SVG_TAGS = new Set(['g', 'path', 'line', 'polyline', 'polygon', 'rect', 'circle', 'ellipse', 'text', 'tspan']);
+const SVG_ATTRS = new Set([
+  'd', 'x', 'y', 'x1', 'y1', 'x2', 'y2', 'cx', 'cy', 'r', 'rx', 'ry', 'width', 'height', 'points', 'dx', 'dy',
+  'fill', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin', 'stroke-dasharray', 'opacity',
+  'fill-opacity', 'stroke-opacity', 'font-size', 'font-weight', 'font-style', 'text-anchor', 'dominant-baseline',
+  'transform', 'marker-end', 'marker-start',
+]);
+const panelState = { steps: [], drawn: -1, voiced: false, ended: false, busyUntil: 0, timer: undefined, want: undefined };
+
+function clearPanel() {
+  clearTimeout(panelState.timer);
+  Object.assign(panelState, { steps: [], drawn: -1, voiced: false, ended: false, busyUntil: 0, want: undefined });
+  panel.classList.add('hidden');
+  panelDraw.replaceChildren();
+  panelSvg.setAttribute('viewBox', '0 0 600 380');
+}
+
+/** Accanto alla zona indicata (o al punto), dal lato con più spazio, senza coprirla. */
+function placePanel() {
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const h = panel.offsetHeight || 300;
+  const box = focusBox || { x: at.x - 30, y: at.y, w: 60, h: 0 };
+  const roomRight = vw - (box.x + box.w);
+  let x = roomRight >= box.x ? box.x + box.w + 24 : box.x - 24 - PANEL_W;
+  x = Math.max(16, Math.min(vw - PANEL_W - 16, x));
+  const y = Math.max(16, Math.min(vh - h - 16, box.y + box.h / 2 - h / 2));
+  panel.style.left = `${x}px`;
+  panel.style.top = `${y}px`;
+}
+
+/**
+ * SVG scritto dal modello → solo forme e testo. La lavagna ha accesso alle funzioni
+ * dell'app (preload): niente script, link, stili, riferimenti esterni o eventi.
+ */
+function sanitizeSvg(fragment) {
+  const doc = new DOMParser().parseFromString(`<svg xmlns="${SVG_NS}">${fragment}</svg>`, 'image/svg+xml');
+  if (doc.querySelector('parsererror')) return [];
+  const clean = (node) => {
+    if (node.nodeType === Node.TEXT_NODE) return document.createTextNode(node.textContent);
+    if (node.nodeType !== Node.ELEMENT_NODE || !SVG_TAGS.has(node.localName)) return null;
+    const el = document.createElementNS(SVG_NS, node.localName);
+    for (const { name, value } of [...node.attributes]) {
+      if (!SVG_ATTRS.has(name)) continue;
+      if (/url\(/i.test(value) && value.trim() !== 'url(#arrow)') continue;
+      if (/javascript:|expression\(/i.test(value)) continue;
+      el.setAttribute(name, value);
+    }
+    for (const child of node.childNodes) {
+      // il testo sta solo dentro text/tspan
+      if (child.nodeType === Node.TEXT_NODE && !['text', 'tspan'].includes(node.localName)) continue;
+      const c = clean(child);
+      if (c) el.appendChild(c);
+    }
+    return el;
+  };
+  return [...doc.documentElement.childNodes].map(clean).filter((n) => n && n.nodeType === Node.ELEMENT_NODE);
+}
+
+/** Le forme "disegnabili" di un sottoalbero, nell'ordine in cui compaiono. */
+function drawables(root) {
+  return [root, ...root.querySelectorAll('*')].filter((e) => e.localName !== 'g' && e.localName !== 'tspan');
+}
+
+/** Disegna un passo nell'arco di `ms`: tratti che si tracciano, poi riempimenti e scritte. */
+function drawStep(i, ms) {
+  const step = panelState.steps[i];
+  if (i <= panelState.drawn) return;
+  // la voce è partita ma il disegno del passo non è ancora arrivato: disegnalo appena c'è,
+  // nel tempo che resta della frase
+  if (!step) {
+    panelState.want = { i, endAt: Date.now() + ms };
+    return;
+  }
+  // passi precedenti non ancora disegnati (voce saltata): subito, senza animazione
+  for (let k = panelState.drawn + 1; k < i; k++) drawStepNow(k);
+  panelState.drawn = i;
+  const group = document.createElementNS(SVG_NS, 'g');
+  for (const el of sanitizeSvg(step.svg)) group.appendChild(el);
+  panelDraw.appendChild(group);
+  const items = drawables(group);
+  const slot = (ms * 0.85) / Math.max(1, items.length);
+  items.forEach((el, k) => {
+    const delay = k * slot;
+    const dur = Math.max(250, slot * 1.2);
+    if (el.localName === 'text') {
+      el.animate([{ opacity: 0, transform: 'translateY(4px)' }, { opacity: 1, transform: 'none' }], {
+        duration: Math.min(500, dur), delay, fill: 'both', easing: 'ease-out',
+      });
+      return;
+    }
+    let len = 0;
+    try {
+      len = el.getTotalLength();
+    } catch {
+      /* forma senza lunghezza */
+    }
+    if (len > 0 && !el.hasAttribute('stroke-dasharray')) {
+      el.style.strokeDasharray = `${len}`;
+      const a = el.animate([{ strokeDashoffset: len }, { strokeDashoffset: 0 }], {
+        duration: dur, delay, fill: 'both', easing: 'ease-in-out',
+      });
+      a.onfinish = () => {
+        el.style.strokeDasharray = '';
+      };
+    }
+    // il riempimento arriva quando il contorno è quasi chiuso
+    el.animate([{ fillOpacity: 0 }, { fillOpacity: 1 }], {
+      duration: Math.min(400, dur), delay: delay + dur * 0.7, fill: 'both',
+    });
+  });
+  clearDrawings();
+  (step.marks || []).forEach((m, k) => {
+    const el = render(m, k);
+    if (el) layer.appendChild(el);
+  });
+  fitPanel();
+  placePanel();
+}
+
+/** Altezza del disegno adattata al contenuto (la larghezza resta: niente cambi di scala). */
+function fitPanel() {
+  try {
+    const bb = panelDraw.getBBox();
+    if (!bb.width && !bb.height) return;
+    const y0 = Math.max(0, bb.y - 16);
+    const h = Math.max(160, bb.y + bb.height + 16 - y0);
+    panelSvg.setAttribute('viewBox', `0 ${y0} 600 ${h}`);
+  } catch {
+    /* svg non ancora visibile */
+  }
+}
+
+function drawStepNow(i) {
+  const step = panelState.steps[i];
+  if (!step) return;
+  const group = document.createElementNS(SVG_NS, 'g');
+  for (const el of sanitizeSvg(step.svg)) group.appendChild(el);
+  panelDraw.appendChild(group);
+  panelState.drawn = i;
+  fitPanel();
+}
+
+/** Durata stimata di una frase detta (senza voce o prima di conoscere l'audio). */
+function sayMs(say) {
+  return Math.max(2200, (say?.length || 0) * 62);
+}
+
+/** Senza voce: un passo dopo l'altro, appena arriva e il precedente è finito. */
+function drawTimedNext() {
+  const next = panelState.drawn + 1;
+  if (!panelState.steps[next]) return;
+  const wait = Math.max(0, panelState.busyUntil - Date.now());
+  clearTimeout(panelState.timer);
+  panelState.timer = setTimeout(() => {
+    const ms = sayMs(panelState.steps[next].say);
+    panelState.busyUntil = Date.now() + ms;
+    drawStep(next, ms);
+    drawTimedNext();
+  }, wait);
+}
+
+bridge.onPanelStart(({ title, voiced }) => {
+  clearPanel();
+  // la domanda (se a voce) passa dalla scheda al pannello, che prende il suo posto
+  const q = cardBody.querySelector('.q');
+  panelQ.textContent = q ? q.textContent : '';
+  card.classList.add('hidden');
+  panelTitle.textContent = title;
+  panelState.voiced = voiced;
+  panel.classList.remove('hidden');
+  placePanel();
+});
+
+bridge.onPanelStep((step) => {
+  panelState.steps[step.index] = step;
+  const want = panelState.want;
+  if (want && want.i === step.index) {
+    panelState.want = undefined;
+    drawStep(step.index, Math.max(900, want.endAt - Date.now()));
+  }
+  // senza un punto indicato (turno non partito dalla hotkey) affianca le evidenziazioni
+  const m = step.marks?.[0];
+  if (!focusBox && !at.x && !at.y && m) focusBox = { x: m.x, y: m.y, w: m.w || 0, h: m.h || 0 };
+  if (!panelState.voiced) drawTimedNext();
+});
+
+bridge.onPanelEnd(() => {
+  panelState.ended = true;
+});
+
+// voce non disponibile per un passo: disegnalo comunque
+bridge.onStep((i) => drawStep(i, sayMs(panelState.steps[i]?.say)));
+
 function reset() {
+  clearPanel();
   stopSpeaking();
   endTrail();
   clearDrawings();
@@ -246,6 +482,7 @@ bridge.onAsk((p) => {
   // area: niente segni sullo schermo (la scia svanisce); punto: anello pulsante
   reset();
   at = p;
+  focusBox = p.box;
   anchor.style.left = `${p.x}px`;
   anchor.style.top = `${p.y}px`;
   anchor.classList.toggle('hidden', Boolean(p.area));
@@ -278,6 +515,7 @@ document.addEventListener('mousedown', (ev) => {
 bridge.onAnchor((p) => {
   reset();
   at = p;
+  focusBox = p.box;
   anchor.style.left = `${p.x}px`;
   anchor.style.top = `${p.y}px`;
   anchor.classList.toggle('hidden', Boolean(p.area));
@@ -330,13 +568,16 @@ bridge.onDone(() => {
 bridge.onClear(() => reset());
 
 // la ✕ chiude scheda e disegni; la scheda è cliccabile, il resto lascia passare i click
-cardClose.addEventListener('click', () => {
-  reset();
-  bridge.cancel();
-});
+for (const btn of [cardClose, panelClose]) {
+  btn.addEventListener('click', () => {
+    reset();
+    bridge.cancel();
+  });
+}
 document.addEventListener('mousemove', (ev) => {
   if (!ask.classList.contains('hidden')) return; // mentre chiede la finestra è già interattiva
-  bridge.setInteractive(!card.classList.contains('hidden') && card.contains(ev.target));
+  const over = (el) => !el.classList.contains('hidden') && el.contains(ev.target);
+  bridge.setInteractive(over(card) || over(panel));
 });
 
 /* --- disegni: coordinate già locali alla finestra --- */

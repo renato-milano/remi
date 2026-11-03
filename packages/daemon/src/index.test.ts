@@ -6,6 +6,7 @@ import { FakeReasoningBackend } from '@openmate/llm';
 import type { ReasoningBackend } from '@openmate/llm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Daemon, type DaemonEvent } from './index.js';
+import { wantsExplanation } from './daemon.js';
 
 let root: string;
 
@@ -129,5 +130,23 @@ describe('@openmate/daemon — voce', () => {
     expect(on.voice.status()).toEqual({ enabled: true, stt: 'none', tts: 'system' });
     await expect(on.voice.transcribe(Buffer.from('x'))).rejects.toThrow(/non disponibile/);
     on.stop();
+  });
+});
+
+describe('@openmate/daemon — smistamento delle domande "indica"', () => {
+  it('le spiegazioni vanno al modello principale, il resto al rapido', () => {
+    for (const q of [
+      'Spiegami come funziona',
+      'come funziona questo?',
+      'perché si muove così?',
+      'in che modo si collega?',
+      'fammi un disegno',
+      'fammi uno schema di questo',
+    ]) {
+      expect(wantsExplanation(q)).toBe(true);
+    }
+    for (const q of ["cos'è questo?", 'che cosa indica?', 'leggimi questo numero']) {
+      expect(wantsExplanation(q)).toBe(false);
+    }
   });
 });

@@ -104,7 +104,7 @@ export class VoiceService {
   /** Audio della risposta, o undefined se la voce è di sistema/spenta (la fa l'interfaccia). */
   async speak(text: string): Promise<{ audio: string; mediaType: string } | undefined> {
     if (this.status().tts !== 'cloud' || !this.gatewayKey) return undefined;
-    return gatewaySpeak(this.gatewayKey, text);
+    return gatewaySpeak(this.gatewayKey, text, { language: this.config.voice.language });
   }
 
   stop(): void {

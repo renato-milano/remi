@@ -126,6 +126,7 @@ api.onData(({ config, hasKey }) => {
   providerEl.value = preset;
   selectProvider(preset);
   if (pv.model) modelEl.value = pv.model;
+  document.getElementById('fastModel').value = pv.fastModel || '';
   if (pv.baseURL) baseURLEl.value = pv.baseURL;
   if (hasKey) apiKeyEl.placeholder = '•••••••• (lascia vuoto per non cambiare)';
   setChip('trust', 'trust', config.autonomy?.autoApprove || 'read');
@@ -148,7 +149,7 @@ function collect() {
   const heartbeatMinutes = Number(document.querySelector('#beat .chip.active')?.dataset.min) || 15;
   const auth = P.auth === 'claude-subscription' ? 'claude-subscription' : 'api-key';
   return {
-    provider: { name: P.name, model, baseURL, auth },
+    provider: { name: P.name, model, baseURL, auth, fastModel: document.getElementById('fastModel').value.trim() },
     autoApprove,
     heartbeatMinutes,
     computerUse: computerUseEl.checked,

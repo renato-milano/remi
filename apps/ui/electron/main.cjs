@@ -77,6 +77,8 @@ function saveSettings(data) {
   const p = data.provider || {};
   config.provider.name = p.name || config.provider.name || 'anthropic';
   if (p.model) config.provider.model = p.model;
+  if (p.fastModel) config.provider.fastModel = p.fastModel;
+  else delete config.provider.fastModel;
   if (p.baseURL) config.provider.baseURL = p.baseURL;
   else delete config.provider.baseURL;
   config.provider.auth = p.auth === 'claude-subscription' ? 'claude-subscription' : 'api-key';
@@ -783,12 +785,19 @@ async function endTrace() {
   phase('immagini preparate (ridimensiona + ingrandimento)');
   const at = isArea ? end : points[0];
   const local = { x: at.x - display.bounds.x, y: at.y - display.bounds.y, area: isArea };
+  if (area) {
+    // rettangolo della zona (locale): il pannello di spiegazione la affianca senza coprirla
+    const ax = area.map((p) => p.x - display.bounds.x);
+    const ay = area.map((p) => p.y - display.bounds.y);
+    local.box = { x: Math.min(...ax), y: Math.min(...ay), w: Math.max(...ax) - Math.min(...ax), h: Math.max(...ay) - Math.min(...ay) };
+  }
 
   // ha parlato? allora niente casella: trascrivi e invia
   const rec = t.recording ? await stopRecording() : null;
   if (rec) phase(`audio ricevuto (${rec.durationMs} ms, ${rec.wav ? Math.round(rec.wav.byteLength / 1024) : 0} kB)`);
   pointDebug('voce', rec ? `${rec.durationMs} ms, parlato: ${rec.speech}` : 'nessuna registrazione');
   if (rec?.speech && rec.wav) {
+    sendPointer('pointer-ack'); // "ti ho sentito": subito, prima di trascrivere
     await ensurePointerWin(display);
     pointerWin.setIgnoreMouseEvents(true, { forward: true });
     pointerWin.showInactive();
@@ -920,20 +929,59 @@ function splitSentences(text) {
  * parte appena è pronta invece di aspettare l'audio dell'intera risposta.
  */
 function speakAnswer(text) {
-  const sentences = splitSentences(text);
-  phase(`voce: richiesta audio (${sentences.length} frasi)`);
-  const pending = sentences.map((sentence) => postJson('/voice/speak', { text: sentence }).catch(() => ({ ok: false })));
+  speakParts(splitSentences(text).map((t) => ({ text: t })));
+}
+
+/**
+ * Legge le parti in ordine (sintesi in parallelo). `step`: passo del pannello da
+ * rivelare quando quella parte inizia a suonare; se la voce manca, il passo
+ * viene rivelato subito, così il pannello non resta a metà.
+ */
+function speakParts(parts) {
+  phase(`voce: richiesta audio (${parts.length} parti)`);
+  const pending = parts.map((p) => postJson('/voice/speak', { text: p.text }).catch(() => ({ ok: false })));
   speakChain = speakChain.then(async () => {
     for (const [i, req] of pending.entries()) {
+      const { text, step } = parts[i];
       const out = await req;
-      if (i === 0) phase(out.audio ? 'voce: audio della prima frase pronto' : 'voce: nessun audio cloud');
-      if (!out.ok || pointMuted) return;
-      if (out.audio) sendPointer('pointer-speak', { audio: out.audio, mediaType: out.mediaType });
-      else if (out.tts === 'system') {
-        sendPointer('pointer-speak', { text: sentences[i], lang: readConfig().voice?.language || 'it' });
-      }
+      if (i === 0) phase(out.audio ? 'voce: audio della prima parte pronto' : 'voce: nessun audio cloud');
+      if (pointMuted) return;
+      if (out.ok && out.audio) sendPointer('pointer-speak', { audio: out.audio, mediaType: out.mediaType, step });
+      else if (out.ok && out.tts === 'system') {
+        sendPointer('pointer-speak', { text, lang: readConfig().voice?.language || 'it', step });
+      } else if (step !== undefined) sendPointer('pointer-step', step);
     }
   });
+}
+
+/* --- pannello di spiegazione in streaming: ogni passo arriva mentre il modello scrive --- */
+let panelVoiced = false;
+
+function handlePanel(e) {
+  if (e.op === 'start') {
+    // con la voce ogni passo si disegna mentre viene pronunciato; senza, a tempo di lettura
+    panelVoiced = pointVoiceTurn && readConfig().voice?.tts !== 'off';
+    phase(`pannello: inizio "${e.title}"`);
+    const ready = pointerWin ? Promise.resolve() : ensurePointerWin(screen.getDisplayNearestPoint(screen.getCursorScreenPoint()));
+    void ready.then(() => {
+      if (!pointerWin) return;
+      if (!pointerWin.isVisible()) pointerWin.showInactive();
+      sendPointer('pointer-panel-start', { title: e.title, voiced: panelVoiced });
+    });
+    clearTimeout(lingerTimer);
+  } else if (e.op === 'say') {
+    // la frase arriva prima del disegno: la voce si prepara mentre il modello scrive l'SVG
+    phase(`pannello: frase ${e.index + 1}`);
+    if (panelVoiced) speakParts([{ text: e.say, step: e.index }]);
+  } else if (e.op === 'step') {
+    phase(`pannello: passo ${e.index + 1}`);
+    const b = pointerWin?.getBounds() || { x: 0, y: 0 };
+    const marks = (e.marks || []).map((m) => ({ ...m, x: m.x - b.x, y: m.y - b.y }));
+    sendPointer('pointer-panel-step', { index: e.index, say: e.say, svg: e.svg, marks });
+  } else if (e.op === 'end') {
+    sendPointer('pointer-panel-end');
+    if (!pointTurn) lingerTimer = setTimeout(hidePointer, POINT_LINGER_MS);
+  }
 }
 
 // la scheda della risposta è cliccabile (✕): il resto della lavagna lascia passare i click
@@ -989,6 +1037,10 @@ function handleDaemonEvent(e) {
     else if (e.kind === 'message') phase('daemon: testo della risposta');
   }
   if (pointMuted) return;
+  if (e.kind === 'panel') {
+    handlePanel(e);
+    return;
+  }
   if (e.kind === 'overlay') {
     if (e.op === 'clear') sendPointer('pointer-clear');
     else showOverlay(e.items || [], Boolean(e.clear));
@@ -996,6 +1048,7 @@ function handleDaemonEvent(e) {
   }
   if (!pointTurn) return;
   if (e.kind === 'message') {
+    if (e.channel === 'panel') return; // già nel pannello, che la legge passo per passo
     sendPointer('pointer-answer', e.content);
     if (pointVoiceTurn) speakAnswer(e.content);
   } else if (e.kind === 'action' && typeof e.summary === 'string' && !e.summary.startsWith('overlay.')) {

@@ -13,6 +13,11 @@ export const providerSchema = z.object({
    *    valido solo con name === 'anthropic'. Modalità avanzata/opt-in.
    */
   auth: z.enum(['api-key', 'claude-subscription']).default('api-key'),
+  /**
+   * Modello più veloce (stesso provider) per le domande semplici dei turni
+   * "indica" ("cos'è questo?"). Le spiegazioni col pannello restano su `model`.
+   */
+  fastModel: z.string().optional(),
 });
 
 /** Budget di un ciclo cognitivo (anti loop-runaway, vedi docs/02). */

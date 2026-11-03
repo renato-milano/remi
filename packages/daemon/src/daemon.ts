@@ -32,6 +32,8 @@ import {
   createComputerTools,
   createMemoryTools,
   createOverlayTools,
+  NORMALIZED,
+  toScreen,
   createProjectTools,
   createScheduleTools,
   createTaskTools,
@@ -115,6 +117,10 @@ export class Daemon {
   private readonly configPath?: string;
   /** Stato del computer-use (per l'overlay). */
   readonly computerUse: { enabled: boolean; reason?: string };
+  /** Coordinate normalizzate 0-1000 per indicatori e pannello (modelli Gemini). */
+  private readonly normalized: boolean;
+  /** Modello rapido per le domande semplici dei turni "indica" (vedi provider.fastModel). */
+  private readonly fastModel?: string;
   /** Voce: trascrizione e sintesi vocale. */
   readonly voice: VoiceService;
   /** Il modello vede le immagini? Senza vision "indica e chiedi" manda solo il testo. */
@@ -213,8 +219,11 @@ export class Daemon {
     }
 
     // Overlay: l'agente disegna indicazioni sullo schermo (solo visualizzazione).
+    // I Gemini localizzano bene in 0-1000 e male in pixel (misurato: ~2 px contro ~300 px).
+    this.normalized = usesNormalizedCoords(opts.config.provider.model);
     this.registry.registerAll(
       createOverlayTools({
+        normalized: this.normalized,
         frame: () => this.screenFrame,
         draw: (items, clear) => this.emit({ kind: 'overlay', op: 'draw', items, clear }),
         clear: () => this.emit({ kind: 'overlay', op: 'clear' }),
@@ -239,6 +248,7 @@ export class Daemon {
     const built = opts.backend ? { backend: opts.backend, vision: true } : buildBackend(opts.config, opts.secrets);
     const backend = built.backend;
     this.vision = built.vision;
+    this.fastModel = opts.backend ? undefined : opts.config.provider.fastModel;
 
     this.voice = new VoiceService(opts.config, {
       apiKey: opts.secrets?.apiKey,
@@ -258,7 +268,7 @@ export class Daemon {
       budget,
       audit: this.audit,
       requestApproval: (req) => this.requestApproval(req),
-      onEvent: (event) => this.emit(event),
+      onEvent: (event) => this.emit(this.onScreen(event)),
     });
 
     this.scheduler = new Scheduler({
@@ -358,6 +368,13 @@ export class Daemon {
     await this.scheduler.submitUserMessage(content);
   }
 
+  /** Le evidenziazioni di un passo del pannello: dai pixel dello screenshot al monitor reale. */
+  private onScreen(event: AgentEvent): AgentEvent {
+    if (event.kind !== 'panel' || event.op !== 'step' || !event.marks.length) return event;
+    const frame = this.screenFrame;
+    return { ...event, marks: frame ? event.marks.map((m) => toScreen(m, frame, this.normalized)) : [] };
+  }
+
   /** "Indica e chiedi": messaggio con lo screenshot del punto indicato dall'utente. */
   async submitPointMessage(msg: PointMessage): Promise<void> {
     const question = msg.content.trim() || "Cos'è questo?";
@@ -385,7 +402,14 @@ export class Daemon {
       });
     }
     if (process.env.OPENMATE_UI_DEBUG) console.log(`[tempi daemon] marcatura immagini ${Date.now() - t0} ms`);
-    await this.scheduler.submitUserMessage(pointPrompt(question, msg.cursor, area), { images, fast: true });
+    // domande semplici sul modello rapido; spiegazioni (pannello disegnato) su quello principale
+    const model = this.fastModel && !wantsExplanation(question) ? this.fastModel : undefined;
+    if (process.env.OPENMATE_UI_DEBUG) console.log(`[tempi daemon] modello: ${model ?? 'principale'}`);
+    // nel prompt cursore e zona nelle stesse coordinate in cui il modello risponde
+    const toModel = (p: { x: number; y: number }) =>
+      this.normalized ? { x: (p.x / size.w) * NORMALIZED, y: (p.y / size.h) * NORMALIZED } : p;
+    const prompt = pointPrompt(question, toModel(msg.cursor), area?.map(toModel), !model, this.normalized);
+    await this.scheduler.submitUserMessage(prompt, { images, fast: true, model });
   }
 
   /* ---------------- relay estensione Chrome (browser mode 'extension') ---------------- */
@@ -554,7 +578,28 @@ function pngSize(b64: string): { w: number; h: number } | undefined {
 }
 
 /** Testo del turno "indica e chiedi": la domanda + come usare l'immagine e l'overlay. */
-function pointPrompt(question: string, cursor: { x: number; y: number }, area?: { x: number; y: number }[]): string {
+/** Modelli che localizzano meglio con coordinate normalizzate 0-1000 (Gemini). */
+export function usesNormalizedCoords(model: string): boolean {
+  return /gemini/i.test(model);
+}
+
+/** La domanda chiede una spiegazione (→ pannello disegnato, modello principale)? */
+export function wantsExplanation(question: string): boolean {
+  return /\b(come funzion|spiega|perch[eé]|in che modo|come mai|come si|cosa succede|differenz|illustra|mostrami come|fammi vedere come|disegn|schema|schematizz|diagramm|lavagna)/i.test(
+    question,
+  );
+}
+
+function pointPrompt(
+  question: string,
+  cursor: { x: number; y: number },
+  area?: { x: number; y: number }[],
+  allowPanel = true,
+  normalized = false,
+): string {
+  const coords = normalized
+    ? "coordinate normalizzate 0-1000 dello screenshot (x da sinistra, y dall'alto)"
+    : 'pixel dello screenshot intero';
   let where: string;
   if (area) {
     const xs = area.map((p) => p.x);
@@ -562,20 +607,45 @@ function pointPrompt(question: string, cursor: { x: number; y: number }, area?: 
     const [x0, y0] = [Math.round(Math.min(...xs)), Math.round(Math.min(...ys))];
     const [x1, y1] = [Math.round(Math.max(...xs)), Math.round(Math.max(...ys))];
     where =
-      `Ho indicato una zona passandoci sopra col mouse (contorno rosso nello screenshot, circa x=${x0}..${x1}, y=${y0}..${y1}). ` +
+      `Ho indicato una zona passandoci sopra col mouse (contorno rosso nello screenshot, circa x=${x0}..${x1}, y=${y0}..${y1} in ${coords}). ` +
       '"Questo", "qui", "questa parte" si riferiscono al contenuto di quella zona.';
   } else {
     where =
       `Ho premuto il tasto "indica" puntando il mouse: il puntatore è a x=${Math.round(cursor.x)}, y=${Math.round(cursor.y)} ` +
-      'nello screenshot (cerchio rosso). "Questo", "qui", "quello" si riferiscono a ciò che sta sotto o vicino al puntatore.';
+      `(${coords}, cerchio rosso). "Questo", "qui", "quello" si riferiscono a ciò che sta sotto o vicino al puntatore.`;
   }
   return (
     `${question}\n\n[${where} Rispondi su quello in 1-3 frasi. ` +
     'Se aiuta a spiegare, chiama overlay.draw con gli elementi da disegnare (indicatori, riquadri, etichette sulle parti che nomini; ' +
-    'coordinate nei pixel dello screenshot intero) e metti la tua risposta nel suo campo answer: così testo e disegni compaiono insieme. ' +
-    'Se non serve disegnare, rispondi solo col testo. Se ti chiedo di fare qualcosa, usa gli strumenti adatti.]'
+    `coordinate in ${coords}) e metti la tua risposta nel suo campo answer: così testo e disegni compaiono insieme. ` +
+    (allowPanel
+      ? 'Se ti chiedo come funziona qualcosa, di spiegarlo o il perché, spiegalo invece con un PANNELLO disegnato (vedi sotto). '
+      : '') +
+    `Se non serve disegnare, rispondi solo col testo. Se ti chiedo di fare qualcosa, usa gli strumenti adatti.]${allowPanel ? `\n\n${PANEL_GUIDE.replace('{COORDS}', coords)}` : ''}`
   );
 }
+
+/**
+ * Formato del pannello di spiegazione: scritto nel testo, così arriva in streaming
+ * e ogni passo si disegna (e si legge) mentre il modello scrive il successivo.
+ */
+const PANEL_GUIDE = `[PANNELLO — una spiegazione disegnata a mano che si costruisce mentre parli, come alla lavagna.
+Scrivi SOLO questo, senza altro testo né blocchi di codice:
+<panel title="titolo breve">
+<step><say>una frase detta ad alta voce (max 20 parole)</say>
+<svg>elementi SVG di QUESTO passo</svg>
+<mark type="highlight" x=".." y=".." w=".." h=".." text="1-3 parole"/></step>
+…altri passi…
+</panel>
+Regole:
+- 2-5 passi. Ogni passo AGGIUNGE elementi allo STESSO disegno: costruisci un unico schema che cresce, non disegni separati.
+- Area di disegno 600×380 (origine in alto a sinistra). Lascia margini di 20. Il testo dentro l'svg è in italiano, font-size 15-22.
+- Disegna davvero il concetto, con una forma adatta a ciò che spieghi: diagrammi di flusso, sezioni di oggetti, assi e curve, cicli, confronti, linee del tempo, schemi di forze… Evita di ripetere sempre la stessa disposizione a riquadri.
+- Elementi ammessi: path, line, polyline, polygon, rect, circle, ellipse, text, g. Tratto stroke="#1f2a24" stroke-width="2.5", fill="none" oppure pastelli #dbe9ff #ffdcd6 #d9f4e2 #fff1bf #ecebe6. Accenti #4a78c2 #c9584a #3f9a66 #c99a2e. Frecce: marker-end="url(#arrow)" su path/line.
+- Pochi elementi per passo (3-10), ordinati come li disegneresti: prima le forme, poi le frecce, poi le scritte.
+- Il testo deve stare DENTRO la sua forma: il font è a mano e largo, conta circa 10 di larghezza per carattere a font-size 16 (più margine). Scritte brevi.
+- Scrivi <say> PRIMA di <svg> in ogni passo.
+- mark è facoltativo: evidenzia sullo schermo la parte di cui parla il passo, in {COORDS} (NON quelle dell'area di disegno 600×380).]`;
 
 function buildBackend(config: OpenMateConfig, secrets?: Secrets): { backend: ReasoningBackend; vision: boolean } {
   // Modalità abbonamento Claude: riusa il login di Claude Code (nessuna API key).
@@ -591,6 +661,7 @@ function buildBackend(config: OpenMateConfig, secrets?: Secrets): { backend: Rea
   });
   const backend = new DirectProviderBackend(provider.languageModel(config.provider.model), {
     systemPrefix: provider.systemPrefix,
+    modelFor: (id) => provider.languageModel(id),
   });
   // openai-compatible è dichiarato senza vision perché dipende dal modello dietro
   // il gateway (es. Claude via Vercel la ha): lì escludiamo solo i modelli noti ciechi.

@@ -10,6 +10,7 @@ import {
   createToolContext,
   wireName,
 } from '@openmate/tools';
+import { PanelStream, type PanelStreamEvent } from './panel-stream.js';
 import type { Task, TaskStore } from './task-store.js';
 import type { AgentEvent, AgentState, CycleResult, Trigger } from './types.js';
 
@@ -115,6 +116,11 @@ export class CognitiveLoop {
     let usage: TokenUsage = {};
     let interrupted = false;
     let errorMsg;
+    // turni rapidi: il modello può spiegare con un pannello scritto nel testo, passo per passo
+    const panel = trigger.kind === 'user_message' && trigger.fast ? new PanelStream() : undefined;
+    const emitPanel = (events: PanelStreamEvent[]) => {
+      for (const e of events) this.opts.onEvent?.({ kind: 'panel', ...e });
+    };
     const flush = () => {
       const seg = pending.trim();
       pending = '';
@@ -131,6 +137,7 @@ export class CognitiveLoop {
         // turni interattivi: ragionamento basso e niente secondo giro dopo l'overlay
         fast: trigger.kind === 'user_message' && trigger.fast,
         finalTools: trigger.kind === 'user_message' && trigger.fast ? OVERLAY_TOOLS : undefined,
+        model: trigger.kind === 'user_message' ? trigger.model : undefined,
         takeImage: () => {
           const v = imageBuffer.current;
           imageBuffer.current = undefined;
@@ -138,10 +145,13 @@ export class CognitiveLoop {
         },
       })) {
         switch (ev.type) {
-          case 'text-delta':
-            pending += ev.text;
-            text += ev.text;
+          case 'text-delta': {
+            const plain = panel ? panel.feed(ev.text) : { text: ev.text, events: [] };
+            pending += plain.text;
+            text += plain.text;
+            emitPanel(plain.events);
             break;
+          }
           case 'tool-call': {
             flush(); // emetti la narrazione prima di agire
             actions += 1;
@@ -169,6 +179,17 @@ export class CognitiveLoop {
       else errorMsg = err instanceof Error ? err.message : String(err);
     }
     if (opts.signal?.aborted) interrupted = true;
+    if (panel) {
+      const rest = panel.end();
+      pending += rest.text;
+      text += rest.text;
+      emitPanel(rest.events);
+      // le frasi del pannello sono la risposta (cronologia, chat del companion)
+      if (panel.spoken) {
+        text += `${text.trim() ? '\n\n' : ''}${panel.spoken}`;
+        this.opts.onEvent?.({ kind: 'message', role: 'agent', content: panel.spoken, channel: 'panel' });
+      }
+    }
 
     const finalText = text.trim();
     const lastSegment = pending.trim(); // ultimo segmento, emesso sotto se il ciclo va a buon fine
