@@ -6,4 +6,5 @@ export type {
   AgentStatus,
   CycleResult,
   Trigger,
+  TriggerImage,
 } from './types.js';

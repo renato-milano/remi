@@ -13,6 +13,7 @@ import {
   createBrowserTools,
   createComputerTools,
   createMemoryTools,
+  createOverlayTools,
   createProjectTools,
   createScheduleTools,
   createTaskTools,
@@ -542,5 +543,54 @@ describe('@openmate/tools — computer.* gate di sessione', () => {
     expect(images).toEqual(['AAAA']);
     expect(out.screenshot).toBeUndefined();
     expect(out.width).toBe(100);
+  });
+});
+
+describe('@openmate/tools — overlay.*', () => {
+  it('converte le coordinate dello screenshot nel monitor reale e disegna senza chiedere', async () => {
+    const drawn: { items: unknown[]; clear: boolean }[] = [];
+    let asked = 0;
+    // immagine 1366 px di un monitor secondario da 1920x1080 punti posto a destra del principale
+    const frame = { imageW: 1366, imageH: 768, x: 1512, y: 0, w: 1920, h: 1080 };
+    const registry = new ToolRegistry().registerAll(
+      createOverlayTools({
+        frame: () => frame,
+        draw: (items, clear) => drawn.push({ items, clear }),
+        clear: () => {},
+      }),
+    );
+    const ctx = createToolContext({
+      audit: new InMemoryAuditSink(),
+      requestApproval: async () => {
+        asked += 1;
+        return true;
+      },
+    });
+    const out = await registry.execute(
+      'overlay.draw',
+      { items: [{ type: 'highlight', x: 683, y: 384, w: 100, h: 50, text: 'qui' }] },
+      ctx,
+      policy,
+    );
+    expect(out).toEqual({ ok: true, drawn: 1 });
+    expect(asked).toBe(0);
+    expect(drawn[0]).toEqual({
+      clear: true,
+      items: [{ type: 'highlight', x: 1512 + 960, y: 540, w: 141, h: 70, text: 'qui' }],
+    });
+  });
+
+  it('senza uno screenshot visto non disegna', async () => {
+    const registry = new ToolRegistry().registerAll(
+      createOverlayTools({ frame: () => undefined, draw: () => {}, clear: () => {} }),
+    );
+    const ctx = createToolContext({
+      audit: new InMemoryAuditSink(),
+      requestApproval: async () => true,
+    });
+    const out = (await registry.execute('overlay.draw', { items: [{ type: 'point', x: 1, y: 1 }] }, ctx, policy)) as {
+      ok: boolean;
+    };
+    expect(out.ok).toBe(false);
   });
 });

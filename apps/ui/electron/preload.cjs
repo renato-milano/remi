@@ -15,5 +15,7 @@ contextBridge.exposeInMainWorld('overlay', {
   onSummon: (cb) => ipcRenderer.on('summon', () => cb()),
   onShowActivity: (cb) => ipcRenderer.on('show-activity', () => cb()),
   onLayout: (cb) => ipcRenderer.on('layout', (_e, side) => cb(side)),
+  onPointActive: (cb) => ipcRenderer.on('point-active', (_e, on) => cb(Boolean(on))),
+  onPointError: (cb) => ipcRenderer.on('point-error', (_e, text) => cb(text)),
   quit: () => ipcRenderer.send('quit'),
 });

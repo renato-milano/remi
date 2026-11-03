@@ -101,7 +101,13 @@ export class NutExecutor implements Executor {
     const sentW = image.bitmap.width;
     const sentH = image.bitmap.height;
     this.mapping = { sentW, sentH, nutW, nutH };
-    return { pngBase64: out.toString('base64'), width: sentW, height: sentH };
+    return {
+      pngBase64: out.toString('base64'),
+      width: sentW,
+      height: sentH,
+      logicalW: nutW,
+      logicalH: nutH,
+    };
   }
 
   private async point(x: number, y: number) {

@@ -1,4 +1,4 @@
-import { type LanguageModel, type ModelMessage, stepCountIs, streamText } from 'ai';
+import { type LanguageModel, type ModelMessage, type StopCondition, type ToolSet, stepCountIs, streamText } from 'ai';
 import type { ReasoningBackend, ReasoningEvent, ReasoningInput } from './types.js';
 
 export interface DirectProviderOptions {
@@ -33,6 +33,33 @@ function sanitizeToolInputs(messages: ModelMessage[]): ModelMessage[] {
 }
 
 /**
+ * Ragionamento basso per i turni interattivi. Misurato su Gemini 3.8 Flash via
+ * gateway: primo token ~2 s invece di 5-9 s. Anthropic non ragiona di default.
+ */
+const FAST_PROVIDER_OPTIONS = {
+  openai: { reasoningEffort: 'low' },
+  'openai-compatible': { reasoningEffort: 'low' },
+};
+
+/**
+ * Ferma il ciclo dopo un passo che ha chiamato solo tool "finali" e ha già dato
+ * la risposta: come testo o nel campo `answer` del tool (es. overlay.draw).
+ */
+function endsOnFinalTools(names: string[]): StopCondition<ToolSet> {
+  const finals = new Set(names);
+  return ({ steps }) => {
+    const last = steps.at(-1);
+    if (!last || last.toolCalls.length === 0) return false;
+    if (!last.toolCalls.every((c) => finals.has(c.toolName))) return false;
+    const answered = last.toolCalls.some((c) => {
+      const answer = (c.input as { answer?: unknown } | null)?.answer;
+      return typeof answer === 'string' && answer.trim() !== '';
+    });
+    return answered || last.text.trim() !== '';
+  };
+}
+
+/**
  * DirectProviderBackend: OpenMate esegue il proprio loop chiamando gli endpoint
  * del modello tramite l'AI SDK (streamText + stopWhen). Il budget di step è
  * nativo; la wall-clock è una guardia aggiuntiva. Vedi ADR-0009, docs/11.
@@ -60,7 +87,10 @@ export class DirectProviderBackend implements ReasoningBackend {
       system,
       messages: input.messages,
       tools: input.tools,
-      stopWhen: stepCountIs(input.budget.maxSteps),
+      stopWhen: input.finalTools?.length
+        ? [stepCountIs(input.budget.maxSteps), endsOnFinalTools(input.finalTools)]
+        : stepCountIs(input.budget.maxSteps),
+      providerOptions: input.fast ? FAST_PROVIDER_OPTIONS : undefined,
       abortSignal: input.signal,
       // Inietta l'ultimo screenshot come user message prima del passo: le immagini
       // nei tool result non raggiungono il modello su OpenAI-compatible.

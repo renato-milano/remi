@@ -78,3 +78,39 @@ describe('@openmate/daemon — end-to-end (FakeBackend)', () => {
     d2.stop();
   });
 });
+
+describe('@openmate/daemon — indica e chiedi', () => {
+  it('allega lo screenshot marcato e disegna nel monitor indicato', async () => {
+    // PNG bianco 200x100
+    const png =
+      'iVBORw0KGgoAAAANSUhEUgAAAMgAAABkCAYAAADDhn8LAAAA+0lEQVR4Ae3BAQHAMAACIG//zvsCzAbAd64ATw0wNcDUAFMDTA0wNcDUAFMDTA0wNcDUAFMDTA0wNcDUAFMDTA0wNcDUAFMDTA0wNcDUAFMDTA0wNcDUAFMDTA0wNcDUAFMDTA0wNcDUAFMDTA0wNcDUAFMDTA0wNcDUAFMDTA0wNcDUAFMDTA0wNcDUAFMDTA0wNcDUAFMDTA0wNcDUAFMDTA0wNcDUAFMDTA0wNcDUAFMDTA0wNcDUAFMDTA0wNcDUAFMDTA0wNcDUAFMDTA0wNcDUAFMDTA0wNcDUAFMDTA0wNcDUAFMDTA0wNcDUAFMDTA0wNcDUANMPZLQExExjri4AAAAASUVORK5CYII=';
+
+    const backend = new FakeReasoningBackend([
+      {
+        callTool: 'overlay.draw',
+        input: { items: [{ type: 'point', x: 100, y: 50, text: 'questo' }] },
+      },
+      { text: 'È un pulsante.' },
+    ]);
+    const daemon = makeDaemon(backend);
+    const events: DaemonEvent[] = [];
+    daemon.onEvent((e) => events.push(e));
+
+    await daemon.submitPointMessage({
+      content: 'cos’è?',
+      image: png,
+      cursor: { x: 100, y: 50 },
+      frame: { x: -400, y: 0, w: 400, h: 200 }, // monitor a sinistra del principale, retina 2x
+    });
+
+    const overlay = events.find((e) => e.kind === 'overlay');
+    expect(overlay).toEqual({
+      kind: 'overlay',
+      op: 'draw',
+      clear: true,
+      items: [{ type: 'point', x: -200, y: 100, text: 'questo' }],
+    });
+    expect(events.some((e) => e.kind === 'message' && e.content === 'È un pulsante.')).toBe(true);
+    daemon.stop();
+  });
+});

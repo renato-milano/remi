@@ -38,6 +38,16 @@ export interface ReasoningInput {
    * le immagini nei tool result non arrivano al modello su molti provider.
    */
   takeImage?(): string | undefined;
+  /**
+   * Turno interattivo (es. "indica e chiedi"): conta la latenza più della
+   * profondità, quindi si chiede ragionamento basso ai modelli che lo supportano.
+   */
+  fast?: boolean;
+  /**
+   * Tool "finali": se un passo produce testo e chiama SOLO questi tool, il ciclo
+   * finisce lì, senza un secondo giro per commentarne il risultato (es. overlay).
+   */
+  finalTools?: string[];
 }
 
 export interface TokenUsage {

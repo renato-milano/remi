@@ -1,0 +1,73 @@
+:root{
+  --alive:#5ef2a0; --alive-glow:rgba(94,242,160,.45);
+  --ink:#eef3ee; --panel:rgba(16,22,19,.96);
+  --note:#ffe58a; --note-ink:#3b3220;
+  --mark:#ffbf5c; --mark-glow:rgba(255,191,92,.35);
+  --font-ui:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+  --font-mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;background:transparent;overflow:hidden;font-family:var(--font-ui);
+  -webkit-user-select:none;user-select:none}
+.hidden{display:none !important}
+#layer{position:absolute;inset:0;pointer-events:none}
+
+/* alone e scia del mouse mentre si tiene premuta la hotkey */
+.trail{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+
+/* punto indicato dall'utente */
+.anchor{position:absolute;width:34px;height:34px;margin:-17px 0 0 -17px;border-radius:50%;
+  border:2px solid var(--alive);box-shadow:0 0 0 6px var(--alive-glow);animation:pulse 1.4s ease-out infinite}
+@keyframes pulse{0%{transform:scale(.6);opacity:1}100%{transform:scale(1.5);opacity:0}}
+
+/* casella della domanda, vicino al cursore */
+.ask{position:absolute;width:380px;padding:10px 12px 8px;border-radius:14px;background:var(--panel);
+  border:1px solid rgba(94,242,160,.35);box-shadow:0 18px 40px rgba(0,0,0,.45);animation:pop .14s ease-out}
+.ask input{width:100%;background:transparent;border:0;outline:0;color:var(--ink);font:500 15px var(--font-ui)}
+.ask input::placeholder{color:rgba(238,243,238,.45)}
+.ask-hint{display:block;margin-top:6px;font:11px var(--font-mono);color:rgba(238,243,238,.4)}
+
+/* risposta */
+.card{position:absolute;width:380px;max-height:60vh;overflow:hidden;padding:12px 14px;border-radius:14px;
+  background:var(--panel);color:var(--ink);border:1px solid rgba(94,242,160,.25);
+  box-shadow:0 18px 40px rgba(0,0,0,.45);font:14px/1.45 var(--font-ui);animation:pop .14s ease-out}
+.card-close{position:absolute;top:8px;right:8px;width:22px;height:22px;border:0;border-radius:6px;cursor:pointer;
+  background:transparent;color:rgba(238,243,238,.55);font:13px var(--font-ui)}
+.card-close:hover{background:rgba(238,243,238,.12);color:var(--ink)}
+.card-body{padding-right:18px}
+.card-status{font:11px var(--font-mono);color:var(--alive)}
+.card-status:empty{display:none}
+.card-status:not(:empty){margin-bottom:6px}
+.card-body p+p{margin-top:8px}
+.card-body strong{color:#fff}
+.card-body code{font:12.5px var(--font-mono);padding:1px 5px;border-radius:5px;background:rgba(238,243,238,.1)}
+.dots::after{content:"…";animation:dots 1s steps(3) infinite}
+@keyframes dots{0%{content:"."}33%{content:".."}66%{content:"..."}}
+@keyframes pop{from{transform:translateY(4px) scale(.98);opacity:0}to{transform:none;opacity:1}}
+
+/* disegni dell'agente */
+.ov{position:absolute;animation:pop .22s ease-out both}
+.ov-point{width:0;height:0}
+.ov-point .ring{position:absolute;left:-22px;top:-22px;width:44px;height:44px;border-radius:50%;
+  border:3px solid var(--mark);box-shadow:0 0 18px var(--mark-glow)}
+.ov-point .ring::after{content:"";position:absolute;inset:-3px;border-radius:50%;border:3px solid var(--mark);
+  animation:pulse 1.6s ease-out infinite}
+.ov-highlight{border:3px solid var(--mark);border-radius:10px;box-shadow:0 0 22px var(--mark-glow)}
+.tag{position:absolute;white-space:nowrap;padding:4px 9px;border-radius:8px;background:var(--mark);color:#22180a;
+  font:600 13px var(--font-ui);box-shadow:0 6px 16px rgba(0,0,0,.35)}
+.ov-highlight .tag{left:-3px;bottom:calc(100% + 6px)}
+.ov-point .tag{left:28px;top:-34px}
+.ov-label{width:0;height:0}
+.ov-label .dot{position:absolute;left:-5px;top:-5px;width:10px;height:10px;border-radius:50%;background:var(--mark);
+  box-shadow:0 0 0 3px rgba(34,24,10,.55)}
+.ov-label .leader{position:absolute;left:0;bottom:0;width:38px;height:2px;background:var(--mark);
+  transform-origin:0 50%;transform:rotate(-40deg)}
+.ov-label .tag{left:24px;top:-44px}
+.ov-note{max-width:220px;padding:10px 12px;background:var(--note);color:var(--note-ink);border-radius:3px;
+  font:600 14px/1.35 "Marker Felt","Segoe Print","Comic Sans MS",cursive;transform:rotate(-2deg);
+  box-shadow:0 10px 22px rgba(0,0,0,.35)}
+/* elementi vicino al bordo destro: etichette verso sinistra */
+.flip .tag{left:auto;right:24px}
+.flip .leader{transform:rotate(-140deg)}
+
+@media (prefers-reduced-motion:reduce){*{animation:none !important}}

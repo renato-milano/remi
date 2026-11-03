@@ -3,10 +3,11 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { streamSSE } from 'hono/streaming';
 import { WebSocketServer } from 'ws';
-import type { Daemon } from './daemon.js';
+import type { Daemon, PointMessage } from './daemon.js';
 
 export type ClientCommand =
   | { kind: 'user_message'; content: string }
+  | ({ kind: 'point_message' } & PointMessage)
   | { kind: 'approval_decision'; requestId: string; approved: boolean; always?: boolean }
   | { kind: 'interrupt' }
   | { kind: 'pause' }
@@ -28,6 +29,7 @@ export function startHttpServer(daemon: Daemon, port: number) {
   app.get('/status', (c) =>
     c.json({
       computerUse: daemon.computerUse,
+      vision: daemon.vision,
       heartbeatSeconds: daemon.heartbeatSeconds(),
       scheduleCount: daemon.listSchedules().length,
       paused: daemon.isPaused(),
@@ -58,6 +60,12 @@ export function startHttpServer(daemon: Daemon, port: number) {
     switch (cmd.kind) {
       case 'user_message':
         void daemon.submitUserMessage(cmd.content);
+        return c.json({ ok: true });
+      case 'point_message':
+        if (typeof cmd.image !== 'string' || !cmd.cursor || !cmd.frame) {
+          return c.json({ ok: false, error: 'point_message incompleto' }, 400);
+        }
+        void daemon.submitPointMessage(cmd).catch((err) => console.error('[point]', err));
         return c.json({ ok: true });
       case 'approval_decision':
         daemon.resolveApproval(cmd.requestId, cmd.approved, cmd.always ?? false);

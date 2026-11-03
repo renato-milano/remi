@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <link rel="stylesheet" href="pointer.css" />
+</head>
+<body>
+  <canvas id="trail" class="trail"></canvas>
+  <div id="layer"></div>
+  <div id="anchor" class="anchor hidden"></div>
+  <div id="ask" class="ask hidden">
+    <input id="askInput" type="text" placeholder="Chiedi a Remi di questo…" spellcheck="false" />
+    <span class="ask-hint">↵ invia · esc annulla</span>
+  </div>
+  <div id="card" class="card hidden">
+    <button id="cardClose" class="card-close" title="Chiudi">✕</button>
+    <div id="cardStatus" class="card-status"></div>
+    <div id="cardBody" class="card-body"></div>
+  </div>
+  <script src="pointer.js"></script>
+</body>
+</html>

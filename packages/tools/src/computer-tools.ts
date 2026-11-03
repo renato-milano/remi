@@ -1,4 +1,4 @@
-import type { Executor } from '@openmate/computer';
+import type { Executor, Screenshot } from '@openmate/computer';
 import { z } from 'zod';
 import { type Tool, type ToolContext, defineTool } from './types.js';
 
@@ -9,9 +9,10 @@ import { type Tool, type ToolContext, defineTool } from './types.js';
  * molti provider). Il risultato del tool è un testo leggero. Tutti passano dal
  * gate di sessione (approvazione una volta per ciclo — vedi executeGated).
  */
-export function createComputerTools(executor: Executor): Tool[] {
+export function createComputerTools(executor: Executor, opts: { onShot?: (shot: Screenshot) => void } = {}): Tool[] {
   const capture = async (ctx: ToolContext) => {
     const s = await executor.screenshot();
+    opts.onShot?.(s); // es. l'overlay disegna nello spazio dell'ultimo screenshot
     ctx.emitImage?.(s.pngBase64);
     return { ok: true, width: s.width, height: s.height };
   };

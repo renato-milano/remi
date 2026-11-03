@@ -20,7 +20,7 @@ import {
 } from '@openmate/core';
 import { Scheduler } from '@openmate/scheduler';
 import { BrowserSession, ExtensionEngine } from '@openmate/browser';
-import { createExecutor } from '@openmate/computer';
+import { createExecutor, markPath, markPoint } from '@openmate/computer';
 import type { WebSocket as WsSocket } from 'ws';
 import {
   type ApprovalRequest,
@@ -31,10 +31,13 @@ import {
   createBrowserTools,
   createComputerTools,
   createMemoryTools,
+  createOverlayTools,
   createProjectTools,
   createScheduleTools,
   createTaskTools,
+  type OverlayItem,
   type ScheduleInfo,
+  type ScreenFrame,
   type TaskInfo,
   fileTools,
   shellRunTool,
@@ -50,7 +53,27 @@ const MAINTENANCE_EVERY_IDLE = 4;
 /** Evento sul filo verso i client: eventi del loop + approval_request con id. */
 export type DaemonEvent =
   | AgentEvent
-  | { kind: 'approval_request'; requestId: string; request: ApprovalRequest };
+  | { kind: 'approval_request'; requestId: string; request: ApprovalRequest }
+  | { kind: 'overlay'; op: 'draw'; items: OverlayItem[]; clear: boolean }
+  | { kind: 'overlay'; op: 'clear' };
+
+/**
+ * "Indica e chiedi": l'utente preme la hotkey puntando qualcosa (o, tenendola
+ * premuta, circoscrive un'area col mouse). L'UI cattura il monitor sotto il
+ * cursore e lo manda col testo. Coordinate in pixel di `image`; `frame` =
+ * rettangolo del monitor in coordinate logiche globali.
+ */
+export interface PointMessage {
+  content: string;
+  image: string;
+  cursor: { x: number; y: number };
+  /** Tracciato dell'area circoscritta (se l'utente ha disegnato invece di puntare). */
+  path?: { x: number; y: number }[];
+  /** Ingrandimento della zona indicata (facoltativo); col cursore in `zoomCursor` se è un punto. */
+  zoom?: string;
+  zoomCursor?: { x: number; y: number };
+  frame: { x: number; y: number; w: number; h: number };
+}
 
 export interface DaemonOptions {
   config: OpenMateConfig;
@@ -88,6 +111,10 @@ export class Daemon {
   private readonly configPath?: string;
   /** Stato del computer-use (per l'overlay). */
   readonly computerUse: { enabled: boolean; reason?: string };
+  /** Il modello vede le immagini? Senza vision "indica e chiedi" manda solo il testo. */
+  readonly vision: boolean;
+  /** Geometria dell'ultima immagine dello schermo vista dal modello (per overlay.*). */
+  private screenFrame?: ScreenFrame;
   /** Sessione browser (Playwright), se abilitata in modalità 'auto'. */
   private browser?: BrowserSession;
   /** Relay verso l'estensione Chrome (modalità 'extension'). */
@@ -160,8 +187,33 @@ export class Daemon {
       const executor = createExecutor();
       const caps = executor.capabilities();
       this.computerUse = { enabled: caps.supported, reason: caps.reason };
-      if (caps.supported) this.registry.registerAll(createComputerTools(executor));
+      if (caps.supported) {
+        this.registry.registerAll(
+          createComputerTools(executor, {
+            // computer.* cattura il monitor principale (origine 0,0)
+            onShot: (shot) => {
+              this.screenFrame = {
+                imageW: shot.width,
+                imageH: shot.height,
+                x: 0,
+                y: 0,
+                w: shot.logicalW ?? shot.width,
+                h: shot.logicalH ?? shot.height,
+              };
+            },
+          }),
+        );
+      }
     }
+
+    // Overlay: l'agente disegna indicazioni sullo schermo (solo visualizzazione).
+    this.registry.registerAll(
+      createOverlayTools({
+        frame: () => this.screenFrame,
+        draw: (items, clear) => this.emit({ kind: 'overlay', op: 'draw', items, clear }),
+        clear: () => this.emit({ kind: 'overlay', op: 'clear' }),
+      }),
+    );
 
     // Browser: 'extension' pilota il Chrome LIVE via l'estensione; 'auto' lancia
     // una sessione Playwright autonoma sul Chrome installato.
@@ -178,7 +230,9 @@ export class Daemon {
       }
     }
 
-    const backend = opts.backend ?? buildBackend(opts.config, opts.secrets);
+    const built = opts.backend ? { backend: opts.backend, vision: true } : buildBackend(opts.config, opts.secrets);
+    const backend = built.backend;
+    this.vision = built.vision;
     this.policy = opts.config.autonomy;
     const budget: Budget = opts.config.budget;
 
@@ -289,6 +343,34 @@ export class Daemon {
 
   async submitUserMessage(content: string): Promise<void> {
     await this.scheduler.submitUserMessage(content);
+  }
+
+  /** "Indica e chiedi": messaggio con lo screenshot del punto indicato dall'utente. */
+  async submitPointMessage(msg: PointMessage): Promise<void> {
+    const question = msg.content.trim() || "Cos'è questo?";
+    if (!this.vision) {
+      await this.scheduler.submitUserMessage(
+        `${question}\n\n(L'utente sta indicando qualcosa sullo schermo, ma il modello attuale non vede le immagini: ` +
+          'diglielo in breve e suggerisci di scegliere un modello con vision nelle Impostazioni.)',
+      );
+      return;
+    }
+    const size = pngSize(msg.image);
+    if (!size) throw new Error('screenshot non valido (atteso PNG)');
+    this.screenFrame = { imageW: size.w, imageH: size.h, ...msg.frame };
+    const area = msg.path && msg.path.length > 2 ? msg.path : undefined;
+    const images = [
+      area
+        ? { data: await markPath(msg.image, area), label: 'Schermo (contorno rosso = la zona che ho indicato col mouse):' }
+        : { data: await markPoint(msg.image, msg.cursor.x, msg.cursor.y), label: 'Schermo (cerchio rosso = puntatore):' },
+    ];
+    if (msg.zoom) {
+      images.push({
+        data: msg.zoomCursor ? await markPoint(msg.zoom, msg.zoomCursor.x, msg.zoomCursor.y) : msg.zoom,
+        label: 'Ingrandimento della zona indicata (solo per leggere i dettagli, NON usarne le coordinate):',
+      });
+    }
+    await this.scheduler.submitUserMessage(pointPrompt(question, msg.cursor, area), { images, fast: true });
   }
 
   /* ---------------- relay estensione Chrome (browser mode 'extension') ---------------- */
@@ -445,7 +527,41 @@ export class Daemon {
   }
 }
 
-function buildBackend(config: OpenMateConfig, secrets?: Secrets): ReasoningBackend {
+/** Modelli noti senza vision (via gateway OpenAI-compatible). */
+const BLIND_MODELS = /deepseek/i;
+
+/** Dimensioni di un PNG in base64, lette dall'header IHDR (senza decodificarlo). */
+function pngSize(b64: string): { w: number; h: number } | undefined {
+  const head = Buffer.from(b64.slice(0, 64), 'base64');
+  if (head.length < 24 || head.readUInt32BE(12) !== 0x49484452) return undefined; // 'IHDR'
+  return { w: head.readUInt32BE(16), h: head.readUInt32BE(20) };
+}
+
+/** Testo del turno "indica e chiedi": la domanda + come usare l'immagine e l'overlay. */
+function pointPrompt(question: string, cursor: { x: number; y: number }, area?: { x: number; y: number }[]): string {
+  let where: string;
+  if (area) {
+    const xs = area.map((p) => p.x);
+    const ys = area.map((p) => p.y);
+    const [x0, y0] = [Math.round(Math.min(...xs)), Math.round(Math.min(...ys))];
+    const [x1, y1] = [Math.round(Math.max(...xs)), Math.round(Math.max(...ys))];
+    where =
+      `Ho indicato una zona passandoci sopra col mouse (contorno rosso nello screenshot, circa x=${x0}..${x1}, y=${y0}..${y1}). ` +
+      '"Questo", "qui", "questa parte" si riferiscono al contenuto di quella zona.';
+  } else {
+    where =
+      `Ho premuto il tasto "indica" puntando il mouse: il puntatore è a x=${Math.round(cursor.x)}, y=${Math.round(cursor.y)} ` +
+      'nello screenshot (cerchio rosso). "Questo", "qui", "quello" si riferiscono a ciò che sta sotto o vicino al puntatore.';
+  }
+  return (
+    `${question}\n\n[${where} Rispondi su quello in 1-3 frasi. ` +
+    'Se aiuta a spiegare, chiama overlay.draw con gli elementi da disegnare (indicatori, riquadri, etichette sulle parti che nomini; ' +
+    'coordinate nei pixel dello screenshot intero) e metti la tua risposta nel suo campo answer: così testo e disegni compaiono insieme. ' +
+    'Se non serve disegnare, rispondi solo col testo. Se ti chiedo di fare qualcosa, usa gli strumenti adatti.]'
+  );
+}
+
+function buildBackend(config: OpenMateConfig, secrets?: Secrets): { backend: ReasoningBackend; vision: boolean } {
   // Modalità abbonamento Claude: riusa il login di Claude Code (nessuna API key).
   const subscription =
     config.provider.auth === 'claude-subscription'
@@ -457,7 +573,11 @@ function buildBackend(config: OpenMateConfig, secrets?: Secrets): ReasoningBacke
     apiKey: subscription ? undefined : secrets?.apiKey,
     subscription,
   });
-  return new DirectProviderBackend(provider.languageModel(config.provider.model), {
+  const backend = new DirectProviderBackend(provider.languageModel(config.provider.model), {
     systemPrefix: provider.systemPrefix,
   });
+  // openai-compatible è dichiarato senza vision perché dipende dal modello dietro
+  // il gateway (es. Claude via Vercel la ha): lì escludiamo solo i modelli noti ciechi.
+  const vision = provider.capabilities.vision || !BLIND_MODELS.test(config.provider.model);
+  return { backend, vision };
 }

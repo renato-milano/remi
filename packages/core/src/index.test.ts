@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { FakeReasoningBackend } from '@openmate/llm';
 import type { ReasoningBackend, ReasoningEvent, ReasoningInput } from '@openmate/llm';
 import { type MemorySystem, createMemory } from '@openmate/memory';
-import { type AutonomyPolicy, ToolRegistry, createMemoryTools, shellRunTool } from '@openmate/tools';
+import { type AutonomyPolicy, ToolRegistry, createMemoryTools, createOverlayTools, shellRunTool } from '@openmate/tools';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { CognitiveLoop, TaskStore } from './index.js';
 import type { AgentEvent } from './index.js';
@@ -118,5 +118,73 @@ describe('@openmate/core — CognitiveLoop', () => {
     await p;
     expect(loop.getState().status).toBe('idle');
     expect(mem.search('interrotto', { scope: 'episodic' }).length).toBeGreaterThan(0);
+  });
+});
+
+/** Backend che registra i messaggi ricevuti a ogni ciclo. */
+class RecordingBackend implements ReasoningBackend {
+  id = 'recording';
+  calls: ReasoningInput['messages'][] = [];
+  async *run(input: ReasoningInput): AsyncIterable<ReasoningEvent> {
+    this.calls.push(input.messages);
+    yield { type: 'text-delta', text: 'ok' };
+    yield { type: 'finish', finishReason: 'stop', usage: {} };
+  }
+}
+
+describe('@openmate/core — immagini nel messaggio utente', () => {
+  it('le allega al turno corrente ma non le tiene nella cronologia', async () => {
+    const backend = new RecordingBackend();
+    const loop = new CognitiveLoop({
+      backend,
+      registry: registry(),
+      memory: mem,
+      tasks,
+      policy,
+      budget: { maxSteps: 4 },
+      requestApproval: async () => true,
+    });
+
+    await loop.runCycle({
+      kind: 'user_message',
+      content: 'cos’è questo?',
+      images: [{ data: 'AAAA', label: 'Schermo:' }],
+    });
+    await loop.runCycle({ kind: 'user_message', content: 'e poi?' });
+
+    const first = backend.calls[0].at(-1);
+    expect(Array.isArray(first?.content)).toBe(true);
+    const parts = first?.content as Array<{ type: string; text?: string; image?: string }>;
+    expect(parts.map((p) => p.type)).toEqual(['text', 'text', 'image']);
+    expect(parts[2].image).toBe('AAAA');
+
+    // turno successivo: la domanda precedente torna solo come testo
+    const history = backend.calls[1];
+    expect(history[0]).toEqual({ role: 'user', content: 'cos’è questo?' });
+  });
+});
+
+describe('@openmate/core — risposta dentro overlay.draw', () => {
+  it('la emette come messaggio e la tiene nella cronologia', async () => {
+    const backend = new FakeReasoningBackend([
+      { callTool: 'overlay_draw', input: { items: [{ type: 'point', x: 1, y: 1 }], answer: 'È il menu File.' } },
+    ]);
+    const events: AgentEvent[] = [];
+    const frame = { imageW: 10, imageH: 10, x: 0, y: 0, w: 10, h: 10 };
+    const loop = new CognitiveLoop({
+      backend,
+      registry: registry().registerAll(createOverlayTools({ frame: () => frame, draw: () => {}, clear: () => {} })),
+      memory: mem,
+      tasks,
+      policy,
+      budget: { maxSteps: 4 },
+      requestApproval: async () => true,
+      onEvent: (e) => events.push(e),
+    });
+
+    const result = await loop.runCycle({ kind: 'user_message', content: 'cos’è?', fast: true });
+
+    expect(events.filter((e) => e.kind === 'message').map((e) => e.content)).toEqual(['È il menu File.']);
+    expect(result.text).toBe('È il menu File.');
   });
 });

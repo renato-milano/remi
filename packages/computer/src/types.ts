@@ -9,6 +9,9 @@ export interface Screenshot {
   /** Dimensioni dell'immagine effettivamente inviata al modello. */
   width: number;
   height: number;
+  /** Dimensioni dello schermo catturato nelle coordinate logiche del sistema (punti). */
+  logicalW?: number;
+  logicalH?: number;
 }
 
 export interface Capabilities {

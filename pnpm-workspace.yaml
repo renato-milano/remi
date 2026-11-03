@@ -9,6 +9,7 @@ allowBuilds:
   better-sqlite3: true
   electron: true
   '@nut-tree-fork/libnut': true
+  uiohook-napi: false # ha le prebuild N-API per mac/win/linux: niente compilazione
 
 # Versioni centralizzate delle dev-dependency condivise (pnpm catalog).
 # I package le referenziano con "catalog:".

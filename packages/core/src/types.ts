@@ -8,8 +8,14 @@ export interface AgentState {
   activeTaskId?: string;
 }
 
+/** Immagine allegata a un messaggio utente (PNG base64), con didascalia per il modello. */
+export interface TriggerImage {
+  data: string;
+  label?: string;
+}
+
 export type Trigger =
-  | { kind: 'user_message'; content: string }
+  | { kind: 'user_message'; content: string; images?: TriggerImage[]; fast?: boolean }
   | { kind: 'heartbeat' }
   | { kind: 'cron'; name: string };
 

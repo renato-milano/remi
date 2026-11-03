@@ -9,6 +9,8 @@ const bridge = window.overlay || {
   onSummon() {},
   onShowActivity() {},
   onLayout() {},
+  onPointActive() {},
+  onPointError() {},
   quit() {},
 };
 
@@ -199,7 +201,7 @@ function handleEvent(e) {
     case 'message': {
       const content = cleanMarkdown(e.content);
       appendChat('agent', content);
-      if (!chatOpen) {
+      if (!chatOpen && !pointActive) {
         const ms = Math.min(26000, 4500 + content.length * 35); // durata ∝ lunghezza
         say(content, { ms });
       }
@@ -260,6 +262,12 @@ input.addEventListener('keydown', (ev) => {
   }
 });
 bridge.onSummon(() => openChat());
+// turno "indica e chiedi": la risposta compare sulla lavagna, non nel fumetto
+let pointActive = false;
+bridge.onPointActive((on) => {
+  pointActive = on;
+});
+bridge.onPointError((text) => say(text, { ms: 6000 }));
 bridge.onShowActivity(showActivity);
 bridge.onLayout((side) => {
   const app = document.getElementById('app');

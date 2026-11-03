@@ -19,14 +19,15 @@
     "release": "pnpm run bundle:daemon && electron-builder --publish always"
   },
   "dependencies": {
-    "better-sqlite3": "^12.2.0",
     "@nut-tree-fork/nut-js": "^4.2.6",
-    "playwright-core": "^1.48.0"
+    "better-sqlite3": "^12.2.0",
+    "playwright-core": "^1.48.0",
+    "uiohook-napi": "^1.5.5"
   },
   "devDependencies": {
+    "@electron/notarize": "^2.5.0",
     "electron": "^33.0.0",
     "electron-builder": "^25.1.8",
-    "@electron/notarize": "^2.5.0",
     "esbuild": "^0.24.0",
     "png2icons": "^2.0.1"
   }

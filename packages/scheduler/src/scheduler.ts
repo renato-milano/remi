@@ -4,7 +4,7 @@ import { Cron } from 'croner';
 export type SchedulerTrigger =
   | { kind: 'heartbeat' }
   | { kind: 'cron'; name: string }
-  | { kind: 'user_message'; content: string };
+  | { kind: 'user_message'; content: string; images?: { data: string; label?: string }[]; fast?: boolean };
 
 export interface SchedulerOptions {
   /** Intervallo dell'heartbeat in ms. */
@@ -98,8 +98,14 @@ export class Scheduler {
   }
 
   /** Un messaggio utente: bypassa il pre-check e ha priorità sulla coda. */
-  async submitUserMessage(content: string): Promise<void> {
-    await this.enqueue({ kind: 'user_message', content }, true);
+  async submitUserMessage(
+    content: string,
+    extra: { images?: { data: string; label?: string }[]; fast?: boolean } = {},
+  ): Promise<void> {
+    const trigger: SchedulerTrigger = { kind: 'user_message', content };
+    if (extra.images?.length) trigger.images = extra.images;
+    if (extra.fast) trigger.fast = true;
+    await this.enqueue(trigger, true);
   }
 
   /** Esegue un singolo heartbeat: pre-check → ciclo, oppure skip (niente LLM). */

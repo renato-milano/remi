@@ -8,6 +8,7 @@ import {
   InMemoryAuditSink,
   type ToolRegistry,
   createToolContext,
+  wireName,
 } from '@openmate/tools';
 import type { Task, TaskStore } from './task-store.js';
 import type { AgentEvent, AgentState, CycleResult, Trigger } from './types.js';
@@ -68,7 +69,22 @@ export class CognitiveLoop {
     // memoria a breve termine della chat: includiamo gli ultimi turni della
     // conversazione, così l'agente RICORDA cosa ci si è appena detti.
     const userText = userContent(trigger, task);
-    const messages: ModelMessage[] = [...this.history, { role: 'user', content: userText }];
+    // Immagini allegate (es. "indica sullo schermo"): vanno solo nel turno corrente;
+    // nel buffer di conversazione resta il testo, per non rimandarle a ogni turno.
+    const images = trigger.kind === 'user_message' ? (trigger.images ?? []) : [];
+    const userMessage: ModelMessage = images.length
+      ? {
+          role: 'user',
+          content: [
+            { type: 'text', text: userText },
+            ...images.flatMap((img) => [
+              ...(img.label ? [{ type: 'text' as const, text: img.label }] : []),
+              { type: 'image' as const, image: img.data, mediaType: 'image/png' },
+            ]),
+          ],
+        }
+      : { role: 'user', content: userText };
+    const messages: ModelMessage[] = [...this.history, userMessage];
 
     // 2. tool context: l'approval segna lo stato waiting_approval; il signal è il kill-switch
     // buffer immagine: i computer.* vi depositano lo screenshot; il backend lo
@@ -112,6 +128,9 @@ export class CognitiveLoop {
         tools,
         budget: this.opts.budget,
         signal: opts.signal,
+        // turni interattivi: ragionamento basso e niente secondo giro dopo l'overlay
+        fast: trigger.kind === 'user_message' && trigger.fast,
+        finalTools: trigger.kind === 'user_message' && trigger.fast ? OVERLAY_TOOLS : undefined,
         takeImage: () => {
           const v = imageBuffer.current;
           imageBuffer.current = undefined;
@@ -123,12 +142,20 @@ export class CognitiveLoop {
             pending += ev.text;
             text += ev.text;
             break;
-          case 'tool-call':
+          case 'tool-call': {
             flush(); // emetti la narrazione prima di agire
             actions += 1;
             this.setState({ status: 'acting' });
             this.opts.onEvent?.({ kind: 'action', summary: ev.toolName });
+            // overlay.draw può portare la risposta (una sola chiamata al modello):
+            // la trattiamo come testo dell'agente, anche per la cronologia
+            const answer = OVERLAY_TOOLS.includes(ev.toolName) ? toolAnswer(ev.input) : '';
+            if (answer) {
+              text += `${text ? '\n\n' : ''}${answer}`;
+              this.opts.onEvent?.({ kind: 'message', role: 'agent', content: answer });
+            }
             break;
+          }
           case 'tool-result':
             this.setState({ status: 'thinking' });
             break;
@@ -187,6 +214,15 @@ export class CognitiveLoop {
     this.setState({ status: 'idle', activeTaskId: undefined, activeGoalId: undefined });
     return { taskId: task?.id, actions, text: finalText, usage };
   }
+}
+
+/** Tool di sola visualizzazione: nei turni rapidi non richiedono un passo successivo. */
+const OVERLAY_TOOLS = ['overlay.draw', 'overlay.clear'].map(wireName);
+
+/** Il campo `answer` di overlay.draw, se presente. */
+function toolAnswer(input: unknown): string {
+  const answer = (input as { answer?: unknown } | null)?.answer;
+  return typeof answer === 'string' ? answer.trim() : '';
 }
 
 /** Messaggi max nel buffer di conversazione (~12 turni). Limita i token. */

@@ -21,6 +21,8 @@ const ROBOT_W = 200;
 const ROBOT_MARGIN = 10;
 let currentSide = 'right';
 const HOTKEY = process.env.OPENMATE_HOTKEY || 'CommandOrControl+Shift+O';
+// "Indica e chiedi": punta il mouse su qualcosa e premi questa combinazione.
+const POINT_HOTKEY = process.env.OPENMATE_POINT_HOTKEY || 'Control+Alt+Space';
 const PORT = Number(process.env.OPENMATE_PORT || 8787);
 const SHOT_PORT = PORT + 1; // mini-server screenshot (Electron desktopCapturer)
 const DAEMON_URL = process.env.OPENMATE_URL || `http://127.0.0.1:${PORT}`;
@@ -468,6 +470,425 @@ function applyLayout() {
 
 ipcMain.on('quit', () => app.quit());
 
+/* ---------------- "indica e chiedi" (lavagna sul monitor indicato) ---------------- */
+// Larghezza massima dello screenshot inviato al modello (come il computer-use).
+const POINT_MAX_W = 1366;
+// Zona ingrandita attorno al cursore, in punti logici.
+const ZOOM_W = 520;
+const ZOOM_H = 320;
+// Dopo la risposta, la lavagna si cancella da sola.
+const POINT_LINGER_MS = 60000;
+
+let pointerWin;
+let pointerReady;
+let pendingPoint; // cattura in attesa della domanda
+let pointTurn = false; // un turno "indica" è in corso
+let pointBusy = false; // il daemon ha iniziato a lavorare sul turno (evita idle di un ciclo precedente)
+let pointMuted = false; // l'utente ha chiuso la lavagna: ignora il resto del turno
+let lingerTimer;
+
+function ensurePointerWin(display) {
+  if (!pointerWin) {
+    pointerWin = new BrowserWindow({
+      ...display.bounds,
+      frame: false,
+      transparent: true,
+      resizable: false,
+      movable: false,
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      hasShadow: false,
+      fullscreenable: false,
+      maximizable: false,
+      minimizable: false,
+      enableLargerThanScreen: true,
+      show: false,
+      webPreferences: {
+        preload: path.join(__dirname, 'preload-pointer.cjs'),
+        contextIsolation: true,
+        nodeIntegration: false,
+      },
+    });
+    pointerWin.setAlwaysOnTop(true, 'screen-saver');
+    pointerWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+    pointerWin.setIgnoreMouseEvents(true, { forward: true });
+    pointerReady = new Promise((resolve) => pointerWin.webContents.once('did-finish-load', resolve));
+    pointerWin.loadFile(path.join(__dirname, '..', 'renderer', 'pointer.html'));
+    pointerWin.on('closed', () => {
+      pointerWin = undefined;
+    });
+  } else {
+    pointerWin.setBounds(display.bounds);
+  }
+  return pointerReady;
+}
+
+function sendPointer(channel, payload) {
+  if (pointerWin) pointerWin.webContents.send(channel, payload);
+}
+
+/** Restituisce il fuoco all'app che l'utente stava usando (macOS: niente "attivazione" di Remi). */
+function releaseFocus() {
+  if (!pointerWin) return;
+  pointerWin.setIgnoreMouseEvents(true, { forward: true });
+  if (process.platform === 'darwin') {
+    const visible = BrowserWindow.getAllWindows().filter((w) => w.isVisible());
+    app.hide();
+    for (const w of visible) w.showInactive();
+  } else {
+    pointerWin.blur();
+  }
+}
+
+function hidePointer() {
+  clearTimeout(lingerTimer);
+  sendPointer('pointer-clear');
+  pointerWin?.hide();
+}
+
+/** Cattura il monitor `display` a piena risoluzione. */
+async function grabDisplay(display) {
+  const b = display.bounds;
+  const sf = display.scaleFactor || 1;
+  const size = { width: Math.round(b.width * sf), height: Math.round(b.height * sf) };
+  const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: size });
+  const src = sources.find((s) => String(s.display_id) === String(display.id)) || sources[0];
+  return src.thumbnail;
+}
+
+/**
+ * Prepara il messaggio per il daemon: screenshot ridotto (coordinate in pixel di
+ * questa immagine) + ingrandimento. Con `path` (area circoscritta, coordinate
+ * globali) l'ingrandimento è l'area stessa; altrimenti la zona attorno a `cur`.
+ */
+function buildPointPayload(full, display, cur, path) {
+  const b = display.bounds;
+  const px = full.getSize().width / b.width; // pixel reali per punto logico
+  const shot = full.getSize().width > POINT_MAX_W ? full.resize({ width: POINT_MAX_W, quality: 'good' }) : full;
+  const k = shot.getSize().width / b.width;
+  const local = (p) => ({ x: p.x - b.x, y: p.y - b.y });
+  const c = local(cur);
+  const payload = {
+    image: shot.toPNG().toString('base64'),
+    cursor: { x: c.x * k, y: c.y * k },
+    frame: { x: b.x, y: b.y, w: b.width, h: b.height },
+  };
+
+  let zone;
+  if (path) {
+    const pts = path.map(local);
+    payload.path = pts.map((p) => ({ x: p.x * k, y: p.y * k }));
+    const xs = pts.map((p) => p.x);
+    const ys = pts.map((p) => p.y);
+    const pad = 24;
+    const x0 = Math.max(0, Math.min(...xs) - pad);
+    const y0 = Math.max(0, Math.min(...ys) - pad);
+    zone = {
+      x: x0,
+      y: y0,
+      w: Math.min(b.width, Math.max(...xs) + pad) - x0,
+      h: Math.min(b.height, Math.max(...ys) + pad) - y0,
+    };
+  } else {
+    const w = Math.min(ZOOM_W, b.width);
+    const h = Math.min(ZOOM_H, b.height);
+    zone = {
+      x: Math.max(0, Math.min(b.width - w, c.x - w / 2)),
+      y: Math.max(0, Math.min(b.height - h, c.y - h / 2)),
+      w,
+      h,
+    };
+    payload.zoomCursor = { x: (c.x - zone.x) * px, y: (c.y - zone.y) * px };
+  }
+  let zoom = full.crop({
+    x: Math.round(zone.x * px),
+    y: Math.round(zone.y * px),
+    width: Math.max(1, Math.round(zone.w * px)),
+    height: Math.max(1, Math.round(zone.h * px)),
+  });
+  // un'area grande non serve a piena risoluzione (token e latenza)
+  if (path && zoom.getSize().width > POINT_MAX_W) zoom = zoom.resize({ width: POINT_MAX_W, quality: 'good' });
+  payload.zoom = zoom.toPNG().toString('base64');
+  return payload;
+}
+
+/* --- "tieni premuto e circoscrivi": serve l'hook nativo per sapere quando si rilascia --- */
+// Electron (globalShortcut) segnala solo la pressione. uiohook-napi vede anche il
+// rilascio; se non è disponibile (o manca il permesso Accessibilità) si resta
+// alla modalità "punto" con un solo tocco.
+const TRACE_TICK_MS = 16;
+const TRACE_MAX_MS = 10000; // sicurezza: se il rilascio non arriva, chiudi comunque
+const TRACE_MIN_SIZE = 24; // sotto questa dimensione (punti) è un punto, non un'area
+
+let hook;
+let lastHookKeyDown = 0;
+const pointDebug = (...args) => process.env.OPENMATE_UI_DEBUG && console.log('[point]', ...args);
+let tracing; // { display, points, grab, timer, maxTimer, done }
+
+function startKeyHook() {
+  try {
+    const { uIOhook } = require('uiohook-napi');
+    uIOhook.on('keydown', () => {
+      lastHookKeyDown = Date.now();
+    });
+    uIOhook.on('keyup', () => {
+      if (tracing) void endTrace();
+    });
+    uIOhook.start();
+    hook = uIOhook;
+    pointDebug('hook tastiera attivo');
+  } catch (err) {
+    console.warn('[point] hook tastiera non disponibile: solo modalità punto', err?.message || err);
+  }
+}
+
+/** L'hook è vivo se ha visto la pressione della hotkey appena avvenuta. */
+function hookAlive() {
+  return Boolean(hook) && Date.now() - lastHookKeyDown < 600;
+}
+
+async function startPoint() {
+  if (tracing) return; // ripetizione automatica del tasto mentre si traccia
+  // seconda pressione mentre si sta chiedendo: annulla
+  if (pendingPoint) {
+    pendingPoint = undefined;
+    hidePointer();
+    releaseFocus();
+    return;
+  }
+  const cur = screen.getCursorScreenPoint();
+  const display = screen.getDisplayNearestPoint(cur);
+  const t = { display, points: [cur], done: false };
+  tracing = t;
+  // i disegni precedenti non devono finire nello screenshot
+  if (pointerWin?.isVisible()) {
+    hidePointer();
+    await new Promise((r) => setTimeout(r, 80));
+  }
+  t.grab = grabDisplay(display);
+  pointDebug('hotkey', hookAlive() ? 'tieni premuto per circoscrivere' : 'hook non attivo: modalità punto');
+  if (!hookAlive()) {
+    await endTrace();
+    return;
+  }
+  // registra il percorso del mouse finché la hotkey resta premuta
+  t.timer = setInterval(() => {
+    const p = screen.getCursorScreenPoint();
+    const last = t.points[t.points.length - 1];
+    if (Math.abs(p.x - last.x) + Math.abs(p.y - last.y) < 2) return;
+    t.points.push(p);
+    sendTrace(t);
+  }, TRACE_TICK_MS);
+  t.maxTimer = setTimeout(() => void endTrace(), TRACE_MAX_MS);
+  // la lavagna compare solo a cattura fatta, così il tracciato non finisce nello screenshot
+  t.grab
+    .then(() => (t.done ? undefined : ensurePointerWin(display)))
+    .then(() => {
+      if (t.done || !pointerWin) return;
+      pointerWin.setIgnoreMouseEvents(true, { forward: true });
+      pointerWin.showInactive();
+      sendTrace(t);
+    })
+    .catch(() => {});
+}
+
+/** Invia la posizione attuale del mouse: la lavagna ne fa alone e scia. */
+function sendTrace(t) {
+  if (!pointerWin?.isVisible()) return;
+  const b = t.display.bounds;
+  const p = t.points[t.points.length - 1];
+  sendPointer('pointer-trace', { x: p.x - b.x, y: p.y - b.y });
+}
+
+/**
+ * Zona interessata dal passaggio del mouse: inviluppo convesso del percorso
+ * (un giro attorno a qualcosa ne include l'interno), allargato di `pad` punti
+ * in ogni direzione, così una passata dritta copre una striscia e non una linea.
+ */
+function sweptArea(points, pad) {
+  // ogni punto diventa un piccolo ottagono: l'inviluppo copre la striscia percorsa
+  const offsets = [...Array(8)].map((_, i) => [Math.cos((i * Math.PI) / 4) * pad, Math.sin((i * Math.PI) / 4) * pad]);
+  const pts = points
+    .flatMap((p) => offsets.map(([dx, dy]) => ({ x: p.x + dx, y: p.y + dy })))
+    .sort((a, b) => a.x - b.x || a.y - b.y);
+  const cross = (o, a, b) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+  const half = (list) => {
+    const out = [];
+    for (const p of list) {
+      while (out.length >= 2 && cross(out[out.length - 2], out[out.length - 1], p) <= 0) out.pop();
+      out.push(p);
+    }
+    out.pop();
+    return out;
+  };
+  return [...half(pts), ...half([...pts].reverse())];
+}
+
+async function endTrace() {
+  const t = tracing;
+  if (!t || t.done) return;
+  t.done = true;
+  clearInterval(t.timer);
+  clearTimeout(t.maxTimer);
+  tracing = undefined;
+
+  let full;
+  try {
+    full = await t.grab;
+  } catch (err) {
+    console.error('[point] cattura fallita', err);
+    hidePointer();
+    win?.webContents.send(
+      'point-error',
+      'Non riesco a catturare lo schermo: controlla il permesso Registrazione schermo.',
+    );
+    return;
+  }
+  const { display, points } = t;
+  const xs = points.map((p) => p.x);
+  const ys = points.map((p) => p.y);
+  const isArea =
+    points.length > 3 &&
+    Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)) >= TRACE_MIN_SIZE;
+  const end = points[points.length - 1];
+  pointDebug(isArea ? `area (${points.length} punti)` : 'punto');
+  const area = isArea ? sweptArea(points, 20) : undefined;
+  pendingPoint = buildPointPayload(full, display, isArea ? end : points[0], area);
+
+  await ensurePointerWin(display);
+  pointerWin.setIgnoreMouseEvents(false);
+  pointerWin.show();
+  pointerWin.focus();
+  if (process.platform === 'darwin') app.focus({ steal: true });
+  const at = isArea ? end : points[0];
+  sendPointer('pointer-ask', { x: at.x - display.bounds.x, y: at.y - display.bounds.y, area: isArea });
+}
+
+ipcMain.on('pointer-submit', async (_e, text) => {
+  const capture = pendingPoint;
+  pendingPoint = undefined;
+  releaseFocus();
+  if (!capture) return;
+  clearTimeout(lingerTimer);
+  pointMuted = false;
+  setPointTurn(true);
+  sendPointer('pointer-thinking');
+  try {
+    const res = await fetch(`${DAEMON_URL}/command`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ kind: 'point_message', content: text, ...capture }),
+    });
+    if (!res.ok) throw new Error(`daemon ${res.status}`);
+  } catch (err) {
+    console.error('[point] invio fallito', err);
+    setPointTurn(false);
+    sendPointer('pointer-answer', 'Non riesco a raggiungere Remi in questo momento.');
+    lingerTimer = setTimeout(hidePointer, 6000);
+  }
+});
+
+// la scheda della risposta è cliccabile (✕): il resto della lavagna lascia passare i click
+ipcMain.on('pointer-interactive', (_e, on) => {
+  if (pointerWin && !pendingPoint) pointerWin.setIgnoreMouseEvents(!on, { forward: true });
+});
+
+ipcMain.on('pointer-cancel', () => {
+  if (pointTurn) {
+    setPointTurn(false);
+    pointMuted = true;
+  }
+  pendingPoint = undefined;
+  hidePointer();
+  releaseFocus();
+});
+
+function setPointTurn(on) {
+  pointTurn = on;
+  pointBusy = false;
+  // il companion non ripete nel fumetto le risposte mostrate sulla lavagna
+  win?.webContents.send('point-active', on);
+}
+
+/** Converte gli elementi (coordinate globali) nello spazio della lavagna. */
+function showOverlay(items, clear) {
+  if (!items.length) return;
+  const first = items[0];
+  const display = screen.getDisplayNearestPoint({ x: first.x, y: first.y });
+  const needsMove = !pointerWin || !pointerWin.isVisible() || !sameBounds(pointerWin.getBounds(), display.bounds);
+  const ready = needsMove ? ensurePointerWin(display) : Promise.resolve();
+  ready.then(() => {
+    if (!pointerWin) return;
+    if (!pointerWin.isVisible()) pointerWin.showInactive();
+    const wb = pointerWin.getBounds();
+    const local = items.map((it) => ({ ...it, x: it.x - wb.x, y: it.y - wb.y }));
+    sendPointer('pointer-draw', { items: local, clear });
+    clearTimeout(lingerTimer);
+    if (!pointTurn) lingerTimer = setTimeout(hidePointer, POINT_LINGER_MS);
+  });
+}
+
+function sameBounds(a, b) {
+  return a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
+}
+
+function handleDaemonEvent(e) {
+  if (e.kind === 'state' && e.state?.status === 'idle') pointMuted = false;
+  if (pointMuted) return;
+  if (e.kind === 'overlay') {
+    if (e.op === 'clear') sendPointer('pointer-clear');
+    else showOverlay(e.items || [], Boolean(e.clear));
+    return;
+  }
+  if (!pointTurn) return;
+  if (e.kind === 'message') {
+    sendPointer('pointer-answer', e.content);
+  } else if (e.kind === 'action' && typeof e.summary === 'string' && !e.summary.startsWith('overlay.')) {
+    sendPointer('pointer-status', `· ${e.summary}`);
+  } else if (e.kind === 'state' && e.state?.status !== 'idle') {
+    pointBusy = true;
+  } else if (e.kind === 'state' && e.state?.status === 'idle' && pointBusy) {
+    setPointTurn(false);
+    sendPointer('pointer-done');
+    clearTimeout(lingerTimer);
+    lingerTimer = setTimeout(hidePointer, POINT_LINGER_MS);
+  }
+}
+
+/** Ascolta gli eventi del daemon (SSE) dal processo main, con riconnessione. */
+async function subscribeDaemon() {
+  for (;;) {
+    try {
+      const res = await fetch(`${DAEMON_URL}/events`);
+      if (!res.ok || !res.body) throw new Error(`events ${res.status}`);
+      const decoder = new TextDecoder();
+      let buf = '';
+      for await (const chunk of res.body) {
+        buf += decoder.decode(chunk, { stream: true });
+        for (let i = buf.indexOf('\n\n'); i >= 0; i = buf.indexOf('\n\n')) {
+          const frame = buf.slice(0, i);
+          buf = buf.slice(i + 2);
+          const data = frame
+            .split('\n')
+            .filter((l) => l.startsWith('data:'))
+            .map((l) => l.slice(5).trimStart())
+            .join('\n');
+          if (!data) continue;
+          try {
+            handleDaemonEvent(JSON.parse(data));
+          } catch {
+            /* frame non-JSON */
+          }
+        }
+      }
+    } catch {
+      /* daemon non ancora pronto o riavviato */
+    }
+    if (pointTurn) setPointTurn(false);
+    await new Promise((r) => setTimeout(r, 2500));
+  }
+}
+
 function summon() {
   if (!win) return;
   win.show();
@@ -512,6 +933,11 @@ ipcMain.on('context-menu', showContextMenu);
 /* ---------------- avvio ---------------- */
 app.whenReady().then(() => {
   globalShortcut.register(HOTKEY, summon);
+  if (!globalShortcut.register(POINT_HOTKEY, () => void startPoint())) {
+    console.warn(`[point] hotkey ${POINT_HOTKEY} non disponibile (usata da un'altra app?)`);
+  }
+  startKeyHook();
+  void subscribeDaemon();
   if (EXTERNAL || isOnboarded()) {
     startDaemon();
     createCompanion();
@@ -521,6 +947,11 @@ app.whenReady().then(() => {
 });
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
+  try {
+    hook?.stop();
+  } catch {
+    /* già fermo */
+  }
   stopDaemon();
 });
 // chiusura pulita (spegne anche il daemon) anche via segnale
