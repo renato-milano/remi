@@ -3,8 +3,7 @@
  *
  *   <panel title="Come vola l'F-35">
  *   <step><say>Il motore spinge l'aria verso il basso.</say>
- *   <svg> …frammento SVG di questo passo… </svg>
- *   <mark type="highlight" x="10" y="20" w="100" h="40" text="motore"/></step>
+ *   <svg> …frammento SVG di questo passo… </svg></step>
  *   …
  *   </panel>
  *
@@ -14,21 +13,11 @@
  * testo normale della risposta.
  */
 
-export interface PanelMark {
-  type: 'point' | 'highlight' | 'label' | 'note';
-  x: number;
-  y: number;
-  w?: number;
-  h?: number;
-  text?: string;
-}
-
 export interface PanelStreamStep {
   index: number;
   say: string;
   /** Contenuto interno dell'<svg> del passo (non ancora sanificato: lo fa l'interfaccia). */
   svg: string;
-  marks: PanelMark[];
 }
 
 export type PanelStreamEvent =
@@ -38,8 +27,6 @@ export type PanelStreamEvent =
   | ({ op: 'step' } & PanelStreamStep)
   | { op: 'end' };
 
-const MARK_TYPES = new Set(['point', 'highlight', 'label', 'note']);
-
 export class PanelStream {
   private buf = '';
   private inside = false;
@@ -47,6 +34,8 @@ export class PanelStream {
   /** Indice del passo la cui frase è già stata emessa in anticipo. */
   private saidIndex = -1;
   private readonly says: string[] = [];
+  /** Titolo dell'ultimo pannello aperto. */
+  title = '';
 
   /** Le frasi dei passi emessi finora (la risposta "detta"). */
   get spoken(): string {
@@ -92,6 +81,7 @@ export class PanelStream {
         const title = attr(this.buf.slice(open, close + 1), 'title') ?? '';
         this.buf = this.buf.slice(close + 1);
         this.inside = true;
+        this.title = title;
         events.push({ op: 'start', title });
         continue;
       }
@@ -141,23 +131,8 @@ export class PanelStream {
   private parseStep(body: string): { op: 'step' } & PanelStreamStep {
     const say = (body.match(/<say>([\s\S]*?)<\/say>/)?.[1] ?? '').trim();
     const svg = body.match(/<svg\b[^>]*>([\s\S]*?)(?:<\/svg>|$)/)?.[1] ?? '';
-    const marks: PanelMark[] = [];
-    for (const m of body.matchAll(/<mark\b([^>]*)\/?>/g)) {
-      const type = attr(m[1], 'type') ?? 'highlight';
-      const x = Number(attr(m[1], 'x'));
-      const y = Number(attr(m[1], 'y'));
-      if (!MARK_TYPES.has(type) || !Number.isFinite(x) || !Number.isFinite(y)) continue;
-      const mark: PanelMark = { type: type as PanelMark['type'], x, y };
-      const w = Number(attr(m[1], 'w'));
-      const h = Number(attr(m[1], 'h'));
-      if (Number.isFinite(w)) mark.w = w;
-      if (Number.isFinite(h)) mark.h = h;
-      const t = attr(m[1], 'text');
-      if (t) mark.text = t;
-      marks.push(mark);
-    }
     if (say) this.says.push(say);
-    return { op: 'step', index: this.index++, say, svg: svg.trim(), marks };
+    return { op: 'step', index: this.index++, say, svg: svg.trim() };
   }
 }
 

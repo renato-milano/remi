@@ -16,7 +16,14 @@ export interface TriggerImage {
 }
 
 export type Trigger =
-  | { kind: 'user_message'; content: string; images?: TriggerImage[]; fast?: boolean; model?: string }
+  | {
+      kind: 'user_message';
+      content: string;
+      images?: TriggerImage[];
+      fast?: boolean;
+      /** Versione compatta della domanda da tenere nella cronologia (se `content` è un prompt lungo). */
+      historyText?: string;
+    }
   | { kind: 'heartbeat' }
   | { kind: 'cron'; name: string };
 

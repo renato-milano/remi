@@ -378,11 +378,6 @@ function drawStep(i, ms) {
       duration: Math.min(400, dur), delay: delay + dur * 0.7, fill: 'both',
     });
   });
-  clearDrawings();
-  (step.marks || []).forEach((m, k) => {
-    const el = render(m, k);
-    if (el) layer.appendChild(el);
-  });
   fitPanel();
   placePanel();
 }
@@ -448,9 +443,6 @@ bridge.onPanelStep((step) => {
     panelState.want = undefined;
     drawStep(step.index, Math.max(900, want.endAt - Date.now()));
   }
-  // senza un punto indicato (turno non partito dalla hotkey) affianca le evidenziazioni
-  const m = step.marks?.[0];
-  if (!focusBox && !at.x && !at.y && m) focusBox = { x: m.x, y: m.y, w: m.w || 0, h: m.h || 0 };
   if (!panelState.voiced) drawTimedNext();
 });
 

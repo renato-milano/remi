@@ -48,8 +48,6 @@ export interface ReasoningInput {
    * finisce lì, senza un secondo giro per commentarne il risultato (es. overlay).
    */
   finalTools?: string[];
-  /** Modello diverso da quello predefinito per questo ciclo (es. il modello rapido). */
-  model?: string;
 }
 
 export interface TokenUsage {

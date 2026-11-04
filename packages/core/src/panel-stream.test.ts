@@ -19,8 +19,7 @@ function run(text: string, size: number) {
 
 const SAMPLE =
   'Ecco: <panel title="Come vola">\n' +
-  '<step><say>Il motore spinge giù.</say><svg><rect x="10" y="10" width="50" height="20"/></svg>' +
-  '<mark type="highlight" x="5" y="6" w="7" h="8" text="motore"/></step>\n' +
+  '<step><say>Il motore spinge giù.</say><svg><rect x="10" y="10" width="50" height="20"/></svg></step>\n' +
   "<step><say>L'aereo sale.</say><svg><path d=\"M0 0 L10 10\" marker-end=\"url(#arrow)\"/></svg></step>\n" +
   '</panel> fine.';
 
@@ -37,7 +36,6 @@ describe('@openmate/core — PanelStream', () => {
         index: 0,
         say: 'Il motore spinge giù.',
         svg: '<rect x="10" y="10" width="50" height="20"/>',
-        marks: [{ type: 'highlight', x: 5, y: 6, w: 7, h: 8, text: 'motore' }],
       });
       expect(spoken).toBe("Il motore spinge giù. L'aereo sale.");
     });

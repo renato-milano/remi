@@ -9,7 +9,7 @@ export type SchedulerTrigger =
       content: string;
       images?: { data: string; label?: string }[];
       fast?: boolean;
-      model?: string;
+      historyText?: string;
     };
 
 export interface SchedulerOptions {
@@ -106,12 +106,12 @@ export class Scheduler {
   /** Un messaggio utente: bypassa il pre-check e ha priorità sulla coda. */
   async submitUserMessage(
     content: string,
-    extra: { images?: { data: string; label?: string }[]; fast?: boolean; model?: string } = {},
+    extra: { images?: { data: string; label?: string }[]; fast?: boolean; historyText?: string } = {},
   ): Promise<void> {
     const trigger: SchedulerTrigger = { kind: 'user_message', content };
     if (extra.images?.length) trigger.images = extra.images;
     if (extra.fast) trigger.fast = true;
-    if (extra.model) trigger.model = extra.model;
+    if (extra.historyText) trigger.historyText = extra.historyText;
     await this.enqueue(trigger, true);
   }
 

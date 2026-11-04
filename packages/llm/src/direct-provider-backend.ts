@@ -7,8 +7,6 @@ export interface DirectProviderOptions {
    * Claude Code…" richiesto dai token di abbonamento Claude).
    */
   systemPrefix?: string;
-  /** Crea un altro modello dello stesso provider, se un ciclo ne chiede uno diverso. */
-  modelFor?: (modelId: string) => LanguageModel;
 }
 
 /**
@@ -69,14 +67,12 @@ function endsOnFinalTools(names: string[]): StopCondition<ToolSet> {
 export class DirectProviderBackend implements ReasoningBackend {
   readonly id = 'direct-provider';
   private readonly systemPrefix?: string;
-  private readonly modelFor?: (modelId: string) => LanguageModel;
 
   constructor(
     private readonly model: LanguageModel,
     opts: DirectProviderOptions = {},
   ) {
     this.systemPrefix = opts.systemPrefix;
-    this.modelFor = opts.modelFor;
   }
 
   async *run(input: ReasoningInput): AsyncIterable<ReasoningEvent> {
@@ -87,7 +83,7 @@ export class DirectProviderBackend implements ReasoningBackend {
       ? [this.systemPrefix, input.system].filter(Boolean).join('\n\n')
       : input.system;
     const result = streamText({
-      model: input.model && this.modelFor ? this.modelFor(input.model) : this.model,
+      model: this.model,
       system,
       messages: input.messages,
       tools: input.tools,

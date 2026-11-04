@@ -137,7 +137,6 @@ export class CognitiveLoop {
         // turni interattivi: ragionamento basso e niente secondo giro dopo l'overlay
         fast: trigger.kind === 'user_message' && trigger.fast,
         finalTools: trigger.kind === 'user_message' && trigger.fast ? OVERLAY_TOOLS : undefined,
-        model: trigger.kind === 'user_message' ? trigger.model : undefined,
         takeImage: () => {
           const v = imageBuffer.current;
           imageBuffer.current = undefined;
@@ -221,8 +220,11 @@ export class CognitiveLoop {
     // pollution da heartbeat interni). Trim agli ultimi MAX_HISTORY messaggi.
     if (!interrupted && !errorMsg) {
       if (trigger.kind === 'user_message') {
-        this.history.push({ role: 'user', content: userText });
-        if (finalText) this.history.push({ role: 'assistant', content: finalText });
+        // la domanda compatta (non il prompt con le guide) e, se c'era, il pannello disegnato:
+        // così il turno successivo ("dimmi di più") sa da dove riprendere
+        this.history.push({ role: 'user', content: trigger.historyText ?? userText });
+        const drawn = panel?.used ? `[Ho disegnato un pannello: «${panel.title}»] ` : '';
+        if (finalText) this.history.push({ role: 'assistant', content: `${drawn}${finalText}` });
       } else if (finalText) {
         // heartbeat/cron che produce un messaggio proattivo: resta nel dialogo
         this.history.push({ role: 'assistant', content: finalText });

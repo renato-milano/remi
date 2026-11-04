@@ -125,9 +125,10 @@ describe('@openmate/core — CognitiveLoop', () => {
 class RecordingBackend implements ReasoningBackend {
   id = 'recording';
   calls: ReasoningInput['messages'][] = [];
+  reply = 'ok';
   async *run(input: ReasoningInput): AsyncIterable<ReasoningEvent> {
     this.calls.push(input.messages);
-    yield { type: 'text-delta', text: 'ok' };
+    yield { type: 'text-delta', text: this.reply };
     yield { type: 'finish', finishReason: 'stop', usage: {} };
   }
 }
@@ -186,5 +187,32 @@ describe('@openmate/core — risposta dentro overlay.draw', () => {
 
     expect(events.filter((e) => e.kind === 'message').map((e) => e.content)).toEqual(['È il menu File.']);
     expect(result.text).toBe('È il menu File.');
+  });
+});
+
+describe('@openmate/core — cronologia dei turni "indica"', () => {
+  it('tiene la domanda compatta e ricorda il pannello disegnato', async () => {
+    const backend = new RecordingBackend();
+    backend.reply = '<panel title="Come vola"><step><say>Spinge giù.</say><svg></svg></step></panel>';
+    const loop = new CognitiveLoop({
+      backend,
+      registry: registry(),
+      memory: mem,
+      tasks,
+      policy,
+      budget: { maxSteps: 4 },
+      requestApproval: async () => true,
+    });
+    await loop.runCycle({
+      kind: 'user_message',
+      content: 'spiegami come funziona\n\n[…guida lunga del pannello…]',
+      historyText: 'spiegami come funziona [indicando un punto sullo schermo]',
+      fast: true,
+    });
+    backend.reply = 'ok';
+    await loop.runCycle({ kind: 'user_message', content: 'dimmi di più' });
+    const history = backend.calls[1];
+    expect(history[0]).toEqual({ role: 'user', content: 'spiegami come funziona [indicando un punto sullo schermo]' });
+    expect(history[1]).toEqual({ role: 'assistant', content: '[Ho disegnato un pannello: «Come vola»] Spinge giù.' });
   });
 });

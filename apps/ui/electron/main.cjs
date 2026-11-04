@@ -77,8 +77,6 @@ function saveSettings(data) {
   const p = data.provider || {};
   config.provider.name = p.name || config.provider.name || 'anthropic';
   if (p.model) config.provider.model = p.model;
-  if (p.fastModel) config.provider.fastModel = p.fastModel;
-  else delete config.provider.fastModel;
   if (p.baseURL) config.provider.baseURL = p.baseURL;
   else delete config.provider.baseURL;
   config.provider.auth = p.auth === 'claude-subscription' ? 'claude-subscription' : 'api-key';
@@ -975,9 +973,7 @@ function handlePanel(e) {
     if (panelVoiced) speakParts([{ text: e.say, step: e.index }]);
   } else if (e.op === 'step') {
     phase(`pannello: passo ${e.index + 1}`);
-    const b = pointerWin?.getBounds() || { x: 0, y: 0 };
-    const marks = (e.marks || []).map((m) => ({ ...m, x: m.x - b.x, y: m.y - b.y }));
-    sendPointer('pointer-panel-step', { index: e.index, say: e.say, svg: e.svg, marks });
+    sendPointer('pointer-panel-step', { index: e.index, say: e.say, svg: e.svg });
   } else if (e.op === 'end') {
     sendPointer('pointer-panel-end');
     if (!pointTurn) lingerTimer = setTimeout(hidePointer, POINT_LINGER_MS);
