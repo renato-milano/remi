@@ -136,6 +136,7 @@ api.onData(({ config, hasKey }) => {
   document.getElementById('browserMode').value = config.browser?.mode || 'auto';
   document.getElementById('voiceEnabled').checked = Boolean(config.voice?.enabled);
   document.getElementById('voiceTts').value = config.voice?.tts === 'cloud' ? 'auto' : config.voice?.tts || 'auto';
+  document.getElementById('wakeWord').checked = Boolean(config.voice?.wakeWord);
   renderPerms();
   void showVoiceStatus();
 });
@@ -156,6 +157,7 @@ function collect() {
     browserMode: document.getElementById('browserMode').value,
     voice: document.getElementById('voiceEnabled').checked,
     voiceTts: document.getElementById('voiceTts').value,
+    wakeWord: document.getElementById('wakeWord').checked,
     apiKey: apiKeyEl.value.trim(), // vuoto = non cambiare
   };
 }

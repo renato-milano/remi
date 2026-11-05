@@ -118,7 +118,7 @@ describe('@openmate/daemon — indica e chiedi', () => {
 describe('@openmate/daemon — voce', () => {
   it('di default è spenta; senza whisper né gateway non sa trascrivere', async () => {
     const off = makeDaemon(new FakeReasoningBackend([]));
-    expect(off.voice.status()).toEqual({ enabled: false, stt: 'none', tts: 'off' });
+    expect(off.voice.status()).toEqual({ enabled: false, stt: 'none', tts: 'off', wakeWord: false });
     off.stop();
 
     const config = defaultConfig();
@@ -126,7 +126,7 @@ describe('@openmate/daemon — voce', () => {
     config.heartbeat.intervalMs = 10_000_000;
     config.voice.enabled = true;
     const on = new Daemon({ config, backend: new FakeReasoningBackend([]) });
-    expect(on.voice.status()).toEqual({ enabled: true, stt: 'none', tts: 'system' });
+    expect(on.voice.status()).toEqual({ enabled: true, stt: 'none', tts: 'system', wakeWord: false });
     await expect(on.voice.transcribe(Buffer.from('x'))).rejects.toThrow(/non disponibile/);
     on.stop();
   });

@@ -7,6 +7,7 @@ import {
   gatewayTranscribe,
   hasModel,
   isVercelGateway,
+  matchWakePhrase,
   modelPath,
 } from '@openmate/voice';
 
@@ -19,6 +20,8 @@ export interface VoiceStatus {
   downloading?: number;
   /** Voce di Remi: audio dal cloud, voce di sistema (sintesi nell'interfaccia) o nessuna. */
   tts: 'cloud' | 'system' | 'off';
+  /** "Hey Remi" attivo (richiede whisper locale: l'ascolto non va mai in rete). */
+  wakeWord: boolean;
   error?: string;
 }
 
@@ -48,6 +51,8 @@ export class VoiceService {
         modelPath: modelPath(this.modelsDir, config.voice.model),
         language: config.voice.language,
         pidFile: join(this.modelsDir, 'whisper-server.pid'),
+        // in ascolto di "Hey Remi" il modello resta caricato, altrimenti si libera dopo 5 min
+        idleMs: config.voice.enabled && config.voice.wakeWord ? 0 : undefined,
       });
     }
   }
@@ -59,7 +64,7 @@ export class VoiceService {
     if (v.enabled && v.tts !== 'off') {
       tts = v.tts === 'system' || !this.gatewayKey ? 'system' : 'cloud';
     }
-    const s: VoiceStatus = { enabled: v.enabled, stt, tts };
+    const s: VoiceStatus = { enabled: v.enabled, stt, tts, wakeWord: v.enabled && v.wakeWord && stt === 'local' };
     if (this.downloading !== undefined) s.downloading = this.downloading;
     if (this.error) s.error = this.error;
     return s;
@@ -99,6 +104,17 @@ export class VoiceService {
         ? `sto ancora scaricando il modello vocale (${Math.round(this.downloading * 100)}%)`
         : 'trascrizione non disponibile: manca whisper locale',
     );
+  }
+
+  /**
+   * Un pezzo di parlato ascoltato in sottofondo: inizia con "Hey Remi"? Solo whisper
+   * locale: l'audio ambientale non deve mai lasciare il computer.
+   */
+  async detectWake(wav: Buffer): Promise<{ wake: boolean; question: string; text: string }> {
+    if (!this.status().wakeWord || !this.local?.available()) throw new Error('"Hey Remi" non disponibile');
+    const text = await this.local.transcribe(wav);
+    const question = matchWakePhrase(text);
+    return { wake: question !== undefined, question: question ?? '', text };
   }
 
   /** Audio della risposta, o undefined se la voce è di sistema/spenta (la fa l'interfaccia). */

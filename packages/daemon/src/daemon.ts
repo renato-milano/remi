@@ -628,16 +628,18 @@ function pointPrompt(
 const PANEL_GUIDE = `[PANNELLO — una spiegazione disegnata a mano che si costruisce mentre parli, come alla lavagna.
 Scrivi SOLO questo, senza altro testo né blocchi di codice:
 <panel title="titolo breve">
-<step><say>una frase detta ad alta voce (max 20 parole)</say>
+<step><say>una o due frasi dette ad alta voce (max 35 parole)</say>
 <svg>elementi SVG di QUESTO passo</svg></step>
 …altri passi…
 </panel>
 Regole:
-- 2-5 passi. Ogni passo AGGIUNGE elementi allo STESSO disegno: costruisci un unico schema che cresce, non disegni separati.
-- Area di disegno 600×380 (origine in alto a sinistra). Lascia margini di 20. Il testo dentro l'svg è in italiano, font-size 15-22.
+- Spiega DAVVERO, come un buon insegnante alla lavagna: qui la brevità delle altre risposte non vale. Il numero di passi segue l'argomento, non una regola fissa: un'idea semplice 2-3 passi, un meccanismo o un processo 4-6, un argomento ricco o una richiesta di approfondire 6-8. Non aggiungere passi di riempimento e non tagliare quelli che servono a capire.
+- Ogni passo AGGIUNGE elementi allo STESSO disegno: costruisci un unico schema che cresce, non disegni separati.
+- Area di disegno larga 600 (origine in alto a sinistra), alta 380, fino a 560 se i passi sono tanti. Lascia margini di 20. Il testo dentro l'svg è in italiano, font-size 15-22.
 - Disegna davvero il concetto, con una forma adatta a ciò che spieghi: diagrammi di flusso, sezioni di oggetti, assi e curve, cicli, confronti, linee del tempo, schemi di forze… Evita di ripetere sempre la stessa disposizione a riquadri.
-- Elementi ammessi: path, line, polyline, polygon, rect, circle, ellipse, text, g. Tratto stroke="#1f2a24" stroke-width="2.5", fill="none" oppure pastelli #dbe9ff #ffdcd6 #d9f4e2 #fff1bf #ecebe6. Accenti #4a78c2 #c9584a #3f9a66 #c99a2e. Frecce: marker-end="url(#arrow)" su path/line.
-- Pochi elementi per passo (3-10), ordinati come li disegneresti: prima le forme, poi le frecce, poi le scritte.
+- Elementi ammessi: path, line, polyline, polygon, rect, circle, ellipse, text, g. SVG SNELLO: non scrivere stroke, stroke-width, font-family né fill="none" (sono già i valori predefiniti: tratto scuro, nessun riempimento). Per colorare usa SOLO class: b (blu), r (rosso), v (verde), g (giallo), k (grigio) sulle forme = riempimento pastello e bordo colorato; sui testi e sulle linee = colore di accento. Frecce: class="a" su path/line. Esempio: <rect class="b" x="40" y="60" width="140" height="50" rx="8"/><text class="r" x="110" y="90">Turbina</text>
+- Ogni passo con gli elementi che servono (di solito 4-14), ordinati come li disegneresti: prima le forme, poi le frecce, poi le scritte. Usa dettagli veri del concetto (nomi delle parti, valori, direzioni, relazioni), non segnaposto generici.
+- Spazio: le scritte non vanno MAI sopra linee o forme di un altro elemento; tienile ad almeno 10 da linee e bordi, mettile accanto a ciò che indicano, in zone libere.
 - Il testo deve stare DENTRO la sua forma: il font è a mano e largo, conta circa 10 di larghezza per carattere a font-size 16 (più margine). Scritte brevi.
 - Scrivi <say> PRIMA di <svg> in ogni passo.]`;
 

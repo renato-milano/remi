@@ -10,7 +10,7 @@ export interface LocalWhisperOptions {
   modelPath: string;
   /** Lingua (es. 'it') o 'auto'. */
   language: string;
-  /** Dopo quanto tempo senza richieste spegnere il server (libera ~700 MB). */
+  /** Dopo quanto tempo senza richieste spegnere il server (libera ~700 MB). 0 = mai. */
   idleMs?: number;
   /**
    * File con il pid del server: se il daemon muore senza chiuderlo (crash, kill -9)
@@ -71,6 +71,7 @@ export class LocalWhisper {
 
   private touch(): void {
     clearTimeout(this.idleTimer);
+    if (this.idleMs <= 0) return; // sempre acceso (es. ascolto di "Hey Remi")
     this.idleTimer = setTimeout(() => this.stop(), this.idleMs);
     this.idleTimer.unref?.();
   }
@@ -89,7 +90,9 @@ export class LocalWhisper {
     const threads = String(Math.max(2, Math.min(8, availableParallelism() - 2)));
     const proc = spawn(
       this.opts.binPath,
-      ['-m', this.opts.modelPath, '-l', this.opts.language, '--host', '127.0.0.1', '--port', String(port), '-t', threads],
+      // -nc: niente testo delle richieste precedenti come contesto (altrimenti whisper
+      // tende a ripeterlo e "inventa" parole nelle trascrizioni successive)
+      ['-m', this.opts.modelPath, '-l', this.opts.language, '--host', '127.0.0.1', '--port', String(port), '-t', threads, '-nc'],
       { stdio: 'ignore' },
     );
     this.proc = proc;

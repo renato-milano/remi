@@ -21,7 +21,11 @@ const ROBOT_W = 200;
 const ROBOT_MARGIN = 10;
 let currentSide = 'right';
 const HOTKEY = process.env.OPENMATE_HOTKEY || 'CommandOrControl+Shift+O';
-// "Indica e chiedi": punta il mouse su qualcosa e premi questa combinazione.
+// "Indica e chiedi": un tasto solo, tenuto premuto (⌥ destro su Mac; Ctrl destro altrove,
+// perché Alt destro è AltGr e serve a scrivere @ # [ ] sulle tastiere europee).
+// Nome di un tasto di uiohook-napi (es. 'AltRight', 'CtrlRight', 'MetaRight').
+const POINT_KEY = process.env.OPENMATE_POINT_KEY || (process.platform === 'darwin' ? 'AltRight' : 'CtrlRight');
+// Ripiego se l'hook nativo non parte (manca il permesso Accessibilità): combinazione classica.
 const POINT_HOTKEY = process.env.OPENMATE_POINT_HOTKEY || 'Control+Alt+Space';
 const PORT = Number(process.env.OPENMATE_PORT || 8787);
 const SHOT_PORT = PORT + 1; // mini-server screenshot (Electron desktopCapturer)
@@ -97,6 +101,7 @@ function saveSettings(data) {
     ...(config.voice || {}),
     enabled: Boolean(data.voice),
     tts: ['auto', 'system', 'off'].includes(data.voiceTts) ? data.voiceTts : config.voice?.tts || 'auto',
+    wakeWord: Boolean(data.wakeWord),
   };
   if (!config.storage) config.storage = { root: storageRoot };
   if (!config.budget) config.budget = { maxSteps: 12, wallClockMs: 120000 };
@@ -265,10 +270,7 @@ function stopDaemon() {
 
 /* ---------------- finestra companion (overlay) ---------------- */
 function createCompanion() {
-  if (win) {
-    win.show();
-    return;
-  }
+  if (win) return;
   const { workArea } = screen.getPrimaryDisplay();
   win = new BrowserWindow({
     width: WIDTH,
@@ -285,6 +287,7 @@ function createCompanion() {
     fullscreenable: false,
     maximizable: false,
     minimizable: false,
+    show: false, // Remi resta nascosto: compare col doppio tocco, "Hey Remi" o quando deve parlarti
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -629,11 +632,12 @@ function buildPointPayload(full, display, cur, path) {
 // rilascio; se non è disponibile (o manca il permesso Accessibilità) si resta
 // alla modalità "punto" con un solo tocco.
 const TRACE_TICK_MS = 16;
+// byte al secondo dei WAV dalla lavagna (16 kHz, 16 bit, mono)
+const SAMPLE_RATE_BYTES = 16000 * 2;
 const TRACE_MAX_MS = 10000; // sicurezza: se il rilascio non arriva, chiudi comunque
 const TRACE_MIN_SIZE = 24; // sotto questa dimensione (punti) è un punto, non un'area
 
 let hook;
-let lastHookKeyDown = 0;
 const pointDebug = (...args) => process.env.OPENMATE_UI_DEBUG && console.log('[point]', ...args);
 // tempi delle fasi di un turno, misurati dal rilascio della hotkey (log di debug)
 let releasedAt = 0;
@@ -641,29 +645,72 @@ const phase = (name) =>
   process.env.OPENMATE_UI_DEBUG && releasedAt && console.log(`[tempi] +${Date.now() - releasedAt} ms  ${name}`);
 let tracing; // { display, points, grab, timer, maxTimer, done }
 
+/* --- tasto unico: tieni premuto = indica e parla, tocco = scrivi, doppio tocco = Remi --- */
+const TAP_MS = 250; // sotto questa durata è un tocco
+const DOUBLE_TAP_MS = 350; // un secondo tocco entro questo tempo è un doppio tocco
+const key = { down: false, cancelled: false, double: false, lastTapUpAt: 0, suppressAsk: false };
+
 function startKeyHook() {
   try {
-    const { uIOhook } = require('uiohook-napi');
-    uIOhook.on('keydown', () => {
-      lastHookKeyDown = Date.now();
+    const { uIOhook, UiohookKey } = require('uiohook-napi');
+    const code = UiohookKey[POINT_KEY];
+    if (code === undefined) throw new Error(`tasto sconosciuto: ${POINT_KEY}`);
+    uIOhook.on('keydown', (e) => {
+      if (e.keycode !== code) {
+        // un altro tasto mentre è premuto (es. ⌥+è): stavi scrivendo, non chiamando Remi
+        if (key.down && !key.cancelled) {
+          key.cancelled = true;
+          cancelPoint();
+        }
+        return;
+      }
+      if (key.down) return; // ripetizione automatica
+      key.down = true;
+      key.cancelled = false;
+      if (Date.now() - key.lastTapUpAt < DOUBLE_TAP_MS) {
+        key.double = true;
+        key.suppressAsk = true; // il primo tocco non apre la casella
+        return;
+      }
+      void startPoint(true);
     });
-    uIOhook.on('keyup', () => {
-      if (tracing) void endTrace();
+    uIOhook.on('keyup', (e) => {
+      if (e.keycode !== code) return;
+      key.down = false;
+      if (key.double) {
+        key.double = false;
+        toggleCompanion();
+        return;
+      }
+      if (key.cancelled) return;
+      const held = tracing ? Date.now() - tracing.pressedAt : 0;
+      if (held < TAP_MS) key.lastTapUpAt = Date.now();
+      void endTrace();
     });
     uIOhook.start();
     hook = uIOhook;
-    pointDebug('hook tastiera attivo');
+    pointDebug(`hook tastiera attivo (tasto ${POINT_KEY})`);
+    return true;
   } catch (err) {
-    console.warn('[point] hook tastiera non disponibile: solo modalità punto', err?.message || err);
+    console.warn('[point] hook tastiera non disponibile: uso la combinazione', POINT_HOTKEY, err?.message || err);
+    return false;
   }
 }
 
-/** L'hook è vivo se ha visto la pressione della hotkey appena avvenuta. */
-function hookAlive() {
-  return Boolean(hook) && Date.now() - lastHookKeyDown < 600;
+/** Annulla il gesto in corso (es. il tasto era parte di una combinazione). */
+function cancelPoint() {
+  const t = tracing;
+  if (!t) return;
+  t.done = true;
+  clearInterval(t.timer);
+  clearTimeout(t.maxTimer);
+  tracing = undefined;
+  if (t.recording) sendPointer('pointer-rec-stop'); // la registrazione viene scartata
+  hidePointer();
 }
 
-async function startPoint() {
+/** `hold`: avviato dal tasto tenuto premuto (si conclude al rilascio); altrimenti è un tocco. */
+async function startPoint(hold = false) {
   if (tracing) return; // ripetizione automatica del tasto mentre si traccia
   // seconda pressione mentre si sta chiedendo: annulla
   if (pendingPoint) {
@@ -683,8 +730,8 @@ async function startPoint() {
     await new Promise((r) => setTimeout(r, 80));
   }
   t.grab = grabDisplay(display);
-  pointDebug('hotkey', hookAlive() ? 'tieni premuto per circoscrivere' : 'hook non attivo: modalità punto');
-  if (!hookAlive()) {
+  pointDebug('tasto', hold ? 'tieni premuto per indicare e parlare' : 'tocco: modalità punto');
+  if (!hold) {
     await endTrace();
     return;
   }
@@ -747,6 +794,29 @@ function sweptArea(points, pad) {
   return [...half(pts), ...half([...pts].reverse())];
 }
 
+/**
+ * Dal percorso del mouse: un punto (movimento minimo) o la zona attraversata.
+ * `local`: posizione per la lavagna, con il rettangolo della zona (il pannello lo affianca).
+ */
+function resolvePath(points, display) {
+  const xs = points.map((p) => p.x);
+  const ys = points.map((p) => p.y);
+  const isArea =
+    points.length > 3 &&
+    Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)) >= TRACE_MIN_SIZE;
+  pointDebug(isArea ? `area (${points.length} punti)` : 'punto');
+  const at = isArea ? points[points.length - 1] : points[0];
+  const area = isArea ? sweptArea(points, 20) : undefined;
+  const b = display.bounds;
+  const local = { x: at.x - b.x, y: at.y - b.y, area: isArea };
+  if (area) {
+    const ax = area.map((p) => p.x - b.x);
+    const ay = area.map((p) => p.y - b.y);
+    local.box = { x: Math.min(...ax), y: Math.min(...ay), w: Math.max(...ax) - Math.min(...ax), h: Math.max(...ay) - Math.min(...ay) };
+  }
+  return { at, area, local };
+}
+
 async function endTrace() {
   const t = tracing;
   if (!t || t.done) return;
@@ -770,25 +840,10 @@ async function endTrace() {
     return;
   }
   const { display, points } = t;
-  const xs = points.map((p) => p.x);
-  const ys = points.map((p) => p.y);
-  const isArea =
-    points.length > 3 &&
-    Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)) >= TRACE_MIN_SIZE;
-  const end = points[points.length - 1];
-  pointDebug(isArea ? `area (${points.length} punti)` : 'punto');
-  const area = isArea ? sweptArea(points, 20) : undefined;
+  const { at, area, local } = resolvePath(points, display);
   phase('screenshot pronto');
-  const capture = buildPointPayload(full, display, isArea ? end : points[0], area);
+  const capture = buildPointPayload(full, display, at, area);
   phase('immagini preparate (ridimensiona + ingrandimento)');
-  const at = isArea ? end : points[0];
-  const local = { x: at.x - display.bounds.x, y: at.y - display.bounds.y, area: isArea };
-  if (area) {
-    // rettangolo della zona (locale): il pannello di spiegazione la affianca senza coprirla
-    const ax = area.map((p) => p.x - display.bounds.x);
-    const ay = area.map((p) => p.y - display.bounds.y);
-    local.box = { x: Math.min(...ax), y: Math.min(...ay), w: Math.max(...ax) - Math.min(...ax), h: Math.max(...ay) - Math.min(...ay) };
-  }
 
   // ha parlato? allora niente casella: trascrivi e invia
   const rec = t.recording ? await stopRecording() : null;
@@ -803,6 +858,14 @@ async function endTrace() {
     if (await submitVoice(capture, rec.wav)) return;
   }
 
+  // un tocco breve potrebbe essere il primo di un doppio tocco: aspetta prima di aprire la casella
+  const sinceTap = Date.now() - key.lastTapUpAt;
+  if (sinceTap < DOUBLE_TAP_MS) await new Promise((r) => setTimeout(r, DOUBLE_TAP_MS - sinceTap));
+  if (key.suppressAsk) {
+    key.suppressAsk = false;
+    hidePointer();
+    return;
+  }
   pendingPoint = capture;
   await ensurePointerWin(display);
   pointerWin.setIgnoreMouseEvents(false);
@@ -908,6 +971,151 @@ async function submitVoice(capture, wav) {
   sendPointer('pointer-question', text);
   void submitPoint(capture, text, true);
   return true;
+}
+
+/* --- "Hey Remi": la lavagna manda i pezzi di parlato, il daemon (whisper locale) decide --- */
+let wakeBusy = false;
+let listenWaiter;
+// mentre "Hey Remi" è attivo: le posizioni recenti del mouse, per sapere cosa indicavi
+// MENTRE parlavi (la frase viene riconosciuta solo dopo che l'hai finita)
+const MOUSE_HISTORY_MS = 12000;
+const mouseHistory = [];
+let mouseTimer;
+
+function startMouseHistory() {
+  if (mouseTimer) return;
+  mouseTimer = setInterval(() => {
+    const p = screen.getCursorScreenPoint();
+    const last = mouseHistory[mouseHistory.length - 1];
+    const now = Date.now();
+    if (!last || Math.abs(p.x - last.x) + Math.abs(p.y - last.y) >= 2) mouseHistory.push({ x: p.x, y: p.y, t: now });
+    while (mouseHistory.length && now - mouseHistory[0].t > MOUSE_HISTORY_MS) mouseHistory.shift();
+  }, TRACE_TICK_MS * 2);
+}
+
+/** Percorso del mouse tra `from` e `to` (ms epoch), almeno la posizione attuale. */
+function mousePath(from, to) {
+  const path = mouseHistory.filter((p) => p.t >= from && p.t <= to).map(({ x, y }) => ({ x, y }));
+  // la posizione all'inizio della finestra (il mouse fermo non produce campioni)
+  const before = [...mouseHistory].reverse().find((p) => p.t < from);
+  if (before) path.unshift({ x: before.x, y: before.y });
+  return path.length ? path : [screen.getCursorScreenPoint()];
+}
+
+/** Attiva l'ascolto se la voce e "Hey Remi" sono abilitati e whisper locale è pronto. */
+async function setupWakeWord() {
+  const voice = readConfig().voice || {};
+  if (!voice.enabled || !voice.wakeWord) return;
+  // il daemon decide se è davvero disponibile (serve whisper locale: niente audio in rete)
+  for (let i = 0; i < 20; i++) {
+    try {
+      const status = await (await fetch(`${DAEMON_URL}/status`)).json();
+      if (status.voice?.wakeWord) {
+        if (!(await askMicrophone())) return;
+        await (pointerReady || ensurePointerWin(screen.getPrimaryDisplay()));
+        sendPointer('pointer-wake', { enabled: true });
+        startMouseHistory();
+        pointDebug('"Hey Remi" in ascolto');
+        return;
+      }
+      if (status.voice && status.voice.downloading === undefined && i > 2) return;
+    } catch {
+      /* daemon non ancora pronto */
+    }
+    await new Promise((r) => setTimeout(r, 1500));
+  }
+}
+
+ipcMain.on('pointer-wake-segment', async (_e, wav) => {
+  // il pezzo è appena finito: la sua durata dice da quando stavi parlando
+  const segEnd = Date.now();
+  const segStart = segEnd - ((wav.byteLength - 44) / (SAMPLE_RATE_BYTES)) * 1000;
+  if (wakeBusy || pointTurn || tracing || pendingPoint) {
+    sendPointer('pointer-wake-done');
+    return;
+  }
+  wakeBusy = true;
+  try {
+    const out = await postJson('/voice/wake', { audio: Buffer.from(wav).toString('base64') });
+    pointDebug(`ascoltato: "${out.text ?? out.error}"${out.wake ? ' → Hey Remi!' : ''}`);
+    if (out.ok && out.wake) await onWake(String(out.question || '').trim(), mousePath(segStart, segEnd));
+    else sendPointer('pointer-wake-done');
+  } catch {
+    sendPointer('pointer-wake-done');
+  } finally {
+    wakeBusy = false;
+  }
+});
+ipcMain.on('pointer-listen-data', (_e, data) => listenWaiter?.(data));
+
+/**
+ * "Hey Remi": Remi compare e risponde su ciò che indichi col mouse. `spokenPath`:
+ * il percorso del mouse mentre dicevi la frase (conta se la domanda era già lì).
+ */
+async function onWake(question, spokenPath) {
+  releasedAt = Date.now();
+  phase(`"Hey Remi"${question ? ` + "${question}"` : ''}`);
+  const cur = screen.getCursorScreenPoint();
+  const display = screen.getDisplayNearestPoint(cur);
+  showCompanionFor(30000);
+  sendPointer('pointer-ack');
+  if (pointerWin?.isVisible()) {
+    hidePointer(); // i disegni precedenti non devono finire nello screenshot
+    await new Promise((r) => setTimeout(r, 80));
+  }
+  // lo screenshot prima di mostrare alone e scia (non devono finirci dentro)
+  const grab = grabDisplay(display);
+  grab.catch(() => {});
+  let full;
+  try {
+    full = await grab;
+  } catch (err) {
+    console.error('[point] cattura fallita', err);
+    sendPointer('pointer-wake-done');
+    return;
+  }
+  await ensurePointerWin(display);
+  pointerWin.setIgnoreMouseEvents(true, { forward: true });
+  pointerWin.showInactive();
+  if (question) {
+    // "Hey Remi, cos'è questo?" detto di fila: vale ciò che indicavi mentre lo dicevi
+    const { at, area, local } = resolvePath(spokenPath, display);
+    sendPointer('pointer-anchor', local);
+    sendPointer('pointer-wake-done');
+    sendPointer('pointer-thinking');
+    sendPointer('pointer-question', question);
+    void submitPoint(buildPointPayload(full, display, at, area), question, true);
+    return;
+  }
+  // solo "Hey Remi": mentre ascolti la domanda, segui il mouse come col tasto premuto
+  const b = display.bounds;
+  const path = [cur];
+  // niente anello fisso sul punto iniziale: l'alone segue il mouse
+  sendPointer('pointer-anchor', { x: cur.x - b.x, y: cur.y - b.y, area: true });
+  sendPointer('pointer-listen', { x: cur.x - b.x, y: cur.y - b.y });
+  const follow = setInterval(() => {
+    const p = screen.getCursorScreenPoint();
+    const last = path[path.length - 1];
+    if (Math.abs(p.x - last.x) + Math.abs(p.y - last.y) < 2) return;
+    path.push(p);
+    sendPointer('pointer-trace', { x: p.x - b.x, y: p.y - b.y });
+  }, TRACE_TICK_MS);
+  const rec = await new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(null), 17000);
+    listenWaiter = (data) => {
+      clearTimeout(timer);
+      listenWaiter = undefined;
+      resolve(data);
+    };
+  });
+  clearInterval(follow);
+  phase(rec?.speech ? 'domanda ascoltata' : 'nessuna domanda');
+  if (rec?.speech && rec.wav) {
+    const { at, area, local } = resolvePath(path, display);
+    sendPointer('pointer-anchor', local);
+    if (await submitVoice(buildPointPayload(full, display, at, area), rec.wav)) return;
+  }
+  lingerTimer = setTimeout(hidePointer, 4000);
 }
 
 /** Divide la risposta in frasi (unendo quelle troppo corte): la prima si sente prima. */
@@ -1042,6 +1250,9 @@ function handleDaemonEvent(e) {
     else showOverlay(e.items || [], Boolean(e.clear));
     return;
   }
+  // fuori dai turni "indica" Remi deve farsi vedere per chiederti un permesso o parlarti
+  if (!pointTurn && e.kind === 'approval_request') showCompanionFor(0);
+  if (!pointTurn && e.kind === 'message' && !e.channel) showCompanionFor(Math.min(30000, 6000 + e.content.length * 40));
   if (!pointTurn) return;
   if (e.kind === 'message') {
     if (e.channel === 'panel') return; // già nel pannello, che la legge passo per passo
@@ -1093,8 +1304,35 @@ async function subscribeDaemon() {
   }
 }
 
+/* --- Remi nascosto: compare quando lo chiami o quando deve parlarti --- */
+let companionPinned = false; // mostrato dall'utente (resta finché non lo nasconde)
+let companionAutoTimer;
+
+function toggleCompanion() {
+  if (!win) return;
+  pointDebug(`Remi ${win.isVisible() && companionPinned ? 'nascosto' : 'mostrato'}`);
+  clearTimeout(companionAutoTimer);
+  if (win.isVisible() && companionPinned) {
+    companionPinned = false;
+    win.hide();
+  } else {
+    companionPinned = true;
+    win.showInactive();
+  }
+}
+
+/** Mostra Remi per un messaggio o un permesso; se non era stato chiamato, si rinasconde dopo. */
+function showCompanionFor(ms) {
+  if (!win) return;
+  if (!win.isVisible()) win.showInactive();
+  clearTimeout(companionAutoTimer);
+  if (!companionPinned && ms) companionAutoTimer = setTimeout(() => !companionPinned && win?.hide(), ms);
+}
+
 function summon() {
   if (!win) return;
+  companionPinned = true;
+  clearTimeout(companionAutoTimer);
   win.show();
   win.focus();
   win.setIgnoreMouseEvents(false);
@@ -1137,11 +1375,11 @@ ipcMain.on('context-menu', showContextMenu);
 /* ---------------- avvio ---------------- */
 app.whenReady().then(() => {
   globalShortcut.register(HOTKEY, summon);
-  if (!globalShortcut.register(POINT_HOTKEY, () => void startPoint())) {
+  if (!startKeyHook() && !globalShortcut.register(POINT_HOTKEY, () => void startPoint())) {
     console.warn(`[point] hotkey ${POINT_HOTKEY} non disponibile (usata da un'altra app?)`);
   }
-  startKeyHook();
   void subscribeDaemon();
+  void setupWakeWord();
   // lavagna pronta (nascosta): il microfono deve poter partire alla prima pressione
   if (EXTERNAL || isOnboarded()) void ensurePointerWin(screen.getPrimaryDisplay());
   if (EXTERNAL || isOnboarded()) {
@@ -1165,5 +1403,7 @@ process.on('SIGTERM', () => app.quit());
 process.on('SIGINT', () => app.quit());
 app.on('activate', () => {
   if (!win && !onbWin && (EXTERNAL || isOnboarded())) createCompanion();
+  // clic sull'icona nel Dock: Remi si fa vedere
+  if (win && !win.isVisible()) toggleCompanion();
 });
 app.on('window-all-closed', () => app.quit());

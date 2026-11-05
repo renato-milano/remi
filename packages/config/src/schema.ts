@@ -74,6 +74,11 @@ export const voiceSchema = z.object({
   model: z.enum(['small']).default('small'),
   /** Lingua parlata ('it', 'en', … o 'auto'). */
   language: z.string().default('it'),
+  /**
+   * Ascolta "Hey Remi" anche senza tasto. Il microfono resta aperto; l'audio è
+   * analizzato SOLO in locale (whisper.cpp), mai inviato in rete.
+   */
+  wakeWord: z.boolean().default(false),
   /** Voce di Remi: 'auto' = cloud se c'è il gateway, altrimenti voce di sistema. */
   tts: z.enum(['auto', 'cloud', 'system', 'off']).default('auto'),
 });

@@ -119,7 +119,8 @@ async function micOpen() {
     for (let i = 0; i < block.length; i++) sum += block[i] * block[i];
     const rms = Math.sqrt(sum / block.length);
     mic.level = mic.level * 0.7 + Math.min(1, rms * 12) * 0.3;
-    if (!mic.recording) return;
+    if (listen.on) return listenBlock(block, rms);
+    if (!mic.recording) return wakeBlock(block, rms);
     mic.chunks.push(block);
     if (rms > SPEECH_RMS) mic.speechMs += (block.length / SAMPLE_RATE) * 1000;
   };
@@ -181,7 +182,127 @@ bridge.onRecStop(() => {
   bridge.sendRecData({ wav: speech ? encodeWav(mic.chunks) : null, speech, durationMs });
   mic.chunks = [];
   clearTimeout(mic.warmTimer);
-  mic.warmTimer = setTimeout(micClose, MIC_WARM_MS);
+  if (!wake.enabled) mic.warmTimer = setTimeout(micClose, MIC_WARM_MS); // in ascolto di "Hey Remi" resta aperto
+});
+
+/* --- "Hey Remi": rilevatore di voce leggero; a whisper (locale) solo i pezzi di parlato --- */
+const VAD_START_MS = 60; // parlato continuo per aprire un pezzo
+const VAD_END_MS = 650; // silenzio che chiude un pezzo
+const VAD_PREROLL_MS = 300; // audio prima dell'inizio, per non tagliare la prima sillaba
+const WAKE_MIN_SPEECH_MS = 300;
+const WAKE_MAX_MS = 8000;
+const blockMs = (block) => (block.length / SAMPLE_RATE) * 1000;
+const wake = {
+  enabled: false,
+  pausedUntil: 0,
+  noise: 0.004, // rumore di fondo stimato
+  run: 0, // ms di parlato consecutivo prima di aprire un pezzo
+  active: false,
+  pre: [],
+  seg: [],
+  segMs: 0,
+  speechMs: 0,
+  silenceMs: 0,
+  tail: undefined, // audio dopo un pezzo inviato, finché il main non risponde
+};
+const vadThreshold = () => Math.max(0.008, wake.noise * 3);
+
+function wakeBlock(block, rms) {
+  if (!wake.enabled) return;
+  // pezzo appena inviato: tieni l'audio che segue (potrebbe essere la domanda)
+  if (wake.tail) {
+    wake.tail.push(block);
+    if (wake.tail.length * blockMs(block) > 10000) wake.tail = undefined;
+    return;
+  }
+  if (speech.playing || performance.now() < wake.pausedUntil) return;
+  const ms = blockMs(block);
+  const loud = rms > vadThreshold();
+  if (!wake.active) {
+    if (!loud) wake.noise = wake.noise * 0.98 + rms * 0.02;
+    wake.pre.push(block);
+    while (wake.pre.length * ms > VAD_PREROLL_MS) wake.pre.shift();
+    wake.run = loud ? wake.run + ms : 0;
+    if (wake.run < VAD_START_MS) return;
+    Object.assign(wake, { active: true, seg: [...wake.pre], segMs: wake.pre.length * ms, speechMs: wake.run, silenceMs: 0 });
+    return;
+  }
+  wake.seg.push(block);
+  wake.segMs += ms;
+  if (loud) {
+    wake.speechMs += ms;
+    wake.silenceMs = 0;
+  } else {
+    wake.silenceMs += ms;
+  }
+  if (wake.silenceMs < VAD_END_MS && wake.segMs < WAKE_MAX_MS) return;
+  const seg = wake.seg;
+  const enough = wake.speechMs >= WAKE_MIN_SPEECH_MS;
+  Object.assign(wake, { active: false, seg: [], pre: [], run: 0 });
+  if (!enough) return;
+  wake.tail = [];
+  bridge.sendWakeSegment(encodeWav(seg));
+}
+
+bridge.onWakeConfig(async ({ enabled }) => {
+  wake.enabled = enabled;
+  if (!enabled) return;
+  clearTimeout(mic.warmTimer);
+  try {
+    await micOpen();
+    await mic.ctx.resume();
+  } catch (err) {
+    console.warn('microfono non disponibile per "Hey Remi"', err);
+    wake.enabled = false;
+  }
+});
+// il main ha deciso: niente "Hey Remi" in quel pezzo (o la domanda c'era già)
+bridge.onWakeDone(() => {
+  wake.tail = undefined;
+});
+
+/* --- dopo "Hey Remi": ascolta la domanda fino alla pausa --- */
+const LISTEN_END_MS = 900;
+const LISTEN_NO_SPEECH_MS = 6000;
+const LISTEN_MAX_MS = 15000;
+const LISTEN_HEARD_MS = 200; // parlato minimo perché la domanda sia "iniziata" (non basta un rumore)
+const listen = { on: false, chunks: [], ms: 0, speechMs: 0, silenceMs: 0, heard: false };
+
+function listenBlock(block, rms) {
+  const ms = blockMs(block);
+  listen.chunks.push(block);
+  listen.ms += ms;
+  if (rms > vadThreshold()) {
+    listen.speechMs += ms;
+    if (listen.speechMs >= LISTEN_HEARD_MS) listen.heard = true;
+    listen.silenceMs = 0;
+  } else {
+    listen.silenceMs += ms;
+  }
+  const done =
+    (listen.heard && listen.silenceMs >= LISTEN_END_MS) ||
+    (!listen.heard && listen.ms >= LISTEN_NO_SPEECH_MS) ||
+    listen.ms >= LISTEN_MAX_MS;
+  if (!done) return;
+  listen.on = false;
+  endTrail();
+  const spoke = listen.speechMs >= SPEECH_MIN_MS;
+  bridge.sendListenData({ wav: spoke ? encodeWav(listen.chunks) : null, speech: spoke });
+  wake.pausedUntil = performance.now() + 300;
+}
+
+bridge.onListen((p) => {
+  // parti dall'audio arrivato dopo "Hey Remi" (la domanda può essere già iniziata)
+  const tail = wake.tail || [];
+  wake.tail = undefined;
+  Object.assign(listen, { on: true, chunks: [], ms: 0, speechMs: 0, silenceMs: 0, heard: false });
+  for (const b of tail) {
+    let sum = 0;
+    for (let i = 0; i < b.length; i++) sum += b[i] * b[i];
+    listenBlock(b, Math.sqrt(sum / b.length));
+    if (!listen.on) return;
+  }
+  trailTo(p); // alone sul punto: Remi ascolta
 });
 
 /** WAV PCM 16 bit mono dai blocchi Float32. */
@@ -223,6 +344,8 @@ function speakNext() {
   const item = speech.queue.shift();
   const done = () => {
     speech.playing = undefined;
+    // l'eco della voce di Remi non deve far scattare "Hey Remi"
+    wake.pausedUntil = performance.now() + 800;
     speakNext();
   };
   if (item.audio) {
@@ -274,6 +397,8 @@ const SVG_ATTRS = new Set([
   'fill-opacity', 'stroke-opacity', 'font-size', 'font-weight', 'font-style', 'text-anchor', 'dominant-baseline',
   'transform', 'marker-end', 'marker-start',
 ]);
+/** Classi ammesse sull'SVG del modello (colori della palette e frecce). */
+const SVG_CLASSES = new Set(['b', 'r', 'v', 'g', 'k', 'a']);
 const panelState = { steps: [], drawn: -1, voiced: false, ended: false, busyUntil: 0, timer: undefined, want: undefined };
 
 function clearPanel() {
@@ -310,6 +435,11 @@ function sanitizeSvg(fragment) {
     if (node.nodeType !== Node.ELEMENT_NODE || !SVG_TAGS.has(node.localName)) return null;
     const el = document.createElementNS(SVG_NS, node.localName);
     for (const { name, value } of [...node.attributes]) {
+      if (name === 'class') {
+        const cls = value.split(/\s+/).filter((c) => SVG_CLASSES.has(c));
+        if (cls.length) el.setAttribute('class', cls.join(' '));
+        continue;
+      }
       if (!SVG_ATTRS.has(name)) continue;
       if (/url\(/i.test(value) && value.trim() !== 'url(#arrow)') continue;
       if (/javascript:|expression\(/i.test(value)) continue;
@@ -324,6 +454,36 @@ function sanitizeSvg(fragment) {
     return el;
   };
   return [...doc.documentElement.childNodes].map(clean).filter((n) => n && n.nodeType === Node.ELEMENT_NODE);
+}
+
+/**
+ * Una scritta più larga della forma che la contiene (il font a mano è più largo di
+ * quanto il modello stima) si rimpicciolisce finché ci sta, e rientra nei bordi.
+ */
+function fitTexts(group) {
+  const shapes = [...panelDraw.querySelectorAll('rect, circle, ellipse, polygon')]
+    .map((s) => [s, s.getBBox()])
+    .filter(([, b]) => b.width > 0 && b.height > 0);
+  for (const t of group.querySelectorAll('text')) {
+    let tb = t.getBBox();
+    const cx = tb.x + tb.width / 2;
+    const cy = tb.y + tb.height / 2;
+    // la forma più piccola che contiene il centro della scritta ed è più alta di lei
+    const host = shapes
+      .filter(([, b]) => cx > b.x && cx < b.x + b.width && cy > b.y && cy < b.y + b.height && b.height >= tb.height * 0.8)
+      .sort((a, b) => a[1].width * a[1].height - b[1].width * b[1].height)[0];
+    if (!host) continue;
+    const hb = host[1];
+    const room = hb.width - 12;
+    if (tb.width > room) {
+      const size = Number.parseFloat(getComputedStyle(t).fontSize) || 17;
+      t.setAttribute('font-size', String(Math.max(10, Math.floor(size * (room / tb.width)))));
+      tb = t.getBBox();
+    }
+    // ancora fuori da un lato (testo allineato a sinistra o a destra): riportalo dentro
+    const dx = tb.x < hb.x + 6 ? hb.x + 6 - tb.x : tb.x + tb.width > hb.x + hb.width - 6 ? hb.x + hb.width - 6 - (tb.x + tb.width) : 0;
+    if (dx) t.setAttribute('x', String((Number(t.getAttribute('x')) || 0) + dx));
+  }
 }
 
 /** Le forme "disegnabili" di un sottoalbero, nell'ordine in cui compaiono. */
@@ -347,6 +507,7 @@ function drawStep(i, ms) {
   const group = document.createElementNS(SVG_NS, 'g');
   for (const el of sanitizeSvg(step.svg)) group.appendChild(el);
   panelDraw.appendChild(group);
+  fitTexts(group);
   const items = drawables(group);
   const slot = (ms * 0.85) / Math.max(1, items.length);
   items.forEach((el, k) => {
@@ -382,14 +543,21 @@ function drawStep(i, ms) {
   placePanel();
 }
 
-/** Altezza del disegno adattata al contenuto (la larghezza resta: niente cambi di scala). */
+/**
+ * Area del disegno adattata al contenuto: l'altezza segue il disegno; la larghezza
+ * resta 600 (niente cambi di scala) a meno che il modello non sbordi, e allora si
+ * allarga quel tanto che basta perché nessuna scritta venga tagliata.
+ */
 function fitPanel() {
   try {
     const bb = panelDraw.getBBox();
     if (!bb.width && !bb.height) return;
-    const y0 = Math.max(0, bb.y - 16);
-    const h = Math.max(160, bb.y + bb.height + 16 - y0);
-    panelSvg.setAttribute('viewBox', `0 ${y0} 600 ${h}`);
+    const x0 = Math.min(0, bb.x - 12);
+    const w = Math.max(600, bb.x + bb.width + 12) - x0;
+    // in alto si taglia lo spazio vuoto, ma si include ciò che il modello ha disegnato sopra lo 0
+    const y0 = bb.y - 16;
+    const h = Math.max(160, bb.height + 32);
+    panelSvg.setAttribute('viewBox', `${x0} ${y0} ${w} ${h}`);
   } catch {
     /* svg non ancora visibile */
   }
@@ -401,6 +569,7 @@ function drawStepNow(i) {
   const group = document.createElementNS(SVG_NS, 'g');
   for (const el of sanitizeSvg(step.svg)) group.appendChild(el);
   panelDraw.appendChild(group);
+  fitTexts(group);
   panelState.drawn = i;
   fitPanel();
 }

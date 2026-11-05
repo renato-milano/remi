@@ -81,12 +81,31 @@ html,body{width:100%;height:100%;background:transparent;overflow:hidden;font-fam
 .panel-q:empty{display:none}
 .panel-q:not(:empty){margin-bottom:6px}
 .panel-title{font:700 20px/1.2 "Chalkboard SE","Marker Felt","Comic Sans MS",cursive;margin:0 24px 12px 0}
-.panel-svg{display:block;width:100%;height:auto;overflow:visible}
+.panel-svg{display:block;width:100%;height:auto;overflow:hidden} /* niente disegni sopra il titolo */
 .panel-svg text{font-family:"Chalkboard SE","Marker Felt","Comic Sans MS",cursive;font-size:17px}
 #panelDraw text:not([fill]){fill:#1f2a24}
 #panelDraw :is(path,line,polyline,polygon,rect,circle,ellipse):not([stroke]){stroke:#1f2a24}
 #panelDraw :is(path,line,polyline,polygon,rect,circle,ellipse):not([stroke-width]){stroke-width:2.5}
 #panelDraw :is(path,line,polyline,polygon,rect,circle,ellipse):not([fill]){fill:none}
 #panelDraw :is(path,line,polyline,polygon,rect,circle,ellipse){stroke-linecap:round;stroke-linejoin:round}
+/* SVG snello: il modello colora solo con classi brevi (b r v g k), frecce con .a */
+#panelDraw .b:is(path,polygon,rect,circle,ellipse){fill:#dbe9ff;stroke:#4a78c2}
+#panelDraw .r:is(path,polygon,rect,circle,ellipse){fill:#ffdcd6;stroke:#c9584a}
+#panelDraw .v:is(path,polygon,rect,circle,ellipse){fill:#d9f4e2;stroke:#3f9a66}
+#panelDraw .g:is(path,polygon,rect,circle,ellipse){fill:#fff1bf;stroke:#c99a2e}
+#panelDraw .k:is(path,polygon,rect,circle,ellipse){fill:#ecebe6;stroke:#8c8a80}
+#panelDraw :is(line,polyline).b{stroke:#4a78c2}
+#panelDraw :is(line,polyline).r{stroke:#c9584a}
+#panelDraw :is(line,polyline).v{stroke:#3f9a66}
+#panelDraw :is(line,polyline).g{stroke:#c99a2e}
+#panelDraw :is(line,polyline).k{stroke:#8c8a80}
+#panelDraw text.b{fill:#4a78c2}
+#panelDraw text.r{fill:#c9584a}
+#panelDraw text.v{fill:#3f9a66}
+#panelDraw text.g{fill:#c99a2e}
+#panelDraw text.k{fill:#8c8a80}
+#panelDraw .a{marker-end:url(#arrow)}
+/* alone color carta: una linea che passa sotto una scritta non la copre */
+#panelDraw text{paint-order:stroke;stroke:#fbf8f1;stroke-width:5px;stroke-linejoin:round}
 
 @media (prefers-reduced-motion:reduce){*{animation:none !important}}

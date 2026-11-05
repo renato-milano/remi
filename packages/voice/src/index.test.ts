@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { LocalWhisper, WHISPER_MODELS, isVercelGateway, modelPath } from './index.js';
+import { LocalWhisper, WHISPER_MODELS, isVercelGateway, matchWakePhrase, modelPath } from './index.js';
 
 describe('@openmate/voice', () => {
   it('riconosce il Vercel AI Gateway dal base URL', () => {
@@ -32,4 +32,28 @@ describe('@openmate/voice', () => {
     },
     60_000,
   );
+});
+
+describe('@openmate/voice — "Hey Remi"', () => {
+  // trascrizioni reali (whisper small) di registrazioni con la voce dell'utente
+  it('riconosce la frase e restituisce la domanda che segue', () => {
+    expect(matchWakePhrase('Ehi Remy')).toBe('');
+    expect(matchWakePhrase('Hey Remy.')).toBe('');
+    expect(matchWakePhrase('Ehi Rami, cosa è questo?')).toBe('cosa è questo?');
+    expect(matchWakePhrase('Ehi Remy, spiegami come funziona.')).toBe('spiegami come funziona.');
+    expect(matchWakePhrase('Remy aiuta mi')).toBe('aiuta mi');
+  });
+  it('non scatta su frasi simili', () => {
+    for (const t of [
+      'Ehi mi passi il prevo no?',
+      'Premi il pulsante rosso.',
+      'E i rimi della barca',
+      'e visto remo ieri sera',
+      'Si però mi sembra strano',
+      '*sipso*',
+      'Remoto il server',
+    ]) {
+      expect(matchWakePhrase(t)).toBeUndefined();
+    }
+  });
 });

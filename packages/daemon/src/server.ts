@@ -70,6 +70,16 @@ export function startHttpServer(daemon: Daemon, port: number) {
       return c.json({ ok: false, error: err instanceof Error ? err.message : String(err) }, 503);
     }
   });
+  // "Hey Remi": un pezzo di parlato ascoltato in sottofondo (analizzato solo in locale)
+  app.post('/voice/wake', async (c) => {
+    const { audio } = (await c.req.json()) as { audio?: string };
+    if (typeof audio !== 'string') return c.json({ ok: false, error: 'audio mancante' }, 400);
+    try {
+      return c.json({ ok: true, ...(await daemon.voice.detectWake(Buffer.from(audio, 'base64'))) });
+    } catch (err) {
+      return c.json({ ok: false, error: err instanceof Error ? err.message : String(err) }, 503);
+    }
+  });
   app.post('/voice/speak', async (c) => {
     const { text } = (await c.req.json()) as { text?: string };
     if (typeof text !== 'string' || !text.trim()) return c.json({ ok: false, error: 'testo mancante' }, 400);

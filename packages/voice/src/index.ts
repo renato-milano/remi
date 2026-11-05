@@ -7,3 +7,4 @@ export {
   gatewayTranscribe,
   isVercelGateway,
 } from './gateway.js';
+export { matchWakePhrase } from './wake.js';
