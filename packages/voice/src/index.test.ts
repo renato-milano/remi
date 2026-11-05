@@ -42,12 +42,21 @@ describe('@openmate/voice — "Hey Remi"', () => {
     expect(matchWakePhrase('Ehi Rami, cosa è questo?')).toBe('cosa è questo?');
     expect(matchWakePhrase('Ehi Remy, spiegami come funziona.')).toBe('spiegami come funziona.');
     expect(matchWakePhrase('Remy aiuta mi')).toBe('aiuta mi');
+    // con un video in sottofondo whisper antepone etichette dei suoni
+    expect(matchWakePhrase('[Musica] Ehi Remy!')).toBe('');
+    expect(matchWakePhrase('[Musica] Ei Remy, cosa è questo?')).toBe('cosa è questo?');
+    // "e i remi" detto da solo è un "Hey Remi" isolato
+    expect(matchWakePhrase('E i remi.')).toBe('');
+    expect(matchWakePhrase('e remi!')).toBe('');
   });
   it('non scatta su frasi simili', () => {
     for (const t of [
       'Ehi mi passi il prevo no?',
       'Premi il pulsante rosso.',
       'E i rimi della barca',
+      'E i remi della barca',
+      '[Musica]',
+      '*Risate*',
       'e visto remo ieri sera',
       'Si però mi sembra strano',
       '*sipso*',

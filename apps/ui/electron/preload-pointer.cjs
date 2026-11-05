@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld('pointer', {
   onSpeak: (cb) => ipcRenderer.on('pointer-speak', (_e, d) => cb(d)),
   speaking: () => ipcRenderer.send('pointer-speaking'),
   onAck: (cb) => ipcRenderer.on('pointer-ack', () => cb()),
+  onWindow: (cb) => ipcRenderer.on('pointer-window', (_e, box) => cb(box)),
   onWakeConfig: (cb) => ipcRenderer.on('pointer-wake', (_e, cfg) => cb(cfg)),
   onWakeDone: (cb) => ipcRenderer.on('pointer-wake-done', () => cb()),
   sendWakeSegment: (wav) => ipcRenderer.send('pointer-wake-segment', wav),

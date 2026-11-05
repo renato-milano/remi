@@ -11,6 +11,18 @@ const WAKE =
  * vuota); altrimenti undefined.
  */
 export function matchWakePhrase(text: string): string | undefined {
-  const m = text.trim().match(WAKE);
-  return m ? text.trim().slice(m[0].length).trim() : undefined;
+  // via le etichette dei suoni di sottofondo che whisper aggiunge: "[Musica] Ehi Remy!"
+  const clean = text
+    .replace(/\[[^\]]*\]|\*[^*]*\*|\([^)]*\)/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const m = clean.match(WAKE);
+  if (m) return clean.slice(m[0].length).trim();
+  // "e i remi" vale solo se detto DA SOLO (un "Hey Remi" a cui segue una pausa);
+  // con altre parole dopo è una frase normale ("e i remi della barca")
+  if (ALONE.test(clean)) return '';
+  return undefined;
 }
+
+/** "E i remi.", "E remi!": la trascrizione di un "Hey Remi" isolato. */
+const ALONE = /^(?:e|ehi|hey|ei)?[\s,]*(?:i\s+)?(?:r[eé]m[iìy]|rimi|rami)[\s.!?]*$/i;

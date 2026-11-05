@@ -174,6 +174,15 @@ function playAck() {
 }
 bridge.onAck(playAck);
 
+/** Finestra indicata (tasto tenuto senza muovere il mouse): si illumina per un istante. */
+bridge.onWindow((box) => {
+  const el = document.createElement('div');
+  el.className = 'win-glow';
+  Object.assign(el.style, { left: `${box.x}px`, top: `${box.y}px`, width: `${box.w}px`, height: `${box.h}px` });
+  document.body.appendChild(el);
+  el.addEventListener('animationend', () => el.remove());
+});
+
 bridge.onRecStop(() => {
   const durationMs = Math.round(performance.now() - (mic.startedAt || performance.now()));
   mic.recording = false;

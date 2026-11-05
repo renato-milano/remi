@@ -72,6 +72,8 @@ export interface PointMessage {
   cursor: { x: number; y: number };
   /** Tracciato dell'area circoscritta (se l'utente ha disegnato invece di puntare). */
   path?: { x: number; y: number }[];
+  /** La zona è un'intera finestra (tasto tenuto senza muovere il mouse): di quale app. */
+  target?: { app?: string; title?: string };
   /** Ingrandimento della zona indicata (facoltativo); col cursore in `zoomCursor` se è un punto. */
   zoom?: string;
   zoomCursor?: { x: number; y: number };
@@ -400,8 +402,9 @@ export class Daemon {
     // nel prompt cursore e zona nelle stesse coordinate in cui il modello risponde
     const toModel = (p: { x: number; y: number }) =>
       this.normalized ? { x: (p.x / size.w) * NORMALIZED, y: (p.y / size.h) * NORMALIZED } : p;
-    const prompt = pointPrompt(question, toModel(msg.cursor), area?.map(toModel), this.normalized, followUp);
-    const historyText = `${question} [indicando ${area ? 'una zona' : 'un punto'} sullo schermo]`;
+    const prompt = pointPrompt(question, toModel(msg.cursor), area?.map(toModel), this.normalized, followUp, msg.target);
+    const what = msg.target ? `la finestra${msg.target.app ? ` di ${msg.target.app}` : ''}` : area ? 'una zona' : 'un punto';
+    const historyText = `${question} [indicando ${what} sullo schermo]`;
     await this.scheduler.submitUserMessage(prompt, { images, fast: true, historyText });
   }
 
@@ -585,6 +588,7 @@ function pointPrompt(
   area?: { x: number; y: number }[],
   normalized = false,
   followUp = false,
+  target?: { app?: string; title?: string },
 ): string {
   const coords = normalized
     ? "coordinate normalizzate 0-1000 dello screenshot (x da sinistra, y dall'alto)"
@@ -595,9 +599,12 @@ function pointPrompt(
     const ys = area.map((p) => p.y);
     const [x0, y0] = [Math.round(Math.min(...xs)), Math.round(Math.min(...ys))];
     const [x1, y1] = [Math.round(Math.max(...xs)), Math.round(Math.max(...ys))];
-    where =
-      `Ho indicato una zona passandoci sopra col mouse (contorno rosso nello screenshot, circa x=${x0}..${x1}, y=${y0}..${y1} in ${coords}). ` +
-      '"Questo", "qui", "questa parte" si riferiscono al contenuto di quella zona.';
+    where = target
+      ? `Ho indicato tutta la finestra${target.app ? ` di ${target.app}` : ''}${target.title ? ` («${target.title}»)` : ''} ` +
+        `(contorno rosso nello screenshot, circa x=${x0}..${x1}, y=${y0}..${y1} in ${coords}). ` +
+        '"Questo", "qui" si riferiscono a ciò che c\'è in quella finestra.'
+      : `Ho indicato una zona passandoci sopra col mouse (contorno rosso nello screenshot, circa x=${x0}..${x1}, y=${y0}..${y1} in ${coords}). ` +
+        '"Questo", "qui", "questa parte" si riferiscono al contenuto di quella zona.';
   } else {
     where =
       `Ho premuto il tasto "indica" puntando il mouse: il puntatore è a x=${Math.round(cursor.x)}, y=${Math.round(cursor.y)} ` +

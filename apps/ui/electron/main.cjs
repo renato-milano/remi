@@ -13,7 +13,7 @@ const {
 const path = require('node:path');
 const fs = require('node:fs');
 const os = require('node:os');
-const { spawn, execFileSync } = require('node:child_process');
+const { spawn, execFile, execFileSync } = require('node:child_process');
 
 const WIDTH = 500; // largo: robot su un lato, fumetto sull'altro (verso il centro)
 const HEIGHT = 540;
@@ -730,6 +730,8 @@ async function startPoint(hold = false) {
     await new Promise((r) => setTimeout(r, 80));
   }
   t.grab = grabDisplay(display);
+  // se resterai fermo, conta la finestra sotto il mouse: chiedila subito, in parallelo
+  if (hold) t.window = windowUnderCursor(cur);
   pointDebug('tasto', hold ? 'tieni premuto per indicare e parlare' : 'tocco: modalità punto');
   if (!hold) {
     await endTrace();
@@ -794,6 +796,123 @@ function sweptArea(points, pad) {
   return [...half(pts), ...half([...pts].reverse())];
 }
 
+/* --- tieni premuto senza muovere il mouse = indica tutta la finestra sotto il puntatore --- */
+// macOS: elenco delle finestre di CoreGraphics (dalla più in alto), via JXA. Escluse le
+// finestre di Remi (stesso pid), quelle di sistema (layer ≠ 0) e quelle trasparenti.
+const MAC_WINDOW_JXA = `ObjC.import('CoreGraphics');
+function run(argv) {
+  const px = Number(argv[0]), py = Number(argv[1]), self = Number(argv[2]);
+  const list = ObjC.castRefToObject($.CGWindowListCopyWindowInfo($.kCGWindowListOptionOnScreenOnly | $.kCGWindowListExcludeDesktopElements, $.kCGNullWindowID));
+  for (let i = 0; i < list.count; i++) {
+    const w = list.objectAtIndex(i);
+    if (ObjC.unwrap(w.objectForKey('kCGWindowLayer')) !== 0) continue;
+    if (ObjC.unwrap(w.objectForKey('kCGWindowOwnerPID')) === self) continue;
+    const alpha = ObjC.unwrap(w.objectForKey('kCGWindowAlpha'));
+    if (alpha !== undefined && alpha < 0.1) continue;
+    const b = ObjC.deepUnwrap(w.objectForKey('kCGWindowBounds'));
+    if (!b || b.Width < 80 || b.Height < 50) continue;
+    if (px >= b.X && px <= b.X + b.Width && py >= b.Y && py <= b.Y + b.Height) {
+      return JSON.stringify({ x: b.X, y: b.Y, w: b.Width, h: b.Height,
+        app: ObjC.unwrap(w.objectForKey('kCGWindowOwnerName')) || '', title: ObjC.unwrap(w.objectForKey('kCGWindowName')) || '' });
+    }
+  }
+  return '';
+}`;
+// Windows: finestra principale sotto il punto (WindowFromPoint → antenato radice).
+const WIN_WINDOW_PS = `Add-Type @"
+using System; using System.Runtime.InteropServices; using System.Text;
+public static class W {
+  [StructLayout(LayoutKind.Sequential)] public struct P { public int X, Y; }
+  [StructLayout(LayoutKind.Sequential)] public struct R { public int L, T, Ri, B; }
+  [DllImport("user32.dll")] public static extern IntPtr WindowFromPoint(P p);
+  [DllImport("user32.dll")] public static extern IntPtr GetAncestor(IntPtr h, uint f);
+  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out R r);
+  [DllImport("user32.dll")] public static extern int GetWindowText(IntPtr h, StringBuilder s, int n);
+  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+}
+"@
+$p = New-Object W+P; $p.X = [int]$args[0]; $p.Y = [int]$args[1]
+$h = [W]::GetAncestor([W]::WindowFromPoint($p), 2)
+$pid2 = 0; [void][W]::GetWindowThreadProcessId($h, [ref]$pid2)
+if ($pid2 -eq [int]$args[2]) { exit }
+$r = New-Object W+R; [void][W]::GetWindowRect($h, [ref]$r)
+$t = New-Object System.Text.StringBuilder 256; [void][W]::GetWindowText($h, $t, 256)
+$app = (Get-Process -Id $pid2 -ErrorAction SilentlyContinue).ProcessName
+@{ x = $r.L; y = $r.T; w = $r.Ri - $r.L; h = $r.B - $r.T; app = $app; title = $t.ToString() } | ConvertTo-Json -Compress`;
+
+/** La finestra (di un'altra app) sotto il punto, in coordinate dello schermo, o null. */
+function windowUnderCursor(pt) {
+  return new Promise((resolve) => {
+    const done = (err, stdout) => {
+      try {
+        const w = !err && stdout.trim() ? JSON.parse(stdout.trim()) : null;
+        resolve(w && w.w > 0 && w.h > 0 ? w : null);
+      } catch {
+        resolve(null);
+      }
+    };
+    const opts = { timeout: 1500 };
+    if (process.platform === 'darwin') {
+      execFile('osascript', ['-l', 'JavaScript', '-e', MAC_WINDOW_JXA, String(pt.x), String(pt.y), String(process.pid)], opts, done);
+    } else if (process.platform === 'win32') {
+      // WindowFromPoint lavora in pixel fisici: converti da/verso le coordinate di Electron
+      const phys = screen.dipToScreenPoint(pt);
+      // -Command non passa gli argomenti finali come $args: invoca un blocco con gli argomenti
+      const cmd = `& {${WIN_WINDOW_PS}} ${Math.round(phys.x)} ${Math.round(phys.y)} ${process.pid}`;
+      execFile('powershell', ['-NoProfile', '-NonInteractive', '-Command', cmd], opts, done);
+    } else {
+      // Linux (X11): xdotool, se installato
+      execFile('sh', ['-c', 'eval $(xdotool getmouselocation --shell) && xdotool getwindowgeometry --shell $WINDOW && echo TITLE=$(xdotool getwindowname $WINDOW)'], opts, (err, out) => {
+        if (err) return resolve(null);
+        const v = Object.fromEntries(out.trim().split('\n').map((l) => l.split(/=(.*)/s)));
+        resolve(v.WIDTH ? { x: +v.X, y: +v.Y, w: +v.WIDTH, h: +v.HEIGHT, app: '', title: v.TITLE || '' } : null);
+      });
+    }
+  }).then((w) => {
+    if (!w || process.platform !== 'win32') return w;
+    const r = screen.screenToDipRect(null, { x: w.x, y: w.y, width: w.w, height: w.h });
+    return { ...w, x: r.x, y: r.y, w: r.width, h: r.height };
+  });
+}
+
+/** Rettangolo della finestra, ritagliato sul monitor, come percorso chiuso (4 angoli). */
+function windowArea(win, display) {
+  const b = display.bounds;
+  const x0 = Math.max(b.x, win.x);
+  const y0 = Math.max(b.y, win.y);
+  const x1 = Math.min(b.x + b.width, win.x + win.w);
+  const y1 = Math.min(b.y + b.height, win.y + win.h);
+  if (x1 - x0 < 40 || y1 - y0 < 40) return null;
+  return [
+    { x: x0, y: y0 },
+    { x: x1, y: y0 },
+    { x: x1, y: y1 },
+    { x: x0, y: y1 },
+  ];
+}
+
+/**
+ * Mouse rimasto fermo (nessuna zona tracciata): vale tutta la finestra sotto il
+ * puntatore, se si trova. Stessa regola per il tasto e per "Hey Remi".
+ * `pick`: il risultato di resolvePath; `winPromise`: windowUnderCursor avviata prima.
+ */
+async function windowIfStill(pick, winPromise, display) {
+  if (pick.area || !winPromise) return { ...pick, target: undefined };
+  const win = await Promise.race([winPromise, new Promise((r) => setTimeout(() => r(null), 500))]);
+  const rect = win && windowArea(win, display);
+  if (!rect) return { ...pick, target: undefined };
+  const b = display.bounds;
+  const local = {
+    x: pick.at.x - b.x,
+    y: pick.at.y - b.y,
+    area: true,
+    box: { x: rect[0].x - b.x, y: rect[0].y - b.y, w: rect[2].x - rect[0].x, h: rect[2].y - rect[0].y },
+  };
+  pointDebug(`finestra: ${win.app} «${win.title}»`);
+  sendPointer('pointer-window', local.box); // la finestra si illumina: è quella che Remi guarda
+  return { at: pick.at, area: rect, local, target: { app: win.app, title: win.title } };
+}
+
 /**
  * Dal percorso del mouse: un punto (movimento minimo) o la zona attraversata.
  * `local`: posizione per la lavagna, con il rettangolo della zona (il pannello lo affianca).
@@ -840,9 +959,13 @@ async function endTrace() {
     return;
   }
   const { display, points } = t;
-  const { at, area, local } = resolvePath(points, display);
+  // tenuto premuto senza muovere il mouse: indica tutta la finestra sotto il puntatore
+  // (un tocco breve resta un punto: apre la casella)
+  const held = releasedAt - t.pressedAt >= TAP_MS;
+  const { at, area, local, target } = await windowIfStill(resolvePath(points, display), held ? t.window : null, display);
   phase('screenshot pronto');
   const capture = buildPointPayload(full, display, at, area);
+  if (target) capture.target = target;
   phase('immagini preparate (ridimensiona + ingrandimento)');
 
   // ha parlato? allora niente casella: trascrivi e invia
@@ -1063,6 +1186,8 @@ async function onWake(question, spokenPath) {
     hidePointer(); // i disegni precedenti non devono finire nello screenshot
     await new Promise((r) => setTimeout(r, 80));
   }
+  // se il mouse resterà fermo conta la finestra sotto il puntatore (come col tasto): chiedila subito
+  const winPromise = windowUnderCursor(cur);
   // lo screenshot prima di mostrare alone e scia (non devono finirci dentro)
   const grab = grabDisplay(display);
   grab.catch(() => {});
@@ -1079,12 +1204,14 @@ async function onWake(question, spokenPath) {
   pointerWin.showInactive();
   if (question) {
     // "Hey Remi, cos'è questo?" detto di fila: vale ciò che indicavi mentre lo dicevi
-    const { at, area, local } = resolvePath(spokenPath, display);
+    const { at, area, local, target } = await windowIfStill(resolvePath(spokenPath, display), winPromise, display);
     sendPointer('pointer-anchor', local);
     sendPointer('pointer-wake-done');
     sendPointer('pointer-thinking');
     sendPointer('pointer-question', question);
-    void submitPoint(buildPointPayload(full, display, at, area), question, true);
+    const capture = buildPointPayload(full, display, at, area);
+    if (target) capture.target = target;
+    void submitPoint(capture, question, true);
     return;
   }
   // solo "Hey Remi": mentre ascolti la domanda, segui il mouse come col tasto premuto
@@ -1111,9 +1238,11 @@ async function onWake(question, spokenPath) {
   clearInterval(follow);
   phase(rec?.speech ? 'domanda ascoltata' : 'nessuna domanda');
   if (rec?.speech && rec.wav) {
-    const { at, area, local } = resolvePath(path, display);
+    const { at, area, local, target } = await windowIfStill(resolvePath(path, display), winPromise, display);
     sendPointer('pointer-anchor', local);
-    if (await submitVoice(buildPointPayload(full, display, at, area), rec.wav)) return;
+    const capture = buildPointPayload(full, display, at, area);
+    if (target) capture.target = target;
+    if (await submitVoice(capture, rec.wav)) return;
   }
   lingerTimer = setTimeout(hidePointer, 4000);
 }
