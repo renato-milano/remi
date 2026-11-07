@@ -7,7 +7,7 @@ export {
   type ToolContextOptions,
 } from './registry.js';
 export { shellRunTool, runShell, shellNeedsApproval, type ShellResult } from './shell.js';
-export { explainCommand, type CommandExplanation, type RiskLevel } from './explain.js';
+export { destructiveAction, explainCommand, type CommandExplanation, type RiskLevel } from './explain.js';
 export { fileTools, fileReadTool, fileWriteTool, fileListTool, fileNeedsApproval } from './files.js';
 export { createMemoryTools } from './memory-tools.js';
 export { createComputerTools } from './computer-tools.js';

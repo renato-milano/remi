@@ -163,8 +163,23 @@ function explainSegment(segment: string): Segment {
     case 'zsh':
       r = { text: 'eseguire uno script', level: 'dangerous', known: true };
       break;
+    case 'osascript':
+      // comandare un'app (play, pausa, attiva…) va bene; AppleScript che lancia comandi di shell no
+      if (/do shell script/i.test(segment)) {
+        r = { text: 'eseguire comandi tramite AppleScript', level: 'dangerous', known: true };
+      } else if (/tell application/i.test(segment)) {
+        r = { text: "comandare un'app", level: 'write', known: true };
+      } else {
+        r = { text: 'eseguire uno script AppleScript', level: 'unknown', known: false };
+      }
+      break;
     case 'open':
-      r = { text: "aprire un file o un'app", level: 'write', known: true };
+      // aprire un'app per nome o un link/deep-link non tocca i file: scorre senza conferma
+      if (args.includes('-a') || /^["']?[a-z][\w+.-]*:/i.test(files[0] ?? '')) {
+        r = { text: args.includes('-a') ? "aprire un'app" : 'aprire un link', level: 'read', known: true };
+      } else {
+        r = { text: "aprire un file o un'app", level: 'write', known: true };
+      }
       break;
     case 'dd':
     case 'mkfs':
@@ -199,4 +214,20 @@ export function explainCommand(command: string): CommandExplanation {
   for (const s of segs) if (RANK[s.level] > RANK[chosen.level]) chosen = s;
   const level: RiskLevel = looksDangerous(cmd) ? 'dangerous' : chosen.level;
   return { text: chosen.text, level, known };
+}
+
+/** Comandi e codice che eliminano dati o chiudono programmi: con fiducia "Autonomo" sono gli unici che chiedono. */
+const DESTRUCTIVE: [RegExp, string][] = [
+  [/(^|[\s;&|(`$])(sudo\s+)?(rm|rmdir|unlink|shred|srm|trash)(\s|$)/, 'eliminare dei file'],
+  [/\s-delete(\s|$)|\bgit\s+clean\b|\bgit\s+reset\s+--hard\b/, 'eliminare dei file'],
+  [/\bdd\b[^\n]*\bof=|\bmkfs|\bdiskutil\s+(erase|zero|secureErase|partitionDisk)/i, 'cancellare un disco'],
+  [/os\.(remove|unlink|rmdir|removedirs)\(|shutil\.rmtree|send2trash|\.unlink\(|unlinkSync|rmSync|rmdirSync|fs\.rm\(/, 'eliminare dei file'],
+  [/(^|[\s;&|(`$])(sudo\s+)?(kill|killall|pkill)(\s|$)|os\.kill\(|process\.kill\(/, 'chiudere un programma'],
+  [/\bto\s+quit\b|\bquit\s+app/i, 'chiudere un programma'],
+];
+
+/** Cosa c'è di distruttivo in un comando o in un pezzo di codice (eliminare, chiudere programmi), se c'è. */
+export function destructiveAction(text: string): string | undefined {
+  for (const [re, what] of DESTRUCTIVE) if (re.test(text)) return what;
+  return undefined;
 }

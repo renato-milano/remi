@@ -370,6 +370,43 @@ describe('@openmate/tools — explainCommand', () => {
     expect(e.text.toLowerCase()).toContain('guardare i file');
   });
 
+  it('aprire un\'app o un link scorre senza conferma; aprire un file no', () => {
+    expect(explainCommand('open -a "Spotify"').level).toBe('read');
+    expect(explainCommand('open "spotify:search:lucio dalla"').level).toBe('read');
+    expect(explainCommand('open https://example.com').level).toBe('read');
+    expect(explainCommand('open ~/Desktop/script.command').level).toBe('write');
+  });
+
+  it('fiducia Autonomo: chiede solo per eliminare o chiudere programmi', async () => {
+    let asked = 0;
+    const ctx = createToolContext({
+      audit: new InMemoryAuditSink(),
+      requestApproval: async () => {
+        asked += 1;
+        return false;
+      },
+    });
+    const autonomous: AutonomyPolicy = { ...policy, autoApprove: 'write' };
+    const reg = new ToolRegistry().register(shellRunTool);
+    // comandi innocui ma non di sola lettura (e uno sconosciuto): scorrono senza chiedere
+    await reg.execute('shell.run', { command: 'mkdir -p /tmp/openmate-autonomo' }, ctx, autonomous);
+    await reg.execute('shell.run', { command: 'true' }, ctx, autonomous);
+    expect(asked).toBe(0);
+    const del = (await reg.execute('shell.run', { command: 'rm -rf /tmp/openmate-nope' }, ctx, autonomous)) as {
+      denied?: boolean;
+    };
+    expect(del.denied).toBe(true);
+    // negati, quindi non eseguiti
+    await reg.execute('shell.run', { command: 'pkill -f openmate-nope' }, ctx, autonomous);
+    await reg.execute('shell.run', { command: `osascript -e 'tell application "OpenMateNope" to quit'` }, ctx, autonomous);
+    expect(asked).toBe(3);
+  });
+
+  it('osascript: comandare un\'app è una modifica, lanciare comandi di shell è pericoloso', () => {
+    expect(explainCommand(`osascript -e 'tell application "Spotify" to play'`).level).toBe('write');
+    expect(explainCommand(`osascript -e 'do shell script "rm -rf ~"'`).level).toBe('dangerous');
+  });
+
   it('classifica come pericoloso rm -rf e sudo', () => {
     expect(explainCommand('rm -rf /tmp/x').level).toBe('dangerous');
     expect(explainCommand('rm -rf /tmp/x').text.toLowerCase()).toContain('eliminare');
@@ -409,7 +446,7 @@ describe('@openmate/tools — AI SDK adapter', () => {
   it('i nomi sul filo rispettano il pattern dei provider (^[A-Za-z0-9_-]+$)', () => {
     const registry = new ToolRegistry()
       .register(shellRunTool)
-      .registerAll(createComputerTools(fakeComputerExecutor()));
+      .registerAll(createComputerTools(fakeComputerExecutor(), { settleMs: 0 }));
     const ctx = createToolContext({ audit: new InMemoryAuditSink(), requestApproval: async () => true });
     const set = registry.toAiToolSet(ctx, policy);
     for (const name of Object.keys(set)) expect(name).toMatch(/^[a-zA-Z0-9_-]{1,128}$/);
@@ -445,7 +482,7 @@ describe('@openmate/tools — computer.* gate di sessione', () => {
     clickElement: async () => {},
   });
 
-  it('chiede l\'approvazione una sola volta per ciclo, poi auto-approva', async () => {
+  it('non chiede mai conferma, né per guardare né per agire, ma registra tutto nell\'audit', async () => {
     const audit = new InMemoryAuditSink();
     let asked = 0;
     const ctx = createToolContext({
@@ -455,13 +492,13 @@ describe('@openmate/tools — computer.* gate di sessione', () => {
         return true;
       },
     });
-    const registry = new ToolRegistry().registerAll(createComputerTools(fakeExecutor()));
+    const registry = new ToolRegistry().registerAll(createComputerTools(fakeExecutor(), { settleMs: 0 }));
 
     await registry.execute('computer.screenshot', {}, ctx, policy); // gratis (osservazione)
-    await registry.execute('computer.click', { x: 10, y: 20 }, ctx, policy); // 1ª AZIONE → chiede
-    await registry.execute('computer.type', { text: 'ciao' }, ctx, policy); // auto (sessione concessa)
+    await registry.execute('computer.click', { x: 10, y: 20 }, ctx, policy);
+    await registry.execute('computer.type', { text: 'ciao' }, ctx, policy);
 
-    expect(asked).toBe(1); // una sola richiesta, e solo per agire
+    expect(asked).toBe(0);
     expect(audit.entries.filter((e) => e.tool.startsWith('computer.'))).toHaveLength(3);
   });
 
@@ -503,28 +540,11 @@ describe('@openmate/tools — computer.* gate di sessione', () => {
         return true;
       },
     });
-    const registry = new ToolRegistry().registerAll(createComputerTools(fakeExecutor()));
+    const registry = new ToolRegistry().registerAll(createComputerTools(fakeExecutor(), { settleMs: 0 }));
     await registry.execute('computer.screenshot', {}, ctx, policy);
     await registry.execute('computer.list_elements', {}, ctx, policy);
     await registry.execute('computer.wait', { seconds: 0 }, ctx, policy);
     expect(asked).toBe(0); // nessuna richiesta per guardare/attendere
-  });
-
-  it('se l\'utente nega, non esegue e non concede la sessione', async () => {
-    let asked = 0;
-    const ctx = createToolContext({
-      audit: new InMemoryAuditSink(),
-      requestApproval: async () => {
-        asked += 1;
-        return false;
-      },
-    });
-    const registry = new ToolRegistry().registerAll(createComputerTools(fakeExecutor()));
-    const out = (await registry.execute('computer.click', { x: 1, y: 1 }, ctx, policy)) as { denied?: boolean };
-    expect(out.denied).toBe(true);
-    // seconda azione → chiede di nuovo (sessione non concessa)
-    await registry.execute('computer.click', { x: 2, y: 2 }, ctx, policy);
-    expect(asked).toBe(2);
   });
 
   it('emette lo screenshot via ctx.emitImage (non nel tool result)', async () => {
@@ -534,7 +554,7 @@ describe('@openmate/tools — computer.* gate di sessione', () => {
       requestApproval: async () => true,
       emitImage: (b64) => images.push(b64),
     });
-    const registry = new ToolRegistry().registerAll(createComputerTools(fakeExecutor()));
+    const registry = new ToolRegistry().registerAll(createComputerTools(fakeExecutor(), { settleMs: 0 }));
     const out = (await registry.execute('computer.screenshot', {}, ctx, policy)) as {
       screenshot?: string;
       width?: number;
@@ -564,7 +584,7 @@ describe('@openmate/tools — computer.* in coordinate normalizzate', () => {
       clickElement: async () => {},
     };
     const ctx = createToolContext({ audit: new InMemoryAuditSink(), requestApproval: async () => true });
-    const registry = new ToolRegistry().registerAll(createComputerTools(executor, { normalized: true }));
+    const registry = new ToolRegistry().registerAll(createComputerTools(executor, { normalized: true, settleMs: 0 }));
 
     // senza uno screenshot non sa a quanti pixel corrisponde 1000: non clicca
     const before = (await registry.execute('computer.click', { x: 500, y: 500 }, ctx, policy)) as { ok?: boolean };
@@ -574,6 +594,40 @@ describe('@openmate/tools — computer.* in coordinate normalizzate', () => {
     await registry.execute('computer.screenshot', {}, ctx, policy);
     await registry.execute('computer.click', { x: 500, y: 250 }, ctx, policy);
     expect(clicks).toEqual([[683, 192]]);
+  });
+});
+
+describe('@openmate/tools — computer.* azioni ripetute', () => {
+  it('avvisa alla seconda volta di fila e non esegue la terza; un clic altrove riparte da capo', async () => {
+    const clicks: [number, number][] = [];
+    const executor: Executor = {
+      capabilities: () => ({ supported: true, platform: 'darwin' }),
+      screenshot: async () => ({ pngBase64: 'AAAA', width: 100, height: 80 }),
+      move: async () => {},
+      click: async (x, y) => {
+        clicks.push([x, y]);
+      },
+      doubleClick: async () => {},
+      type: async () => {},
+      key: async () => {},
+      scroll: async () => {},
+      describeUi: async () => [],
+      clickElement: async () => {},
+    };
+    const ctx = createToolContext({ audit: new InMemoryAuditSink(), requestApproval: async () => true });
+    const registry = new ToolRegistry().registerAll(createComputerTools(executor, { settleMs: 0 }));
+    type Out = { ok?: boolean; warning?: string; error?: string };
+    const click = (x: number, y: number) => registry.execute('computer.click', { x, y }, ctx, policy) as Promise<Out>;
+
+    expect((await click(50, 40)).warning).toBeUndefined();
+    await registry.execute('computer.screenshot', {}, ctx, policy); // guardare non interrompe la serie
+    expect((await click(52, 41)).warning).toBeTruthy(); // stesso punto (entro pochi pixel)
+    const third = await click(50, 40);
+    expect(third.ok).toBe(false);
+    expect(clicks).toHaveLength(2);
+
+    expect((await click(10, 10)).warning).toBeUndefined(); // altrove: nuova serie
+    expect(clicks).toHaveLength(3);
   });
 });
 

@@ -1,5 +1,5 @@
 import { type ToolSet, tool } from 'ai';
-import type { RiskLevel } from './explain.js';
+import { type RiskLevel, destructiveAction } from './explain.js';
 import type {
   ApprovalRequest,
   AuditEntry,
@@ -117,13 +117,22 @@ export async function executeGated(
   const isBrowser = t.name.startsWith('browser.');
   const isCode = t.name === 'code.run';
   const isShell = t.name === 'shell.run';
-  // namespace con gate di sessione: guardare è gratis, agire chiede una volta
-  const gatedNs = isComputer ? 'computer' : isBrowser ? 'browser' : undefined;
+  // browser: guardare è gratis, agire chiede una volta per sessione
+  const gatedNs = isBrowser ? 'browser' : undefined;
   // "non pericoloso" = read/network/write; dangerous/unknown restano sempre gated
   const nonDangerous = !!explanation && explanation.level !== 'dangerous' && explanation.level !== 'unknown';
 
+  // fiducia "Autonomo": chiede solo per eliminare dati o chiudere programmi (comando o codice)
+  const destructive =
+    policy.autoApprove === 'write' ? destructiveAction(destructiveSource(t.name, input)) : undefined;
+
   let requiresApproval: boolean;
-  if (gatedNs) {
+  if (isComputer) {
+    // computer-use: scelta dell'utente, nessuna conferma (le azioni restano nell'audit)
+    requiresApproval = false;
+  } else if (policy.autoApprove === 'write') {
+    requiresApproval = Boolean(destructive);
+  } else if (gatedNs) {
     // Osservare (screenshot/snapshot/read, permission 'guarded') → NESSUN permesso.
     // Solo AGIRE (click/type…, 'dangerous') passa dal gate: approvazione una volta.
     const readOnly = t.permission !== 'dangerous';
@@ -148,17 +157,11 @@ export async function executeGated(
   if (requiresApproval) {
     const approved = await ctx.requestApproval({
       toolName: t.name,
-      summary: isComputer
-        ? 'Controllare il computer'
-        : isBrowser
-          ? 'Controllare il browser'
-          : isCode
-            ? 'Eseguire codice'
-            : `Eseguire ${t.name}`,
+      summary: isBrowser ? 'Controllare il browser' : isCode ? 'Eseguire codice' : `Eseguire ${t.name}`,
       details: input,
-      risk: isComputer || isBrowser || isCode || t.permission === 'dangerous' ? 'dangerous' : 'guarded',
-      explanation: isComputer
-        ? { text: 'controllare lo schermo, il mouse e la tastiera', level: 'dangerous', known: true }
+      risk: isBrowser || isCode || t.permission === 'dangerous' ? 'dangerous' : 'guarded',
+      explanation: destructive
+        ? { text: destructive, level: 'dangerous', known: true }
         : isBrowser
           ? { text: 'navigare e interagire col browser (clic e testo)', level: 'dangerous', known: true }
           : isCode
@@ -184,6 +187,14 @@ export async function executeGated(
     ctx.audit({ ts, tool: t.name, input, decision, outcome: `error: ${errorMessage(err)}` });
     throw err;
   }
+}
+
+/** Il testo da controllare per azioni distruttive: il comando della shell o il codice da eseguire. */
+function destructiveSource(name: string, input: unknown): string {
+  const i = (input ?? {}) as { command?: unknown; code?: unknown };
+  if (name === 'shell.run' && typeof i.command === 'string') return i.command;
+  if (name === 'code.run' && typeof i.code === 'string') return i.code;
+  return '';
 }
 
 function errorMessage(err: unknown): string {

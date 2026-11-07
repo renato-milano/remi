@@ -34,8 +34,8 @@ export interface CognitiveLoopOptions {
 export class CognitiveLoop {
   private state: AgentState = { status: 'idle' };
   private readonly audit: AuditSink;
-  /** Grant di sessione (es. 'computer'): persistono tra i cicli, per l'intera
-   *  vita del daemon → il computer-use si approva una volta, non a ogni messaggio. */
+  /** Grant di sessione (es. 'browser'): persistono tra i cicli, per l'intera
+   *  vita del daemon → il browser si approva una volta, non a ogni messaggio. */
   private readonly sessionGrants = new Set<string>();
   /** Buffer di conversazione (memoria a breve termine della chat): ultimi turni
    *  user/assistant inclusi nel contesto del modello, così ricorda cosa ci si è detti. */
@@ -114,6 +114,8 @@ export class CognitiveLoop {
     let pending = ''; // segmento del passo corrente, non ancora emesso
     let actions = 0;
     let usage: TokenUsage = {};
+    let finishReason = '';
+    let lastTool = '';
     let interrupted = false;
     let errorMsg;
     // turni rapidi: il modello può spiegare con un pannello scritto nel testo, passo per passo
@@ -154,6 +156,7 @@ export class CognitiveLoop {
           case 'tool-call': {
             flush(); // emetti la narrazione prima di agire
             actions += 1;
+            lastTool = ev.toolName;
             this.setState({ status: 'acting' });
             this.opts.onEvent?.({ kind: 'action', summary: ev.toolName });
             // overlay.draw può portare la risposta (una sola chiamata al modello):
@@ -170,6 +173,7 @@ export class CognitiveLoop {
             break;
           case 'finish':
             usage = ev.usage;
+            finishReason = ev.finishReason;
             break;
         }
       }
@@ -188,6 +192,20 @@ export class CognitiveLoop {
         text += `${text.trim() ? '\n\n' : ''}${panel.spoken}`;
         this.opts.onEvent?.({ kind: 'message', role: 'agent', content: panel.spoken, channel: 'panel' });
       }
+    }
+
+    // finito a metà: passi o tempo esauriti mentre stava ancora agendo (non dopo l'overlay, che chiude il turno)
+    const cutShort =
+      !interrupted &&
+      !errorMsg &&
+      (finishReason === 'timeout' || (finishReason === 'tool-calls' && !OVERLAY_TOOLS.includes(lastTool)));
+    if (cutShort) {
+      const why =
+        finishReason === 'timeout'
+          ? 'è finito il tempo a disposizione'
+          : `ho usato tutti i passi a disposizione (${this.opts.budget.maxSteps})`;
+      pending += `${pending.trim() ? '\n\n' : ''}Mi sono fermato prima di finire: ${why}. Vuoi che continui?`;
+      text += `${text.trim() ? '\n\n' : ''}Mi sono fermato prima di finire: ${why}.`;
     }
 
     const finalText = text.trim();
@@ -260,7 +278,7 @@ const STYLE =
 const COMPUTER_GUIDE = `## Controllo del computer (vision)
 Puoi VEDERE e USARE lo schermo con i tool computer.*. Ogni azione ti restituisce un nuovo screenshot: guardalo davvero prima di decidere la mossa successiva.
 
-GUARDARE È GRATIS: computer.screenshot (e computer.list_elements) NON richiedono permesso — sono solo osservazione. Chiedi il permesso SOLO per AGIRE (click, type, tasti, scroll).
+NESSUN PERMESSO: l'utente ti ha autorizzato a guardare e ad agire (click, type, tasti, scroll) senza chiedere conferma. Non chiedergli "posso?": agisci, poi verifica sullo screenshot.
 
 Chiediti sempre se la richiesta dell'utente richiede di vedere lo schermo: frasi come "cosa vedi?", "cosa c'è sullo schermo?", "aiutami con questo", "che errore è?", "leggi questa pagina", "questo", "qui", riferimenti a ciò che ha davanti → fai SUBITO computer.screenshot (senza chiedere) e rispondi in base a ciò che vedi. Se non serve guardare (una domanda generica), non farlo.
 

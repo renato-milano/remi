@@ -7,7 +7,16 @@ export interface ComputerToolsOptions {
   onShot?: (shot: Screenshot) => void;
   /** Il modello usa coordinate normalizzate 0-1000 invece dei pixel dello screenshot (Gemini). */
   normalized?: boolean;
+  /** Attesa dopo un'azione prima dello screenshot, perché l'interfaccia reagisca (ms). */
+  settleMs?: number;
 }
+
+/** Senza attesa lo screenshot mostra lo schermo di prima e il modello ripete il clic. */
+const SETTLE_MS = 600;
+/** Stessa azione di fila: alla seconda si avvisa il modello, alla terza non si esegue. */
+const REPEAT_WARN = 2;
+const REPEAT_STOP = 3;
+const NAV_KEYS = new Set(['up', 'down', 'left', 'right', 'tab', 'pageup', 'pagedown', 'backspace', 'delete']);
 
 /**
  * Tool `computer.*` (vision-only, cross-platform via l'executor). Ogni azione
@@ -38,6 +47,43 @@ export function createComputerTools(executor: Executor, opts: ComputerToolsOptio
     return { x: Math.round((x / NORMALIZED) * last.width), y: Math.round((y / NORMALIZED) * last.height) };
   };
   const noShot = { ok: false, error: 'Non ho ancora visto lo schermo: fai prima computer.screenshot.' };
+  const settleMs = opts.settleMs ?? SETTLE_MS;
+  // stesso clic nello stesso punto (entro ~1% dello schermo) = stessa azione
+  const near = opts.normalized ? 12 : 16;
+  const repeat = { sig: '', at: undefined as { x: number; y: number } | undefined, count: 0 };
+
+  /**
+   * Conta le azioni identiche di fila (guardare non interrompe la serie). Restituisce un errore
+   * se la stessa azione è già stata ripetuta troppe volte: lo schermo evidentemente non cambia.
+   */
+  const checkRepeat = (sig: string, at?: { x: number; y: number }) => {
+    const same =
+      sig === repeat.sig &&
+      (!at || (repeat.at && Math.abs(at.x - repeat.at.x) <= near && Math.abs(at.y - repeat.at.y) <= near));
+    repeat.count = same ? repeat.count + 1 : 1;
+    repeat.sig = sig;
+    repeat.at = at;
+    if (repeat.count >= REPEAT_STOP) {
+      return {
+        ok: false,
+        error: `Non eseguita: è la ${repeat.count}ª volta di fila che fai la stessa azione e lo schermo non cambia. Cambia strada (computer.list_elements, una scorciatoia, un deep-link) oppure di' all'utente cosa non riesci a fare.`,
+      };
+    }
+    return undefined;
+  };
+  /** Dopo l'azione: attende che l'interfaccia reagisca, poi guarda; avvisa se l'azione si sta ripetendo. */
+  const after = async (ctx: ToolContext) => {
+    if (settleMs > 0) await new Promise((r) => setTimeout(r, settleMs));
+    const out = await capture(ctx);
+    if (repeat.count >= REPEAT_WARN) {
+      return {
+        ...out,
+        warning:
+          'Hai appena ripetuto la stessa azione: controlla sullo screenshot se ha avuto effetto prima di rifarla.',
+      };
+    }
+    return out;
+  };
   const point = z.object({ x: z.number(), y: z.number() });
 
   const noArgs = z.object({ note: z.string().optional().describe('facoltativo, ignorato') });
@@ -73,8 +119,10 @@ export function createComputerTools(executor: Executor, opts: ComputerToolsOptio
     execute: async (i, ctx) => {
       const p = toPixels(i.x, i.y);
       if (!p) return noShot;
+      const stop = checkRepeat('move', i);
+      if (stop) return stop;
       await executor.move(p.x, p.y);
-      return capture(ctx);
+      return after(ctx);
     },
   });
 
@@ -87,8 +135,10 @@ export function createComputerTools(executor: Executor, opts: ComputerToolsOptio
     execute: async (i, ctx) => {
       const p = toPixels(i.x, i.y);
       if (!p) return noShot;
+      const stop = checkRepeat(`click:${i.button ?? 'left'}`, i);
+      if (stop) return stop;
       await executor.click(p.x, p.y, i.button);
-      return capture(ctx);
+      return after(ctx);
     },
   });
 
@@ -101,8 +151,10 @@ export function createComputerTools(executor: Executor, opts: ComputerToolsOptio
     execute: async (i, ctx) => {
       const p = toPixels(i.x, i.y);
       if (!p) return noShot;
+      const stop = checkRepeat(`double:${i.button ?? 'left'}`, i);
+      if (stop) return stop;
       await executor.doubleClick(p.x, p.y, i.button);
-      return capture(ctx);
+      return after(ctx);
     },
   });
 
@@ -113,8 +165,10 @@ export function createComputerTools(executor: Executor, opts: ComputerToolsOptio
     permission: 'dangerous',
     explain: () => ({ text: 'digitare del testo', level: 'dangerous', known: true }),
     execute: async (i, ctx) => {
+      const stop = checkRepeat(`type:${i.text}`);
+      if (stop) return stop;
       await executor.type(i.text);
-      return capture(ctx);
+      return after(ctx);
     },
   });
 
@@ -125,8 +179,15 @@ export function createComputerTools(executor: Executor, opts: ComputerToolsOptio
     permission: 'dangerous',
     explain: () => ({ text: 'premere dei tasti', level: 'dangerous', known: true }),
     execute: async (i, ctx) => {
+      // frecce, Tab e simili si premono più volte di fila per muoversi: non contano come ripetizione
+      if (i.keys.length === 1 && NAV_KEYS.has(i.keys[0].toLowerCase())) {
+        Object.assign(repeat, { sig: '', at: undefined, count: 0 });
+      } else {
+        const stop = checkRepeat(`key:${i.keys.join('+')}`);
+        if (stop) return stop;
+      }
       await executor.key(i.keys);
-      return capture(ctx);
+      return after(ctx);
     },
   });
 
@@ -138,7 +199,8 @@ export function createComputerTools(executor: Executor, opts: ComputerToolsOptio
     explain: () => ({ text: 'scorrere lo schermo', level: 'dangerous', known: true }),
     execute: async (i, ctx) => {
       await executor.scroll(i.dx ?? 0, i.dy ?? 0);
-      return capture(ctx);
+      Object.assign(repeat, { sig: '', at: undefined, count: 0 }); // scorrere più volte è normale: interrompe la serie
+      return after(ctx);
     },
   });
 
@@ -167,12 +229,29 @@ export function createComputerTools(executor: Executor, opts: ComputerToolsOptio
     description: 'Clicca l’elemento all’indice ottenuto da computer.list_elements (click preciso).',
     parameters: z.object({ index: z.number().int().min(0) }),
     permission: 'dangerous',
-    explain: () => ({ text: 'cliccare un elemento sullo schermo', level: 'dangerous', known: true }),
+    explain: () => ({
+      text: 'cliccare un elemento sullo schermo',
+      level: 'dangerous',
+      known: true,
+    }),
     execute: async (i, ctx) => {
+      const stop = checkRepeat(`element:${i.index}`);
+      if (stop) return stop;
       await executor.clickElement(i.index);
-      return capture(ctx);
+      return after(ctx);
     },
   });
 
-  return [screenshot, wait, listElements, clickElement, move, click, doubleClick, type, key, scroll];
+  return [
+    screenshot,
+    wait,
+    listElements,
+    clickElement,
+    move,
+    click,
+    doubleClick,
+    type,
+    key,
+    scroll,
+  ];
 }

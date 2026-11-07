@@ -220,7 +220,10 @@ function startShotServer() {
     try {
       const display = screen.getPrimaryDisplay();
       const sf = display.scaleFactor || 1;
-      const size = { width: Math.round(display.size.width * sf), height: Math.round(display.size.height * sf) };
+      let size = { width: Math.round(display.size.width * sf), height: Math.round(display.size.height * sf) };
+      // ?w=1366: cattura già alla larghezza voluta (ridimensionare dopo, in JS, costa ~0,5 s a scatto)
+      const maxW = Number(new URL(req.url, 'http://x').searchParams.get('w'));
+      if (maxW > 0 && size.width > maxW) size = { width: maxW, height: Math.round((size.height * maxW) / size.width) };
       const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: size });
       const src = sources.find((s) => String(s.display_id) === String(display.id)) || sources[0];
       const png = src.thumbnail.toPNG();
@@ -1178,7 +1181,7 @@ async function submitVoice(capture, wav) {
     sendPointer('pointer-status', out.ok ? 'non ho capito, scrivi pure' : `voce non disponibile: ${out.error}`);
     return false;
   }
-  sendPointer('pointer-question', text);
+  // la trascrizione resta nel log (phase sopra), non sullo schermo
   void submitPoint(capture, text, true);
   return true;
 }
@@ -1295,7 +1298,6 @@ async function onWake(question, spokenPath) {
     sendPointer('pointer-anchor', local);
     sendPointer('pointer-wake-done');
     sendPointer('pointer-thinking');
-    sendPointer('pointer-question', question);
     const capture = buildPointPayload(full, display, at, area);
     if (target) capture.target = target;
     void submitPoint(capture, question, true);
@@ -1492,16 +1494,24 @@ function handleDaemonEvent(e) {
     else showOverlay(e.items || [], Boolean(e.clear));
     return;
   }
-  // fuori dai turni "indica" Remi deve farsi vedere per chiederti un permesso o parlarti
-  if (!pointTurn && e.kind === 'approval_request') showCompanionFor(0);
+  // un permesso va sempre mostrato, anche durante un turno "indica": altrimenti resta
+  // invisibile e dopo 2 minuti viene negato da solo
+  if (e.kind === 'approval_request') showCompanionFor(0);
+  // fuori dai turni "indica" Remi si fa vedere anche per parlarti
   if (!pointTurn && e.kind === 'message' && !e.channel) showCompanionFor(Math.min(30000, 6000 + e.content.length * 40));
   if (!pointTurn) return;
   if (e.kind === 'message') {
     if (e.channel === 'panel') return; // già nel pannello, che la legge passo per passo
+    // a voce la risposta si ascolta e basta: niente testo sullo schermo (resta nel log)
+    if (pointVoiceTurn && readConfig().voice?.tts !== 'off') {
+      pointDebug(`risposta: "${e.content}"`);
+      sendPointer('pointer-status', '');
+      speakAnswer(e.content);
+      return;
+    }
     sendPointer('pointer-answer', e.content);
-    if (pointVoiceTurn) speakAnswer(e.content);
   } else if (e.kind === 'action' && typeof e.summary === 'string' && !e.summary.startsWith('overlay.')) {
-    sendPointer('pointer-status', `· ${e.summary}`);
+    pointDebug(`azione: ${e.summary}`); // solo nel log: sullo schermo non si elencano le azioni
   } else if (e.kind === 'state' && e.state?.status !== 'idle') {
     pointBusy = true;
   } else if (e.kind === 'state' && e.state?.status === 'idle' && pointBusy) {

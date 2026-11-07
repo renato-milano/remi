@@ -10,7 +10,6 @@ contextBridge.exposeInMainWorld('pointer', {
   onRecStart: (cb) => ipcRenderer.on('pointer-rec-start', () => cb()),
   onRecStop: (cb) => ipcRenderer.on('pointer-rec-stop', () => cb()),
   sendRecData: (data) => ipcRenderer.send('pointer-rec-data', data),
-  onQuestion: (cb) => ipcRenderer.on('pointer-question', (_e, text) => cb(text)),
   onSpeak: (cb) => ipcRenderer.on('pointer-speak', (_e, d) => cb(d)),
   speaking: () => ipcRenderer.send('pointer-speaking'),
   onAck: (cb) => ipcRenderer.on('pointer-ack', () => cb()),

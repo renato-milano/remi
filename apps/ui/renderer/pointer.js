@@ -1614,15 +1614,6 @@ bridge.onAnchor((p) => {
   anchor.classList.toggle('hidden', Boolean(p.area));
 });
 
-bridge.onQuestion((text) => {
-  const q = document.createElement('p');
-  q.className = 'q';
-  q.textContent = `«${text}»`;
-  cardBody.prepend(q);
-  card.classList.remove('hidden');
-  place(card, at);
-});
-
 bridge.onThinking(() => {
   cardBody.replaceChildren();
   cardStatus.innerHTML = '<span class="dots">sto guardando</span>';
@@ -1632,6 +1623,8 @@ bridge.onThinking(() => {
 
 bridge.onStatus((text) => {
   cardStatus.textContent = text || '';
+  // niente stato e niente risposta scritta (es. risposta solo a voce): la scheda non serve
+  if (!text && !cardBody.childElementCount) card.classList.add('hidden');
 });
 
 bridge.onAnswer((text) => {

@@ -107,7 +107,8 @@ export class DirectProviderBackend implements ReasoningBackend {
                   content: [
                     {
                       type: 'text',
-                      text: 'Screenshot attuale dello schermo (le coordinate sono in questi pixel):',
+                      // l'unità (pixel o 0-1000) la dice la descrizione di computer.click
+                      text: "Screenshot attuale dello schermo (le coordinate dei tool si riferiscono a quest'immagine):",
                     },
                     { type: 'image', image: img, mediaType: 'image/png' },
                   ],
@@ -118,8 +119,12 @@ export class DirectProviderBackend implements ReasoningBackend {
         : undefined,
     });
 
+    let timedOut = false;
     for await (const part of result.fullStream) {
-      if (input.budget.wallClockMs && Date.now() - startedAt > input.budget.wallClockMs) break;
+      if (input.budget.wallClockMs && Date.now() - startedAt > input.budget.wallClockMs) {
+        timedOut = true;
+        break;
+      }
       switch (part.type) {
         case 'text-delta':
           yield { type: 'text-delta', text: part.text };
@@ -149,10 +154,13 @@ export class DirectProviderBackend implements ReasoningBackend {
     }
 
     let usage: { inputTokens?: number; outputTokens?: number; totalTokens?: number } | undefined;
-    let finishReason = 'stop';
+    // tempo scaduto: lo stream è stato interrotto, non c'è un esito da attendere
+    let finishReason = timedOut ? 'timeout' : 'stop';
     try {
-      usage = await result.usage;
-      finishReason = await result.finishReason;
+      if (!timedOut) {
+        usage = await result.usage;
+        finishReason = await result.finishReason;
+      }
     } catch {
       // stream terminato senza output: l'errore è già stato propagato sopra
     }

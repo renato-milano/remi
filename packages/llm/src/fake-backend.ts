@@ -16,14 +16,17 @@ export class FakeReasoningBackend implements ReasoningBackend {
   async *run(input: ReasoningInput): AsyncIterable<ReasoningEvent> {
     let steps = 0;
     let callSeq = 0;
+    let lastWasTool = false; // come l'AI SDK: un ultimo passo con tool call finisce in 'tool-calls'
     for (const step of this.script) {
       if (steps >= input.budget.maxSteps || input.signal?.aborted) break;
       steps += 1;
 
       if ('text' in step) {
+        lastWasTool = false;
         yield { type: 'text-delta', text: step.text };
         continue;
       }
+      lastWasTool = true;
 
       const toolCallId = `call_${(callSeq += 1)}`;
       yield { type: 'tool-call', toolCallId, toolName: step.callTool, input: step.input };
@@ -34,6 +37,6 @@ export class FakeReasoningBackend implements ReasoningBackend {
         : undefined;
       yield { type: 'tool-result', toolCallId, toolName: step.callTool, output };
     }
-    yield { type: 'finish', finishReason: 'stop', usage: {} };
+    yield { type: 'finish', finishReason: lastWasTool ? 'tool-calls' : 'stop', usage: {} };
   }
 }

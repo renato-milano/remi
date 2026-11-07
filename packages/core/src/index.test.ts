@@ -101,6 +101,30 @@ describe('@openmate/core — CognitiveLoop', () => {
     expect(loop.getState().status).toBe('idle');
   });
 
+  it('se finisce i passi mentre sta ancora agendo, lo dice invece di tacere', async () => {
+    const events: AgentEvent[] = [];
+    const backend = new FakeReasoningBackend([
+      { callTool: 'memory.search', input: { query: 'uno' } },
+      { callTool: 'memory.search', input: { query: 'due' } },
+      { text: 'mai detto' },
+    ]);
+    const loop = new CognitiveLoop({
+      backend,
+      registry: registry(),
+      memory: mem,
+      tasks,
+      policy,
+      budget: { maxSteps: 2 },
+      requestApproval: async () => true,
+      onEvent: (e) => events.push(e),
+    });
+
+    const result = await loop.runCycle({ kind: 'user_message', content: 'fai tre cose' });
+    expect(result.text).toContain('ho usato tutti i passi a disposizione (2)');
+    const said = events.filter((e) => e.kind === 'message').map((e) => (e as { content: string }).content);
+    expect(said.join(' ')).toContain('Vuoi che continui?');
+  });
+
   it("l'interrupt annulla il ciclo e torna idle", async () => {
     const controller = new AbortController();
     const loop = new CognitiveLoop({

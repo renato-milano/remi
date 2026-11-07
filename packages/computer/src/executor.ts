@@ -9,12 +9,24 @@ import { type UiElement, inspectUi } from './ui-inspect.js';
 /** Larghezza massima dell'immagine inviata al modello (grounding + token). */
 const MAX_WIDTH = 1366;
 
+/** Pausa fra un tasto e l'altro: il default di nut.js (300 ms) rende lenta ogni frase scritta. */
+const KEY_DELAY_MS = 8;
+
 type Nut = typeof import('@nut-tree-fork/nut-js');
 let nutPromise: Promise<Nut> | undefined;
 function loadNut(): Promise<Nut> {
   // import lazy: carica il modulo nativo solo quando serve davvero
-  nutPromise ??= import('@nut-tree-fork/nut-js');
+  nutPromise ??= import('@nut-tree-fork/nut-js').then((nut) => {
+    nut.keyboard.config.autoDelayMs = KEY_DELAY_MS;
+    return nut;
+  });
   return nutPromise;
+}
+
+/** Larghezza e altezza di un PNG lette dall'intestazione (IHDR), senza decodificarlo. */
+function pngSize(buf: Buffer): { width: number; height: number } | undefined {
+  if (buf.length < 24 || buf.toString('ascii', 12, 16) !== 'IHDR') return undefined;
+  return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
 }
 
 /** Risolve un nome di tasto ("cmd", "enter"…) nel valore Key di nut.js. */
@@ -85,9 +97,15 @@ export class NutExecutor implements Executor {
     let buf: Buffer;
     const shotUrl = process.env.OPENMATE_SHOT_URL;
     if (shotUrl) {
-      const res = await fetch(shotUrl);
+      const res = await fetch(`${shotUrl}?w=${MAX_WIDTH}`);
       if (!res.ok) throw new Error(`screenshot server ${res.status}`);
       buf = Buffer.from(await res.arrayBuffer());
+      // Electron l'ha già catturato alla misura giusta: niente da decodificare né ricodificare
+      const size = pngSize(buf);
+      if (size && size.width <= MAX_WIDTH) {
+        this.mapping = { sentW: size.width, sentH: size.height, nutW, nutH };
+        return { pngBase64: buf.toString('base64'), ...size, logicalW: nutW, logicalH: nutH };
+      }
     } else {
       const path = await nut.screen.capture(`openmate-${Date.now()}`, nut.FileType.PNG, tmpdir());
       const fullPath = path.endsWith('.png') ? path : join(tmpdir(), `openmate-${Date.now()}.png`);
