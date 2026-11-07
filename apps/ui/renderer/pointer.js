@@ -10,7 +10,6 @@ const cardStatus = document.getElementById('cardStatus');
 const cardBody = document.getElementById('cardBody');
 const cardClose = document.getElementById('cardClose');
 const panel = document.getElementById('panel');
-const panelDots = document.getElementById('panelDots');
 const panelBadges = document.getElementById('panelBadges');
 const panelTitle = document.getElementById('panelTitle');
 const panelDraw = document.getElementById('panelDraw');
@@ -424,7 +423,7 @@ const SVG_ATTRS = new Set([
 /** Classi ammesse sull'SVG del modello (colori della palette e frecce). */
 const SVG_CLASSES = new Set(['b', 'r', 'v', 'g', 'p', 'k', 'a']);
 const panelState = { steps: [], drawn: -1, voiced: false, ended: false, busyUntil: 0, timer: undefined, want: undefined, grid: undefined, ownColors: false };
-const panelPen = document.getElementById('panelPen');
+const remiCursor = document.getElementById('remiCursor');
 const marksSvg = document.getElementById('marks');
 // il font a mano va caricato prima di misurare i testi dei riquadri
 document.fonts.load('17px Virgil').catch(() => {});
@@ -433,10 +432,10 @@ function clearPanel() {
   clearTimeout(panelState.timer);
   Object.assign(panelState, { steps: [], drawn: -1, voiced: false, ended: false, busyUntil: 0, want: undefined, grid: undefined, ownColors: false });
   stopPen();
+  pen.pos = undefined; // un nuovo pannello: la penna compare sul primo tratto
   panel.classList.add('hidden');
   panelDraw.replaceChildren();
   panelBadges.replaceChildren();
-  panelDots.replaceChildren();
   marksSvg.replaceChildren();
   panelSvg.setAttribute('viewBox', '0 0 600 380');
 }
@@ -1051,6 +1050,7 @@ function expandAnchored(group) {
 
 /* --- la penna: un solo tratto alla volta, come chi disegna davvero --- */
 const PEN_GAP = 60; // pausa fra un tratto e il successivo (ms)
+const MARK_MS = 650; // un segno sullo schermo
 const pen = { frame: 0, plan: [], t0: 0, pos: undefined, hide: 0 };
 
 /** Peso di un elemento nel tempo del passo: le scritte lunghe e i tratti lunghi durano di più. */
@@ -1065,51 +1065,53 @@ function weightOf(el) {
   return 2 + Math.min(30, len / 30);
 }
 
-/** Dove sta la penna su un elemento al progresso p (0-1), nelle coordinate del disegno. */
+/**
+ * Dove sta la penna su un elemento al progresso p (0-1), in coordinate della finestra: la stessa
+ * penna disegna nel pannello e sullo schermo. La trasformazione si rilegge a ogni fotogramma
+ * perché il pannello può spostarsi o cambiare scala mentre disegna.
+ */
 function penPoint(item, p) {
-  const { el, m, len, box } = item;
+  const { el, len, box } = item;
   let pt;
   if (el.localName === 'text') pt = new DOMPoint(box.x + box.width * p, box.y + box.height * 0.8);
   else if (len > 0) pt = el.getPointAtLength(len * p);
   else pt = new DOMPoint(box.x + box.width / 2, box.y + box.height / 2);
-  return new DOMPoint(pt.x, pt.y).matrixTransform(m);
+  const m = el.getScreenCTM();
+  return m ? new DOMPoint(pt.x, pt.y).matrixTransform(m) : pt;
 }
+
+const easeInOut = (t) => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2);
 
 function penFrame() {
   const t = performance.now() - pen.t0;
-  const cur = pen.plan.find((it) => t < it.start + it.dur);
-  if (!cur) {
+  const k = pen.plan.findIndex((it) => t < it.start + it.dur);
+  if (k < 0) {
     pen.frame = 0;
-    pen.hide = setTimeout(() => panelPen.classList.remove('on'), 500);
+    pen.hide = setTimeout(() => remiCursor.classList.remove('on'), 600);
     return;
   }
-  const target = penPoint(cur, Math.max(0, Math.min(1, (t - cur.start) / cur.dur)));
-  // fra un tratto e l'altro la penna "viaggia" invece di saltare
-  const k = t < cur.start ? 0.35 : 0.6;
-  pen.pos = pen.pos ? { x: pen.pos.x + (target.x - pen.pos.x) * k, y: pen.pos.y + (target.y - pen.pos.y) * k } : target;
-  panelPen.setAttribute('transform', `translate(${r1(pen.pos.x)} ${r1(pen.pos.y)})`);
+  const cur = pen.plan[k];
+  if (t < cur.start) {
+    // fra un tratto e l'altro la penna viaggia (anche dal pannello allo schermo) invece di saltare
+    const from = pen.from || penPoint(cur, 0);
+    const t0 = k ? pen.plan[k - 1].start + pen.plan[k - 1].dur : 0;
+    const q = easeInOut(Math.min(1, (t - t0) / Math.max(1, cur.start - t0)));
+    const to = penPoint(cur, 0);
+    pen.pos = { x: from.x + (to.x - from.x) * q, y: from.y + (to.y - from.y) * q };
+  } else {
+    pen.pos = penPoint(cur, Math.min(1, (t - cur.start) / cur.dur));
+    pen.from = pen.pos;
+  }
+  remiCursor.style.transform = `translate(${r1(pen.pos.x)}px, ${r1(pen.pos.y)}px)`;
   pen.frame = requestAnimationFrame(penFrame);
 }
 
 function runPen(plan) {
   stopPen();
-  pen.plan = plan.map((it) => {
-    let m = new DOMMatrix();
-    try {
-      m = panelDraw.getCTM().inverse().multiply(it.el.getCTM());
-    } catch {
-      /* senza trasformazioni */
-    }
-    let len = 0;
-    try {
-      if (it.el.localName !== 'text') len = it.el.getTotalLength();
-    } catch {
-      /* forma senza lunghezza */
-    }
-    return { ...it, m, len, box: it.el.getBBox() };
-  });
+  pen.plan = plan;
+  pen.from = pen.pos; // riparte da dove si era fermata
   pen.t0 = performance.now();
-  panelPen.classList.add('on');
+  remiCursor.classList.add('on');
   pen.frame = requestAnimationFrame(penFrame);
 }
 
@@ -1117,24 +1119,53 @@ function stopPen() {
   cancelAnimationFrame(pen.frame);
   clearTimeout(pen.hide);
   pen.frame = 0;
-  panelPen.classList.remove('on');
+  remiCursor.classList.remove('on');
 }
 
-/** Anima gli elementi del passo uno dopo l'altro nell'arco di `ms`, con la penna che li segue. */
-function animateStep(items, ms) {
+/** Lunghezza e riquadro di un elemento, per seguirne il tratto. */
+function penShape(el) {
+  let len = 0;
+  try {
+    if (el.localName !== 'text') len = el.getTotalLength();
+  } catch {
+    /* forma senza lunghezza */
+  }
+  return { el, len, box: el.getBBox() };
+}
+
+/** Tempo per spostarsi fra due punti: un salto lungo (pannello ↔ schermo) prende più tempo. */
+function travelMs(a, b) {
+  if (!a || !b) return PEN_GAP;
+  return PEN_GAP + Math.min(420, Math.hypot(b.x - a.x, b.y - a.y) * 0.4);
+}
+
+/**
+ * Anima gli elementi del passo uno dopo l'altro nell'arco di `ms`, con la penna che li segue.
+ * `marks` (segni sullo schermo) si disegnano per primi, a durata fissa: la penna va lì e poi torna nel pannello.
+ */
+function animateStep(items, ms, marks = []) {
   items = items.filter((el) => el.isConnected); // una freccia ricalcolata non è più nel disegno
-  if (!items.length) return;
-  const weights = items.map(weightOf);
-  const sum = weights.reduce((a, b) => a + b, 0);
-  const total = ms * 0.88;
-  let t = 0;
-  const plan = items.map((el, k) => {
-    const dur = Math.max(160, Math.min(1800, (total * weights[k]) / sum - PEN_GAP));
-    const start = t;
-    t += dur + PEN_GAP;
-    return { el, start, dur };
+  const all = [...marks.map((m) => ({ ...penShape(m.path), mark: m })), ...items.map(penShape)];
+  if (!all.length) return;
+  // prima i viaggi fra un tratto e l'altro, poi i tratti si dividono il tempo che resta
+  let prev = pen.pos;
+  const travel = all.map((it) => {
+    const tr = travelMs(prev, penPoint(it, 0));
+    prev = penPoint(it, 1);
+    return tr;
   });
-  for (const { el, start, dur } of plan) {
+  const marksMs = marks.length * MARK_MS;
+  const weights = items.map(weightOf);
+  const sum = weights.reduce((a, b) => a + b, 0) || 1;
+  const left = Math.max(items.length * 160, ms * 0.88 - marksMs - travel.reduce((a, b) => a + b, 0));
+  let t = 0;
+  const plan = all.map((it, k) => {
+    const dur = it.mark ? MARK_MS : Math.max(160, Math.min(1800, (left * weights[k - marks.length]) / sum));
+    const start = t + (k === 0 && !pen.pos ? 0 : travel[k]);
+    t = start + dur;
+    return { ...it, start, dur };
+  });
+  for (const { el, start, dur, mark } of plan) {
     if (el.localName === 'text') {
       // scritta a mano: si scopre da sinistra a destra
       const a = el.animate([{ clipPath: 'inset(-40% 100% -40% -10%)' }, { clipPath: 'inset(-40% -10% -40% -10%)' }], {
@@ -1163,6 +1194,14 @@ function animateStep(items, ms) {
         el.style.markerStart = '';
         a.cancel();
       };
+    }
+    // numero ed etichetta del segno compaiono a cerchio chiuso
+    if (mark) {
+      for (const extra of mark.extras) {
+        const f = extra.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 220, delay: start + dur * 0.85, fill: 'both' });
+        f.onfinish = () => f.cancel();
+      }
+      continue;
     }
     // il riempimento arriva quando il contorno è quasi chiuso
     const f = el.animate([{ fillOpacity: 0 }, { fillOpacity: 1 }], {
@@ -1206,8 +1245,9 @@ function handRect({ x, y, w, h }) {
  * Segni sullo schermo del passo in corso (quelli dei passi precedenti spariscono), su un velo
  * leggero che fa risaltare pannello e segni. Cose piccole si cerchiano, zone grandi si incorniciano;
  * ognuno porta il numero e il colore del passo, e un'etichetta se il modello l'ha data.
+ * Restituisce i segni da tracciare: li disegna la penna di Remi, prima dei tratti del pannello.
  */
-function renderMarks(marks, stepIndex, ink, animate) {
+function renderMarks(marks, stepIndex, ink) {
   marksSvg.replaceChildren();
   const vw = window.innerWidth;
   const vh = window.innerHeight;
@@ -1220,7 +1260,8 @@ function renderMarks(marks, stepIndex, ink, animate) {
   const defs = svgEl('defs', {});
   defs.appendChild(mask);
   marksSvg.append(defs, svgEl('rect', { class: 'veil', x: 0, y: 0, width: vw, height: vh, mask: 'url(#veilHoles)' }));
-  shown.forEach((m, k) => {
+  const drawn = [];
+  for (const m of shown) {
     const big = m.w > vw * 0.3 || m.h > vh * 0.3;
     // zona grande: solo l'angolo in alto a sinistra, con numero ed etichetta; cosa piccola: ovale
     const corner = `M${r1(m.x - 8)} ${r1(m.y + 34)} L${r1(m.x - 8)} ${r1(m.y - 8)} L${r1(m.x + 34)} ${r1(m.y - 8)}`;
@@ -1234,26 +1275,19 @@ function renderMarks(marks, stepIndex, ink, animate) {
       svgEl('text', { x: r1(bx), y: r1(by + 4.5), 'text-anchor': 'middle', fill: '#1d1a14' }, String(stepIndex + 1)),
     );
     marksSvg.append(path, badge);
+    let pill;
     if (m.label) {
       const tw = textWidthUi(m.label) + 20;
-      const pill = svgEl('g', { class: 'pill' });
+      pill = svgEl('g', { class: 'pill' });
       pill.append(
         svgEl('rect', { x: r1(bx + 18), y: r1(by - 13), width: r1(tw), height: 26, rx: 8, fill: color }),
         svgEl('text', { x: r1(bx + 28), y: r1(by + 4.5), fill: '#1d1a14' }, m.label),
       );
       marksSvg.appendChild(pill);
     }
-    if (!animate) return;
-    const len = path.getTotalLength();
-    path.style.strokeDasharray = `${len}`;
-    const a = path.animate([{ strokeDashoffset: len }, { strokeDashoffset: 0 }], {
-      duration: 550, delay: k * 250, fill: 'both', easing: 'ease-in-out',
-    });
-    a.onfinish = () => {
-      path.style.strokeDasharray = '';
-      a.cancel();
-    };
-  });
+    drawn.push({ path, extras: pill ? [badge, pill] : [badge] });
+  }
+  return drawn;
 }
 
 /** Larghezza di un'etichetta nel font dell'interfaccia (per le etichette sullo schermo). */
@@ -1265,7 +1299,7 @@ function textWidthUi(str) {
   return w;
 }
 
-/* --- numeri dei passi nel disegno e pallini in alto: dicono a che punto è la spiegazione --- */
+/* --- numeri dei passi nel disegno: dicono a che punto è la spiegazione --- */
 /** Il colore che la lavagna dà a un passo, o niente se il modello ha dichiarato di colorare da sé. */
 function autoInk(_step, i) {
   return panelState.ownColors ? undefined : STEP_INKS[i % STEP_INKS.length];
@@ -1286,7 +1320,7 @@ function addStepBadge(group, i, ink) {
   panelBadges.appendChild(g);
 }
 
-/** Pieno il numero del passo in corso, contornati gli altri; i pallini in alto seguono i passi arrivati. */
+/** Pieno il numero del passo in corso, contornati gli altri. */
 function refreshProgress(current) {
   for (const g of panelBadges.children) {
     const c = g.getAttribute('data-c');
@@ -1295,14 +1329,6 @@ function refreshProgress(current) {
     g.firstChild.setAttribute('stroke', c);
     g.lastChild.setAttribute('fill', on ? '#ffffff' : c);
   }
-  const n = panelState.steps.filter(Boolean).length;
-  while (panelDots.children.length < n) panelDots.appendChild(document.createElement('span'));
-  [...panelDots.children].forEach((dot, i) => {
-    const step = panelState.steps[i];
-    dot.textContent = String(i + 1);
-    dot.style.setProperty('--c', step?.ink ? INK[step.ink] : DARK);
-    dot.className = i === current ? 'on' : i < current ? 'done' : '';
-  });
 }
 
 /** Le forme "disegnabili" di un sottoalbero, nell'ordine in cui compaiono. */
@@ -1434,8 +1460,7 @@ function drawStep(i, ms) {
   fitPanel();
   placePanel();
   refreshProgress(i);
-  renderMarks(step.marks, i, step.ink, true);
-  animateStep(items, ms);
+  animateStep(items, ms, renderMarks(step.marks, i, step.ink));
 }
 
 /**
@@ -1500,10 +1525,10 @@ bridge.onPanelStart(({ title, voiced, rows, cols, ownColors }) => {
     panelState.grid = { rows, cols: cols || 4 };
     panelSvg.setAttribute('viewBox', `0 0 ${DRAW_W} ${gridHeight(panelState.grid)}`);
   }
-  // il pannello prende il posto della scheda; in alto i pallini dei passi al posto della domanda
+  // il pannello prende il posto della scheda
   card.classList.add('hidden');
   panel.style.width = `${panelWidth()}px`;
-  renderMarks([], 0, undefined, false); // il velo compare con il pannello
+  renderMarks([], 0, undefined); // il velo compare con il pannello
   panelTitle.textContent = title;
   panelState.voiced = voiced;
   panel.classList.remove('hidden');

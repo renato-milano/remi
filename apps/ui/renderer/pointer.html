@@ -21,7 +21,6 @@
   </div>
   <div id="panel" class="panel hidden">
     <button id="panelClose" class="card-close" title="Chiudi">✕</button>
-    <div id="panelDots" class="panel-dots" aria-hidden="true"></div>
     <h2 id="panelTitle" class="panel-title"></h2>
     <svg id="panelSvg" class="panel-svg" viewBox="0 0 600 380">
       <defs>
@@ -44,10 +43,19 @@
       <g id="panelDraw" filter="url(#rough)"></g>
       <!-- numeri dei passi accanto al loro gruppo (fuori dal filtro: restano netti) -->
       <g id="panelBadges"></g>
-      <!-- la "penna" di Remi: segue il tratto che si sta disegnando -->
-      <g id="panelPen" class="pen">
-        <path d="M0 0 L0 17 L4.6 12.6 L8 20 L11 18.6 L7.7 11.5 L13.6 11.5 Z" />
-      </g>
+    </svg>
+  </div>
+  <!-- il mouse di Remi: disegna i tratti del pannello e i segni sullo schermo (la punta è il punto 0,0) -->
+  <div id="remiCursor" class="remi-cursor" aria-hidden="true">
+    <svg width="30" height="34" viewBox="-4 -4 30 34">
+      <defs>
+        <linearGradient id="remiCursorInk" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#0a49f5" />
+          <stop offset=".45" stop-color="#2a5ef4" />
+          <stop offset="1" stop-color="#86a2f6" />
+        </linearGradient>
+      </defs>
+      <path d="M0 0 L0 24.5 L7.4 17.3 L17.6 17 Z" fill="url(#remiCursorInk)" stroke="url(#remiCursorInk)" stroke-width="2.6" stroke-linejoin="round" />
     </svg>
   </div>
   <script src="pointer.js"></script>

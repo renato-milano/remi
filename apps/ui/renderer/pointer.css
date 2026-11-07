@@ -80,12 +80,6 @@ html,body{width:100%;height:100%;background:transparent;overflow:hidden;font-fam
   background-image:radial-gradient(rgba(31,42,36,.06) 1px,transparent 1px);background-size:14px 14px}
 .panel .card-close{color:rgba(31,42,36,.45)}
 .panel .card-close:hover{background:rgba(31,42,36,.08);color:#1f2a24}
-/* a che punto è la spiegazione: un pallino per passo, pieno quello in corso */
-.panel-dots{display:flex;gap:7px;min-height:22px;margin-bottom:8px;padding-right:28px}
-.panel-dots span{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;
-  font:500 11.5px var(--font-mono);color:#9aa39b;border:1.5px solid #c4cac3;transition:background .3s,color .3s}
-.panel-dots span.done{color:var(--c);border-color:var(--c)}
-.panel-dots span.on{background:var(--c);border-color:var(--c);color:#fff}
 .panel-title{font:400 22px/1.2 var(--font-hand);margin:0 24px 12px 0}
 .panel-svg{display:block;width:100%;height:auto;overflow:hidden} /* niente disegni sopra il titolo */
 /* la dimensione di default non deve vincere sull'attributo font-size (scelto dal modello o da fitTexts) */
@@ -126,10 +120,14 @@ html,body{width:100%;height:100%;background:transparent;overflow:hidden;font-fam
 #panelDraw path.a{fill:none}
 /* icone: solo tratto */
 #panelDraw .ico path{fill:none}
-/* la penna: compare mentre disegna, poi sparisce */
-.pen{opacity:0;transition:opacity .35s;pointer-events:none}
-.pen.on{opacity:1}
-.pen path{fill:var(--alive);stroke:#1f2a24;stroke-width:1.4;stroke-linejoin:round}
+/* il mouse di Remi: compare mentre disegna (pannello e schermo), con un alone blu che respira */
+.remi-cursor{position:absolute;left:0;top:0;margin:-4px 0 0 -4px;pointer-events:none;opacity:0;
+  transition:opacity .35s;will-change:transform;z-index:10}
+.remi-cursor.on{opacity:1}
+.remi-cursor svg{display:block;overflow:visible;animation:remiGlow 1.6s ease-in-out infinite}
+@keyframes remiGlow{
+  0%,100%{filter:drop-shadow(0 0 3px rgba(30,90,255,.9)) drop-shadow(0 0 10px rgba(30,90,255,.45))}
+  50%{filter:drop-shadow(0 0 5px rgba(60,120,255,1)) drop-shadow(0 0 22px rgba(60,120,255,.7))}}
 
 /* segni sullo schermo: solo quelli del passo in corso, nel colore e col numero del passo */
 .marks{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible}
