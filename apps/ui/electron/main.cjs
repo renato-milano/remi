@@ -705,7 +705,10 @@ function cancelPoint() {
   clearInterval(t.timer);
   clearTimeout(t.maxTimer);
   tracing = undefined;
-  if (t.recording) sendPointer('pointer-rec-stop'); // la registrazione viene scartata
+  if (t.recording) {
+    sendPointer('pointer-rec-stop'); // la registrazione viene scartata
+    void restoreVolume();
+  }
   hidePointer();
 }
 
@@ -741,6 +744,7 @@ async function startPoint(hold = false) {
   if (voiceEnabled() && (await askMicrophone()) && !t.done) {
     t.recording = true;
     sendPointer('pointer-rec-start');
+    void duckVolume();
     void postJson('/voice/warm').catch(() => {});
   }
   // registra il percorso del mouse finché la hotkey resta premuta
@@ -944,6 +948,7 @@ async function endTrace() {
   clearTimeout(t.maxTimer);
   tracing = undefined;
   releasedAt = Date.now();
+  if (t.recording) void restoreVolume(); // hai finito di parlare
   phase(`rilascio (tenuto ${releasedAt - t.pressedAt} ms)`);
 
   let full;
@@ -1045,6 +1050,88 @@ async function askMicrophone() {
   if (status === 'granted') return true;
   if (status === 'not-determined') return systemPreferences.askForMediaAccess('microphone');
   return false;
+}
+
+/*
+ * Mentre Remi ascolta la domanda il volume del Mac scende, così il microfono non
+ * capta video o live in sottofondo. Il volume di prima resta salvato su file finché
+ * non è ripristinato: se Remi si chiude male, lo rimette al prossimo avvio.
+ */
+const DUCK_RATIO = 0.15;
+const DUCK_MAX_MS = 20000;
+const duckFile = path.join(userData, 'volume-before-listen.json');
+let duck; // { before, ducked, timer }
+
+function osa(script) {
+  return new Promise((resolve, reject) =>
+    execFile('osascript', ['-e', script], { timeout: 1500, encoding: 'utf8' }, (err, out) =>
+      err ? reject(err) : resolve(out.trim()),
+    ),
+  );
+}
+
+async function duckVolume() {
+  if (process.platform !== 'darwin' || duck) return;
+  const me = {}; // segnaposto finché osascript risponde: restoreVolume lo toglie se l'ascolto finisce prima
+  duck = me;
+  try {
+    const before = Number(await osa('output volume of (get volume settings)'));
+    // già muto o uscita senza volume; oppure l'ascolto è già finito
+    if (!Number.isFinite(before) || before <= 0 || duck !== me) {
+      if (duck === me) duck = undefined;
+      return;
+    }
+    const ducked = Math.round(before * DUCK_RATIO);
+    fs.writeFileSync(duckFile, JSON.stringify({ before, ducked }));
+    await osa(`set volume output volume ${ducked}`);
+    if (duck !== me) return void restoreVolume({ before, ducked }); // finito nel frattempo
+    duck = { before, ducked, timer: setTimeout(() => void restoreVolume(), DUCK_MAX_MS) };
+    pointDebug(`volume ${before} → ${ducked} mentre ascolto`);
+  } catch (err) {
+    if (duck === me) duck = undefined;
+    pointDebug('volume non abbassato:', err.message);
+  }
+}
+
+/** Rimette il volume di prima, a meno che nel frattempo l'utente non l'abbia cambiato a mano. */
+async function restoreVolume(saved = duck) {
+  if (saved === duck) {
+    if (duck?.timer) clearTimeout(duck.timer);
+    duck = undefined;
+  }
+  if (!saved?.before) return;
+  try {
+    if (Number(await osa('output volume of (get volume settings)')) === saved.ducked) {
+      await osa(`set volume output volume ${saved.before}`);
+      pointDebug(`volume ripristinato a ${saved.before}`);
+    }
+  } catch (err) {
+    pointDebug('volume non ripristinato:', err.message);
+  }
+  fs.rmSync(duckFile, { force: true });
+}
+
+/** In uscita non si può attendere: ripristino sincrono (il file resta se fallisce). */
+function restoreVolumeNow() {
+  const saved = duck;
+  duck = undefined;
+  if (!saved?.before) return;
+  try {
+    execFileSync('osascript', ['-e', `set volume output volume ${saved.before}`], { timeout: 1500 });
+    fs.rmSync(duckFile, { force: true });
+  } catch {
+    /* ci riprova il prossimo avvio */
+  }
+}
+
+/** All'avvio: se l'ultima volta Remi si è chiuso mentre ascoltava, il volume è ancora basso. */
+function restoreVolumeLeftLow() {
+  if (process.platform !== 'darwin' || !fs.existsSync(duckFile)) return;
+  try {
+    void restoreVolume(JSON.parse(fs.readFileSync(duckFile, 'utf8')));
+  } catch {
+    fs.rmSync(duckFile, { force: true });
+  }
 }
 
 async function postJson(pathname, body) {
@@ -1220,6 +1307,7 @@ async function onWake(question, spokenPath) {
   // niente anello fisso sul punto iniziale: l'alone segue il mouse
   sendPointer('pointer-anchor', { x: cur.x - b.x, y: cur.y - b.y, area: true });
   sendPointer('pointer-listen', { x: cur.x - b.x, y: cur.y - b.y });
+  void duckVolume();
   const follow = setInterval(() => {
     const p = screen.getCursorScreenPoint();
     const last = path[path.length - 1];
@@ -1236,6 +1324,7 @@ async function onWake(question, spokenPath) {
     };
   });
   clearInterval(follow);
+  void restoreVolume();
   phase(rec?.speech ? 'domanda ascoltata' : 'nessuna domanda');
   if (rec?.speech && rec.wav) {
     const { at, area, local, target } = await windowIfStill(resolvePath(path, display), winPromise, display);
@@ -1527,6 +1616,7 @@ ipcMain.on('context-menu', showContextMenu);
 
 /* ---------------- avvio ---------------- */
 app.whenReady().then(() => {
+  restoreVolumeLeftLow();
   globalShortcut.register(HOTKEY, summon);
   if (!startKeyHook() && !globalShortcut.register(POINT_HOTKEY, () => void startPoint())) {
     console.warn(`[point] hotkey ${POINT_HOTKEY} non disponibile (usata da un'altra app?)`);
@@ -1543,6 +1633,7 @@ app.whenReady().then(() => {
   }
 });
 app.on('will-quit', () => {
+  restoreVolumeNow();
   globalShortcut.unregisterAll();
   try {
     hook?.stop();
