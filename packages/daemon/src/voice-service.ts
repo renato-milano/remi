@@ -3,6 +3,7 @@ import type { OpenMateConfig } from '@openmate/config';
 import {
   LocalWhisper,
   downloadModel,
+  GATEWAY_STT_MODEL,
   gatewaySpeak,
   gatewayTranscribe,
   hasModel,
@@ -10,6 +11,9 @@ import {
   matchWakePhrase,
   modelPath,
 } from '@openmate/voice';
+
+/** Oltre questo tempo la domanda si trascrive in locale: meglio un nome sbagliato che aspettare. */
+const CLOUD_TIMEOUT_MS = 3000;
 
 /** Stato della voce, per l'interfaccia (Impostazioni, lavagna). */
 export interface VoiceStatus {
@@ -93,6 +97,29 @@ export class VoiceService {
   /** Prepara la trascrizione (avvia whisper-server) mentre l'utente parla. */
   warm(): void {
     if (this.config.voice.enabled) this.local?.warm();
+  }
+
+  /**
+   * Trascrive una domanda: col gateway usa il modello cloud (preciso sui nomi), con ripiego
+   * su whisper locale se il cloud non risponde in tempo. `wake`: l'audio inizia con
+   * "Hey Remi", e si restituisce solo ciò che segue (vuoto se il cloud non lo riconosce).
+   */
+  async transcribeQuestion(wav: Buffer, opts: { wake?: boolean } = {}): Promise<{ text: string; engine: string }> {
+    if (!this.config.voice.enabled) throw new Error('voce disattivata');
+    const model = this.config.voice.questionModel;
+    if (this.gatewayKey && model !== 'local') {
+      try {
+        const text = await gatewayTranscribe(this.gatewayKey, wav, {
+          model,
+          signal: AbortSignal.timeout(CLOUD_TIMEOUT_MS),
+        });
+        return { text: opts.wake ? (matchWakePhrase(text) ?? '') : text, engine: model };
+      } catch {
+        /* cloud non raggiungibile o lento: whisper locale */
+      }
+    }
+    const text = await this.transcribe(wav);
+    return { text: opts.wake ? (matchWakePhrase(text) ?? '') : text, engine: this.local?.available() ? 'locale' : GATEWAY_STT_MODEL };
   }
 
   async transcribe(wav: Buffer): Promise<string> {

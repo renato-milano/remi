@@ -16,6 +16,9 @@ const SETTLE_MS = 600;
 /** Stessa azione di fila: alla seconda si avvisa il modello, alla terza non si esegue. */
 const REPEAT_WARN = 2;
 const REPEAT_STOP = 3;
+/** computer.do: azioni al massimo per sequenza e pausa fra l'una e l'altra (il campo cliccato deve prendere il fuoco). */
+const MAX_SEQUENCE = 8;
+const STEP_PAUSE_MS = 180;
 const NAV_KEYS = new Set(['up', 'down', 'left', 'right', 'tab', 'pageup', 'pagedown', 'backspace', 'delete']);
 
 /**
@@ -242,6 +245,68 @@ export function createComputerTools(executor: Executor, opts: ComputerToolsOptio
     },
   });
 
+  const xy = { x: z.number(), y: z.number() };
+  const button = z.enum(['left', 'right', 'middle']).optional();
+  const action = z.discriminatedUnion('type', [
+    z.object({ type: z.literal('click'), ...xy, button }),
+    z.object({ type: z.literal('double_click'), ...xy, button }),
+    z.object({ type: z.literal('move'), ...xy }),
+    z.object({ type: z.literal('type'), text: z.string() }),
+    z.object({ type: z.literal('key'), keys: z.array(z.string()).min(1) }),
+    z.object({ type: z.literal('scroll'), dx: z.number().default(0), dy: z.number().default(0) }),
+    z.object({ type: z.literal('wait'), seconds: z.number().min(0).max(5) }),
+    z.object({ type: z.literal('click_element'), index: z.number().int().min(0) }),
+  ]);
+  type Action = z.input<typeof action>;
+
+  /** Esegue una singola azione della sequenza (coordinate già controllate). */
+  const perform = async (a: Action): Promise<void> => {
+    switch (a.type) {
+      case 'click':
+      case 'double_click':
+      case 'move': {
+        const p = toPixels(a.x, a.y) as { x: number; y: number };
+        if (a.type === 'click') await executor.click(p.x, p.y, a.button);
+        else if (a.type === 'double_click') await executor.doubleClick(p.x, p.y, a.button);
+        else await executor.move(p.x, p.y);
+        return;
+      }
+      case 'type':
+        return executor.type(a.text);
+      case 'key':
+        return executor.key(a.keys);
+      case 'scroll':
+        return executor.scroll(a.dx ?? 0, a.dy ?? 0);
+      case 'wait':
+        return new Promise<void>((r) => setTimeout(r, Math.round(a.seconds * 1000)));
+      case 'click_element':
+        return executor.clickElement(a.index);
+    }
+  };
+
+  const sequence = defineTool({
+    name: 'computer.do',
+    description: `Esegue PIÙ azioni di fila in una sola mossa e restituisce un solo screenshot alla fine: usalo quando conosci già tutti i passi senza dover guardare in mezzo (es. click sul campo di ricerca → type "query" → key ["enter"]). Azioni: click/double_click/move {x,y} in ${unit} (riferite allo screenshot attuale), type {text}, key {keys}, scroll {dx,dy}, wait {seconds}, click_element {index}. Massimo ${MAX_SEQUENCE}. Non mettere in sequenza un click su qualcosa che comparirà solo dopo un'azione precedente.`,
+    parameters: z.object({ actions: z.array(action).min(1).max(MAX_SEQUENCE) }),
+    permission: 'dangerous',
+    explain: () => ({ text: 'usare mouse e tastiera', level: 'dangerous', known: true }),
+    execute: async (i, ctx) => {
+      if (opts.normalized && !last && i.actions.some((a) => 'x' in a)) return noShot;
+      const stop = checkRepeat(`do:${JSON.stringify(i.actions)}`);
+      if (stop) return stop;
+      for (const [k, a] of i.actions.entries()) {
+        if (k > 0) await new Promise((r) => setTimeout(r, STEP_PAUSE_MS));
+        try {
+          await perform(a);
+        } catch (err) {
+          const reason = err instanceof Error ? err.message : String(err);
+          return { ...(await after(ctx)), ok: false, done: k, error: `azione ${k + 1} (${a.type}) fallita: ${reason}` };
+        }
+      }
+      return { ...(await after(ctx)), done: i.actions.length };
+    },
+  });
+
   return [
     screenshot,
     wait,
@@ -253,5 +318,6 @@ export function createComputerTools(executor: Executor, opts: ComputerToolsOptio
     type,
     key,
     scroll,
+    sequence,
   ];
 }

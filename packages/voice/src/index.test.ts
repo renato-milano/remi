@@ -42,6 +42,8 @@ describe('@openmate/voice — "Hey Remi"', () => {
     expect(matchWakePhrase('Ehi Rami, cosa è questo?')).toBe('cosa è questo?');
     expect(matchWakePhrase('Ehi Remy, spiegami come funziona.')).toBe('spiegami come funziona.');
     expect(matchWakePhrase('Remy aiuta mi')).toBe('aiuta mi');
+    // come la scrivono i modelli cloud (domanda detta di fila con "Hey Remi")
+    expect(matchWakePhrase('Ehi Remi, aprimi Spotify e metti Lucio Dalla.')).toBe('aprimi Spotify e metti Lucio Dalla.');
     // con un video in sottofondo whisper antepone etichette dei suoni
     expect(matchWakePhrase('[Musica] Ehi Remy!')).toBe('');
     expect(matchWakePhrase('[Musica] Ei Remy, cosa è questo?')).toBe('cosa è questo?');

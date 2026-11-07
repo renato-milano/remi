@@ -81,6 +81,14 @@ export const voiceSchema = z.object({
   wakeWord: z.boolean().default(false),
   /** Voce di Remi: 'auto' = cloud se c'è il gateway, altrimenti voce di sistema. */
   tts: z.enum(['auto', 'cloud', 'system', 'off']).default('auto'),
+  /**
+   * Trascrizione delle DOMANDE (hotkey o dopo "Hey Remi"): un modello del gateway, molto più
+   * preciso del whisper locale sui nomi; 'local' = sempre whisper locale. L'ascolto di
+   * "Hey Remi" resta comunque locale. MAI Transcribe 2 misurato via gateway su frasi italiane
+   * con nomi propri, anche con voce di sottofondo: ~0,7 s e nomi giusti ("Lucio Dalla", "DJ Neo")
+   * dove whisper small sbaglia; Scribe v2 e Grok STT simili, gpt-4o-transcribe peggiore.
+   */
+  questionModel: z.string().default('microsoft/mai-transcribe-2'),
 });
 
 export const configSchema = z.object({

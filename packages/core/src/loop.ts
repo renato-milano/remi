@@ -284,11 +284,15 @@ Chiediti sempre se la richiesta dell'utente richiede di vedere lo schermo: frasi
 
 Regole:
 - Le coordinate (x,y) sono nell'unità indicata nella descrizione di computer.click (pixel o normalizzate 0-1000), riferite all'ultimo screenshot. Non inventarle: individua l'elemento nell'immagine. Se non vedi bene, dillo invece di cliccare a caso.
-- Lavora a piccoli passi: screenshot per vedere → una azione → verifica sul nuovo screenshot che sia andata come previsto; solo allora prosegui.
-- PREFERISCI i deep-link/URL invece dei click quando esistono: sono molto più affidabili. Molte app espongono uno schema URI (es. "app:azione:parametro") che apre l'app ED esegue l'azione in un colpo solo; i siti hanno URL di ricerca diretti. Su macOS: per un URI/URL usa shell.run open "<url o uri>" (SENZA -a); per aprire un'app per nome usa open -a "NomeApp".
-- Dopo aver aperto un'app NON agire subito: non è ancora pronta né a fuoco. Usa computer.wait(2-3) e guarda lo screenshot che restituisce; ripeti l'attesa finché è caricata, poi interagisci.
-- Per CLICCARE un pulsante o un campo, PREFERISCI computer.list_elements (ti dà la lista numerata degli elementi con etichetta) e poi computer.click_element(indice): è preciso. Usa il click a coordinate (computer.click) solo se l'elemento non compare nella lista.
-- Per cercare dentro un'app senza deep-link: (1) attendi che sia pronta, (2) metti a fuoco il campo di ricerca (list_elements + click_element, o un click), (3) computer.type("query"), (4) computer.key(["enter"]). NON dimenticare Invio, e verifica con uno screenshot che la ricerca sia partita.
+- OGNI MOSSA COSTA ~5 SECONDI di attesa per l'utente: fai meno mosse possibili.
+  · Quando sai già i passi senza dover guardare in mezzo, mettili in UNA sola computer.do. Es. cercare: computer.do [click sul campo di ricerca, type "query", key ["enter"]]; scorciatoie: [key ["cmd","t"], type "sito.it", key ["enter"]].
+  · Usa un'azione singola (e guarda il risultato) solo quando la mossa dopo dipende da cosa comparirà.
+  · Clicca direttamente alle coordinate quando l'elemento si vede bene nello screenshot. computer.list_elements è lento: usalo solo se non riesci a individuare l'elemento.
+- PRIMA DEI CLICK, le scorciatoie (molto più veloci e affidabili):
+  · deep-link/URL: shell.run open "<uri o url>" (SENZA -a) apre l'app ED esegue l'azione. Es. open "spotify:search:lucio dalla" apre Spotify già sulla ricerca; i siti hanno URL di ricerca diretti.
+  · app che si comandano con AppleScript (Spotify, Musica, Finder, Safari…): shell.run osascript -e 'tell application "Spotify" to play' (pause, next track, previous track, set sound volume to 50, play track "spotify:track:…"). Per musica e volume usa questo, non i click.
+  · per aprire un'app per nome: open -a "NomeApp".
+- Attese: dopo aver avviato un'app che era chiusa, aspetta 1-2 secondi (computer.wait, o un wait dentro computer.do) e guarda. Se l'app era già aperta, o l'hai solo portata in primo piano (osascript activate), NON aspettare: è pronta subito.
 - Non mischiare tentativi a caso di shell/curl con i click. Scegli una strategia e portala a termine.
 - Vai avanti finché l'obiettivo è DAVVERO raggiunto (il risultato è visibile nello screenshot). Non fermarti a metà; ma non ripetere all'infinito la stessa azione che non funziona: cambia approccio o chiedi.`;
 

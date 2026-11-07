@@ -1175,7 +1175,7 @@ async function submitVoice(capture, wav) {
     out = { ok: false, error: 'Remi non è raggiungibile' };
   }
   const text = out.ok ? String(out.text || '').trim() : '';
-  phase(`trascrizione: "${text}"`);
+  phase(`trascrizione (${out.engine || '?'}): "${text}"`);
   if (!text) {
     if (!out.ok) console.warn('[voice] trascrizione fallita:', out.error);
     sendPointer('pointer-status', out.ok ? 'non ho capito, scrivi pure' : `voce non disponibile: ${out.error}`);
@@ -1251,7 +1251,15 @@ ipcMain.on('pointer-wake-segment', async (_e, wav) => {
   try {
     const out = await postJson('/voice/wake', { audio: Buffer.from(wav).toString('base64') });
     pointDebug(`ascoltato: "${out.text ?? out.error}"${out.wake ? ' → Hey Remi!' : ''}`);
-    if (out.ok && out.wake) await onWake(String(out.question || '').trim(), mousePath(segStart, segEnd));
+    if (out.ok && out.wake) {
+      const question = String(out.question || '').trim();
+      // detta di fila con "Hey Remi": la domanda si ritrascrive col modello cloud (whisper locale
+      // sbaglia i nomi), in parallelo allo screenshot
+      const refined = question
+        ? postJson('/voice/transcribe', { audio: Buffer.from(wav).toString('base64'), wake: true }).catch(() => ({}))
+        : undefined;
+      await onWake(question, mousePath(segStart, segEnd), refined);
+    }
     else sendPointer('pointer-wake-done');
   } catch {
     sendPointer('pointer-wake-done');
@@ -1265,7 +1273,7 @@ ipcMain.on('pointer-listen-data', (_e, data) => listenWaiter?.(data));
  * "Hey Remi": Remi compare e risponde su ciò che indichi col mouse. `spokenPath`:
  * il percorso del mouse mentre dicevi la frase (conta se la domanda era già lì).
  */
-async function onWake(question, spokenPath) {
+async function onWake(question, spokenPath, refined) {
   releasedAt = Date.now();
   phase(`"Hey Remi"${question ? ` + "${question}"` : ''}`);
   const cur = screen.getCursorScreenPoint();
@@ -1295,6 +1303,11 @@ async function onWake(question, spokenPath) {
   if (question) {
     // "Hey Remi, cos'è questo?" detto di fila: vale ciò che indicavi mentre lo dicevi
     const { at, area, local, target } = await windowIfStill(resolvePath(spokenPath, display), winPromise, display);
+    const better = await refined;
+    if (better?.ok && better.text) {
+      phase(`trascrizione (${better.engine}): "${better.text}"`);
+      question = better.text;
+    }
     sendPointer('pointer-anchor', local);
     sendPointer('pointer-wake-done');
     sendPointer('pointer-thinking');

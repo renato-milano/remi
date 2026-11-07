@@ -401,13 +401,13 @@ export class Daemon {
     const area = msg.path && msg.path.length > 2 ? msg.path : undefined;
     const images = [
       area
-        ? { data: await markPath(msg.image, area), label: 'Schermo (contorno rosso = la zona che ho indicato col mouse):' }
-        : { data: await markPoint(msg.image, msg.cursor.x, msg.cursor.y), label: 'Schermo (cerchio rosso = puntatore):' },
+        ? { data: await markPath(msg.image, area), label: POINT_LABELS.area }
+        : { data: await markPoint(msg.image, msg.cursor.x, msg.cursor.y), label: POINT_LABELS.cursor },
     ];
     if (msg.zoom) {
       images.push({
         data: msg.zoomCursor ? await markPoint(msg.zoom, msg.zoomCursor.x, msg.zoomCursor.y) : msg.zoom,
-        label: 'Ingrandimento della zona indicata (solo per leggere i dettagli, NON usarne le coordinate):',
+        label: POINT_LABELS.zoom,
       });
     }
     if (process.env.OPENMATE_UI_DEBUG) console.log(`[tempi daemon] marcatura immagini ${Date.now() - t0} ms`);
@@ -598,7 +598,14 @@ export function usesNormalizedCoords(model: string): boolean {
   return /gemini/i.test(model);
 }
 
-function pointPrompt(
+/** Didascalie delle immagini di un turno "indica" (esportate per l'eval dei segni). */
+export const POINT_LABELS = {
+  area: 'Schermo (contorno rosso = la zona che ho indicato col mouse):',
+  cursor: 'Schermo (cerchio rosso = puntatore):',
+  zoom: 'Ingrandimento della zona indicata (solo per leggere i dettagli, NON usarne le coordinate):',
+};
+
+export function pointPrompt(
   question: string,
   cursor: { x: number; y: number },
   area?: { x: number; y: number }[],

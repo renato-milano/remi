@@ -631,6 +631,52 @@ describe('@openmate/tools — computer.* azioni ripetute', () => {
   });
 });
 
+describe('@openmate/tools — computer.do', () => {
+  it('esegue le azioni in ordine e guarda lo schermo una volta sola, alla fine', async () => {
+    const log: string[] = [];
+    let shots = 0;
+    const executor: Executor = {
+      capabilities: () => ({ supported: true, platform: 'darwin' }),
+      screenshot: async () => {
+        shots += 1;
+        return { pngBase64: 'AAAA', width: 1000, height: 500 };
+      },
+      move: async () => {},
+      click: async (x, y) => {
+        log.push(`click ${x},${y}`);
+      },
+      doubleClick: async () => {},
+      type: async (t) => {
+        log.push(`type ${t}`);
+      },
+      key: async (k) => {
+        log.push(`key ${k.join('+')}`);
+      },
+      scroll: async () => {},
+      describeUi: async () => [],
+      clickElement: async () => {},
+    };
+    const ctx = createToolContext({ audit: new InMemoryAuditSink(), requestApproval: async () => true });
+    const registry = new ToolRegistry().registerAll(createComputerTools(executor, { normalized: true, settleMs: 0 }));
+    await registry.execute('computer.screenshot', {}, ctx, policy);
+    const out = (await registry.execute(
+      'computer.do',
+      {
+        actions: [
+          { type: 'click', x: 500, y: 100 },
+          { type: 'type', text: 'lucio dalla' },
+          { type: 'key', keys: ['enter'] },
+        ],
+      },
+      ctx,
+      policy,
+    )) as { done?: number };
+    expect(log).toEqual(['click 500,50', 'type lucio dalla', 'key enter']);
+    expect(out.done).toBe(3);
+    expect(shots).toBe(2); // quello iniziale e uno solo dopo la sequenza
+  });
+});
+
 describe('@openmate/tools — overlay.*', () => {
   it('converte le coordinate dello screenshot nel monitor reale e disegna senza chiedere', async () => {
     const drawn: { items: unknown[]; clear: boolean }[] = [];

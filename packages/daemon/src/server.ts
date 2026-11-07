@@ -62,10 +62,12 @@ export function startHttpServer(daemon: Daemon, port: number) {
     return c.json({ ok: true });
   });
   app.post('/voice/transcribe', async (c) => {
-    const { audio } = (await c.req.json()) as { audio?: string };
+    // wake: l'audio inizia con "Hey Remi" (detto di fila con la domanda): torna solo la domanda
+    const { audio, wake } = (await c.req.json()) as { audio?: string; wake?: boolean };
     if (typeof audio !== 'string') return c.json({ ok: false, error: 'audio mancante' }, 400);
     try {
-      return c.json({ ok: true, text: await daemon.voice.transcribe(Buffer.from(audio, 'base64')) });
+      const out = await daemon.voice.transcribeQuestion(Buffer.from(audio, 'base64'), { wake: Boolean(wake) });
+      return c.json({ ok: true, ...out });
     } catch (err) {
       return c.json({ ok: false, error: err instanceof Error ? err.message : String(err) }, 503);
     }
