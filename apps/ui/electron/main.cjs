@@ -1291,8 +1291,29 @@ function speakParts(parts) {
 
 /* --- pannello di spiegazione in streaming: ogni passo arriva mentre il modello scrive --- */
 let panelVoiced = false;
+/** Con OPENMATE_UI_DEBUG il pannello ricevuto si salva com'è, per riprodurlo nel banco di prova. */
+let panelDump;
+
+function dumpPanel() {
+  if (!panelDump) return;
+  const dir = path.join(userData, 'debug', 'panels');
+  const file = path.join(dir, `panel-${panelDump.at}.json`);
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(file, JSON.stringify(panelDump, null, 1));
+    pointDebug(`pannello salvato: ${file}`);
+  } catch (err) {
+    pointDebug('pannello non salvato:', err.message);
+  }
+  panelDump = undefined;
+}
 
 function handlePanel(e) {
+  if (process.env.OPENMATE_UI_DEBUG) {
+    if (e.op === 'start') panelDump = { at: Date.now(), title: e.title, rows: e.rows, cols: e.cols, ownColors: e.ownColors, steps: [] };
+    else if (e.op === 'step' && panelDump) panelDump.steps.push({ say: e.say, svg: e.svg, marks: e.marks });
+    else if (e.op === 'end') dumpPanel();
+  }
   if (e.op === 'start') {
     // con la voce ogni passo si disegna mentre viene pronunciato; senza, a tempo di lettura
     panelVoiced = pointVoiceTurn && readConfig().voice?.tts !== 'off';
@@ -1301,7 +1322,7 @@ function handlePanel(e) {
     void ready.then(() => {
       if (!pointerWin) return;
       if (!pointerWin.isVisible()) pointerWin.showInactive();
-      sendPointer('pointer-panel-start', { title: e.title, voiced: panelVoiced });
+      sendPointer('pointer-panel-start', { title: e.title, voiced: panelVoiced, rows: e.rows, cols: e.cols, ownColors: e.ownColors });
     });
     clearTimeout(lingerTimer);
   } else if (e.op === 'say') {
@@ -1310,7 +1331,10 @@ function handlePanel(e) {
     if (panelVoiced) speakParts([{ text: e.say, step: e.index }]);
   } else if (e.op === 'step') {
     phase(`pannello: passo ${e.index + 1}`);
-    sendPointer('pointer-panel-step', { index: e.index, say: e.say, svg: e.svg });
+    // zone da cerchiare sullo schermo: da coordinate globali a quelle della lavagna
+    const wb = pointerWin?.getBounds();
+    const marks = wb && e.marks ? e.marks.map((m) => ({ ...m, x: m.x - wb.x, y: m.y - wb.y })) : [];
+    sendPointer('pointer-panel-step', { index: e.index, say: e.say, svg: e.svg, marks });
   } else if (e.op === 'end') {
     sendPointer('pointer-panel-end');
     if (!pointTurn) lingerTimer = setTimeout(hidePointer, POINT_LINGER_MS);

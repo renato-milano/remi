@@ -40,6 +40,7 @@ import {
   type ScheduleInfo,
   type ScreenFrame,
   type TaskInfo,
+  toScreen,
   fileTools,
   shellRunTool,
 } from '@openmate/tools';
@@ -271,7 +272,7 @@ export class Daemon {
       budget,
       audit: this.audit,
       requestApproval: (req) => this.requestApproval(req),
-      onEvent: (event) => this.emit(event),
+      onEvent: (event) => this.emit(this.toScreenMarks(event)),
     });
 
     this.scheduler = new Scheduler({
@@ -302,6 +303,18 @@ export class Daemon {
   onEvent(fn: (event: DaemonEvent) => void): () => void {
     this.subscribers.add(fn);
     return () => this.subscribers.delete(fn);
+  }
+
+  /** Le zone da cerchiare di un passo del pannello: dalle coordinate del modello a quelle globali dello schermo. */
+  private toScreenMarks(event: AgentEvent): AgentEvent {
+    if (event.kind !== 'panel' || event.op !== 'step' || !event.marks) return event;
+    const f = this.screenFrame;
+    if (!f) return { ...event, marks: undefined };
+    const marks = event.marks.map((m) => {
+      const s = toScreen({ type: 'highlight', x: m.x, y: m.y, w: m.w, h: m.h }, f, this.normalized);
+      return { x: s.x, y: s.y, w: s.w ?? 0, h: s.h ?? 0, ...(m.label ? { label: m.label } : {}) };
+    });
+    return { ...event, marks };
   }
 
   private emit(event: DaemonEvent): void {
@@ -627,7 +640,7 @@ function pointPrompt(
     '- APRIRE UN PANNELLO disegnato: quando serve spiegare un meccanismo, un processo, un concetto, un perché, ' +
     "o quando l'utente vuole capire meglio o più nel dettaglio (vedi sotto).\n" +
     '- Solo testo (1-3 frasi) se non serve disegnare nulla.\n' +
-    `Se ti chiedo di fare qualcosa, usa gli strumenti adatti.]\n\n${PANEL_GUIDE}`
+    `Se ti chiedo di fare qualcosa, usa gli strumenti adatti.]\n\n${panelGuide(coords)}`
   );
 }
 
@@ -635,23 +648,34 @@ function pointPrompt(
  * Formato del pannello di spiegazione: scritto nel testo, così arriva in streaming
  * e ogni passo si disegna (e si legge) mentre il modello scrive il successivo.
  */
-const PANEL_GUIDE = `[PANNELLO — una spiegazione disegnata a mano che si costruisce mentre parli, come alla lavagna.
+const panelGuide = (coords: string) => `[PANNELLO — una spiegazione disegnata a mano che si costruisce mentre parli, come alla lavagna.
 Scrivi SOLO questo, senza altro testo né blocchi di codice:
-<panel title="titolo breve">
+<panel title="titolo breve" rows="R" cols="C">
 <step><say>una o due frasi dette ad alta voce (max 35 parole)</say>
-<svg>elementi SVG di QUESTO passo</svg></step>
+<svg>elementi di QUESTO passo</svg></step>
 …altri passi…
 </panel>
 Regole:
 - Spiega DAVVERO, come un buon insegnante alla lavagna: qui la brevità delle altre risposte non vale. Il numero di passi segue l'argomento, non una regola fissa: un'idea semplice 2-3 passi, un meccanismo o un processo 4-6, un argomento ricco o una richiesta di approfondire 6-8. Non aggiungere passi di riempimento e non tagliare quelli che servono a capire.
 - Ogni passo AGGIUNGE elementi allo STESSO disegno: costruisci un unico schema che cresce, non disegni separati.
-- Area di disegno larga 600 (origine in alto a sinistra), alta 380, fino a 560 se i passi sono tanti. Lascia margini di 20. Il testo dentro l'svg è in italiano, font-size 15-22.
-- Disegna davvero il concetto, con una forma adatta a ciò che spieghi: diagrammi di flusso, sezioni di oggetti, assi e curve, cicli, confronti, linee del tempo, schemi di forze… Evita di ripetere sempre la stessa disposizione a riquadri.
-- Elementi ammessi: path, line, polyline, polygon, rect, circle, ellipse, text, g. SVG SNELLO: non scrivere stroke, stroke-width, font-family né fill="none" (sono già i valori predefiniti: tratto scuro, nessun riempimento). Per colorare usa SOLO class: b (blu), r (rosso), v (verde), g (giallo), k (grigio) sulle forme = riempimento pastello e bordo colorato; sui testi e sulle linee = colore di accento. Frecce: class="a" su path/line. Esempio: <rect class="b" x="40" y="60" width="140" height="50" rx="8"/><text class="r" x="110" y="90">Turbina</text>
-- Ogni passo con gli elementi che servono (di solito 4-14), ordinati come li disegneresti: prima le forme, poi le frecce, poi le scritte. Usa dettagli veri del concetto (nomi delle parti, valori, direzioni, relazioni), non segnaposto generici.
-- Spazio: le scritte non vanno MAI sopra linee o forme di un altro elemento; tienile ad almeno 10 da linee e bordi, mettile accanto a ciò che indicano, in zone libere.
-- Il testo deve stare DENTRO la sua forma: il font è a mano e largo, conta circa 10 di larghezza per carattere a font-size 16 (più margine). Scritte brevi.
-- Scrivi <say> PRIMA di <svg> in ogni passo.]`;
+- PRIMA di disegnare decidi la PIANTA di tutto il pannello, passi futuri compresi, e dichiarala in <panel>: C colonne (2-6) e R righe (3-8). La lavagna è larga 600 e alta 40+72·R; la cella "r,c" (da 1) va da x=20+(c-1)·560/C a y=20+(r-1)·72, larga 560/C e alta 72. Distribuisci gli elementi su TUTTA la pianta (niente zone vuote né ammassi), lasciando libere le celle dove passeranno frecce o disegni. Testi in italiano, font-size 15-22 (di default 17).
+- Spiega il MECCANISMO, cioè ciò che non si vede: come funziona dietro, cosa succede e perché. Non ridisegnare le parti visibili dello schermo (quelle cerchiale con <mark> mentre ne parli).
+- PRIMA scegli il TIPO di disegno:
+  • OGGETTO — com'è fatta o come funziona una cosa fisica (un motore, un organo, una macchina, un aereo, un attrezzo, un circuito): DISEGNA L'OGGETTO, non uno schema a blocchi. Una sezione o un profilo riconoscibile, con proporzioni verosimili, fatto di forme libere su gran parte della lavagna: nel primo passo il contorno (class="k"), poi in ogni passo le parti di cui parli, ognuna una forma chiusa con id e una <label for>; i flussi (aria, gas, sangue, corrente, forze) come frecce libere class="a" che attraversano il disegno nel verso giusto. Niente riquadri, al massimo 1-2 per un'aggiunta fuori dall'oggetto. Esempio di inizio: <path id="corpo" class="k" d="M40 150 C120 105 460 105 560 140 L560 230 C460 265 120 265 40 220 Z"/> <polygon id="fan" points="90,118 112,118 112,252 90,252"/> <label for="fan" side="top">Ventola</label> <path class="a" d="M10 185 L84 185"/>
+  • PROCESSO o CONCETTO — passaggi, cause ed effetti, sistemi software, idee astratte: schema con riquadri nella griglia e frecce agganciate. Anche qui scegli una forma adatta (flusso, ciclo, confronto, linea del tempo, gerarchia), non sempre la stessa fila di riquadri.
+- COLORI: la lavagna dà a ogni passo il suo colore (riquadri, frecce, parti disegnate senza class, numero del passo e segno sullo schermo): non scrivere class su riquadri e frecce; nei disegni di oggetti metti class="k" solo sul contorno o sulle parti neutre. Solo se il significato chiede un altro criterio (per gruppo: le parti dello stesso sistema; per confronto: prima/dopo, A contro B) scrivi colors="own" in <panel> e metti class su tutti i riquadri con un significato coerente. Classi: b (blu), r (rosso), v (verde), g (giallo), k (grigio); sulle forme = riempimento pastello e bordo colorato, su testi e linee = colore di accento. Non scrivere stroke, stroke-width, font-family né fill="none".
+- POCHI ELEMENTI: al massimo 6-7 riquadri o parti principali in tutto il pannello, testi di 1-3 parole, etichette delle frecce di UNA parola e solo se servono. Sigle, protocolli, formati e numeri di dettaglio vanno detti nella frase, non scritti nel disegno. La lavagna numera da sola i passi: non scrivere numeri di passo.
+- Elementi AGGANCIATI — usali per riquadri, frecce, etichette e icone: misure e collegamenti li calcola la lavagna, quindi sono sempre puliti.
+  <box id="mot" class="b" at="1,2">Motore</box> riquadro col suo testo, centrato nella cella "riga,colonna"; span="2x1" lo allarga a 2 colonne (o "1x2" a 2 righe). Il testo va a capo e si adatta alla cella: scrivi testi brevi (1-4 parole). Senza griglia: x,y = angolo in alto a sinistra.
+  <arrow from="mot" to="vol" label="coppia"/> freccia da bordo a bordo; from/to = un id oppure un punto "x,y"; bend="30" la curva (negativo dall'altra parte).
+  <label for="fan" side="top">Ventola</label> scritta accanto a un elemento con un trattino; side = top, bottom, left, right, oppure in (dentro).
+  <icon name="rete" at="2,1" size="36" class="b"/> icona al centro della cella (oppure x,y). Nomi: rete, doc, docs, ok, no, ingranaggio, persona, db, nuvola, lampadina, orologio, lucchetto, chip, fulmine, mondo, schermo, cartella, grafico, posta, cuore.
+  Metti id="…" (breve) anche sulle forme libere che vuoi collegare o etichettare. Collega ed etichetta solo elementi già scritti (in questo passo o prima).
+- Elementi LIBERI per i disegni di oggetti e le parti illustrate (sezioni, profili, curve, assi), in coordinate della lavagna (larga 600, alta 40+72·R): path, line, polyline, polygon, rect, circle, ellipse, text, g. Frecce libere: class="a" su path/line, solo dentro o attorno a un disegno, mai sopra i riquadri (per collegare riquadri usa <arrow>).
+- Ogni passo con gli elementi che servono (di solito 3-10), ordinati come li disegneresti: prima le forme, poi frecce ed etichette. Usa dettagli veri del concetto (nomi delle parti, valori, direzioni, relazioni), non segnaposto generici.
+- Spazio: fra due riquadri collegati da una freccia orizzontale lascia una cella vuota, è lo spazio della freccia e della sua etichetta (in verticale basta la riga successiva). Le scritte libere mai sopra linee o forme di un altro elemento.
+- SCHERMO: se un passo parla di qualcosa che si vede sullo schermo dell'utente (una riga di codice, un valore, un pulsante, una parte dell'immagine), cerchiala scrivendo nel passo, fuori dall'svg, <mark x="…" y="…" w="…" h="…" label="1-3 parole"/> (label facoltativa) col riquadro stretto di quella cosa nello screenshot (${coords}). Di preferenza cose piccole e precise (una parola, un numero, un pulsante); una zona più grande (un riquadro dell'app) solo se il passo parla proprio di quella; al massimo 1-2 per passo, e solo dove aiuta a collegare la spiegazione a ciò che l'utente guarda.
+- Scrivi <say> PRIMA di <svg> (e di <mark>) in ogni passo.]`;
 
 function buildBackend(config: OpenMateConfig, secrets?: Secrets): { backend: ReasoningBackend; vision: boolean } {
   // Modalità abbonamento Claude: riusa il login di Claude Code (nessuna API key).

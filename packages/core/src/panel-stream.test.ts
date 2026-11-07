@@ -55,6 +55,28 @@ describe('@openmate/core — PanelStream', () => {
     expect(events.map((e) => e.op)).toEqual(['start', 'say', 'step', 'end']);
   });
 
+  it('estrae i <mark> del passo (zone dello schermo) fuori dall\'svg', () => {
+    const { events } = run(
+      '<panel title="T"><step><say>Qui.</say><mark x="420" y="310" w="80" h="40" label="la chat"/><mark x="1" y="2"/>' +
+        '<svg><rect x="1" y="1" width="5" height="5"/></svg></step></panel>',
+      9,
+    );
+    const step = events.find((e) => e.op === 'step');
+    expect(step).toMatchObject({ marks: [{ x: 420, y: 310, w: 80, h: 40, label: 'la chat' }], svg: '<rect x="1" y="1" width="5" height="5"/>' });
+  });
+
+  it('senza <svg> il disegno è il resto del passo', () => {
+    const { events } = run('<panel title="T"><step><say>A.</say><mark x="1" y="1" w="2" h="2"/><box at="1,1">X</box></step></panel>', 4);
+    expect(events.find((e) => e.op === 'step')).toMatchObject({ svg: '<box at="1,1">X</box>', marks: [{ x: 1, y: 1, w: 2, h: 2 }] });
+  });
+
+  it('legge la griglia dichiarata in apertura', () => {
+    const { events } = run('<panel title="T" rows="5" cols="4"><step><say>A.</say><svg></svg></step></panel>', 6);
+    expect(events[0]).toEqual({ op: 'start', title: 'T', rows: 5, cols: 4 });
+    expect(run('<panel title="T" colors="own"></panel>', 50).events[0]).toEqual({ op: 'start', title: 'T', ownColors: true });
+    expect(run('<panel title="T" rows="99"></panel>', 50).events[0]).toEqual({ op: 'start', title: 'T' });
+  });
+
   it('testo senza pannello resta testo', () => {
     expect(run('Solo una risposta < 3 righe.', 4).plain).toBe('Solo una risposta < 3 righe.');
   });

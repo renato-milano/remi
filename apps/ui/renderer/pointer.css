@@ -1,3 +1,5 @@
+/* font a mano incluso (Virgil, di Excalidraw — SIL OFL, vedi fonts/Virgil-OFL.txt): stesso aspetto e misure su ogni sistema */
+@font-face{font-family:"Virgil";src:url("fonts/Virgil-Regular.woff2") format("woff2");font-display:block}
 :root{
   --alive:#5ef2a0; --alive-glow:rgba(94,242,160,.45);
   --ink:#eef3ee; --panel:rgba(16,22,19,.96);
@@ -5,6 +7,7 @@
   --mark:#ffbf5c; --mark-glow:rgba(255,191,92,.35);
   --font-ui:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
   --font-mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+  --font-hand:"Virgil","Chalkboard SE","Marker Felt","Comic Sans MS",cursive;
 }
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{width:100%;height:100%;background:transparent;overflow:hidden;font-family:var(--font-ui);
@@ -65,7 +68,7 @@ html,body{width:100%;height:100%;background:transparent;overflow:hidden;font-fam
   transform-origin:0 50%;transform:rotate(-40deg)}
 .ov-label .tag{left:24px;top:-44px}
 .ov-note{max-width:220px;padding:10px 12px;background:var(--note);color:var(--note-ink);border-radius:3px;
-  font:600 14px/1.35 "Marker Felt","Segoe Print","Comic Sans MS",cursive;transform:rotate(-2deg);
+  font:15px/1.35 var(--font-hand);transform:rotate(-2deg);
   box-shadow:0 10px 22px rgba(0,0,0,.35)}
 /* elementi vicino al bordo destro: etichette verso sinistra */
 .flip .tag{left:auto;right:24px}
@@ -77,12 +80,17 @@ html,body{width:100%;height:100%;background:transparent;overflow:hidden;font-fam
   background-image:radial-gradient(rgba(31,42,36,.06) 1px,transparent 1px);background-size:14px 14px}
 .panel .card-close{color:rgba(31,42,36,.45)}
 .panel .card-close:hover{background:rgba(31,42,36,.08);color:#1f2a24}
-.panel-q{font:italic 12.5px var(--font-ui);color:rgba(31,42,36,.55);padding-right:24px}
-.panel-q:empty{display:none}
-.panel-q:not(:empty){margin-bottom:6px}
-.panel-title{font:700 20px/1.2 "Chalkboard SE","Marker Felt","Comic Sans MS",cursive;margin:0 24px 12px 0}
+/* a che punto è la spiegazione: un pallino per passo, pieno quello in corso */
+.panel-dots{display:flex;gap:7px;min-height:22px;margin-bottom:8px;padding-right:28px}
+.panel-dots span{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;
+  font:500 11.5px var(--font-mono);color:#9aa39b;border:1.5px solid #c4cac3;transition:background .3s,color .3s}
+.panel-dots span.done{color:var(--c);border-color:var(--c)}
+.panel-dots span.on{background:var(--c);border-color:var(--c);color:#fff}
+.panel-title{font:400 22px/1.2 var(--font-hand);margin:0 24px 12px 0}
 .panel-svg{display:block;width:100%;height:auto;overflow:hidden} /* niente disegni sopra il titolo */
-.panel-svg text{font-family:"Chalkboard SE","Marker Felt","Comic Sans MS",cursive;font-size:17px}
+/* la dimensione di default non deve vincere sull'attributo font-size (scelto dal modello o da fitTexts) */
+.panel-svg text{font-family:var(--font-hand)}
+.panel-svg text:not([font-size]){font-size:17px}
 #panelDraw text:not([fill]){fill:#1f2a24}
 #panelDraw :is(path,line,polyline,polygon,rect,circle,ellipse):not([stroke]){stroke:#1f2a24}
 #panelDraw :is(path,line,polyline,polygon,rect,circle,ellipse):not([stroke-width]){stroke-width:2.5}
@@ -94,17 +102,45 @@ html,body{width:100%;height:100%;background:transparent;overflow:hidden;font-fam
 #panelDraw .v:is(path,polygon,rect,circle,ellipse){fill:#d9f4e2;stroke:#3f9a66}
 #panelDraw .g:is(path,polygon,rect,circle,ellipse){fill:#fff1bf;stroke:#c99a2e}
 #panelDraw .k:is(path,polygon,rect,circle,ellipse){fill:#ecebe6;stroke:#8c8a80}
+#panelDraw .p:is(path,polygon,rect,circle,ellipse){fill:#ece3fb;stroke:#7a5cc2}
 #panelDraw :is(line,polyline).b{stroke:#4a78c2}
 #panelDraw :is(line,polyline).r{stroke:#c9584a}
 #panelDraw :is(line,polyline).v{stroke:#3f9a66}
 #panelDraw :is(line,polyline).g{stroke:#c99a2e}
 #panelDraw :is(line,polyline).k{stroke:#8c8a80}
+#panelDraw :is(line,polyline).p{stroke:#7a5cc2}
 #panelDraw text.b{fill:#4a78c2}
 #panelDraw text.r{fill:#c9584a}
 #panelDraw text.v{fill:#3f9a66}
 #panelDraw text.g{fill:#c99a2e}
 #panelDraw text.k{fill:#8c8a80}
+#panelDraw text.p{fill:#7a5cc2}
 #panelDraw .a{marker-end:url(#arrow)}
+#panelDraw .a.b{marker-end:url(#arrow-b)}
+#panelDraw .a.g{marker-end:url(#arrow-g)}
+#panelDraw .a.r{marker-end:url(#arrow-r)}
+#panelDraw .a.v{marker-end:url(#arrow-v)}
+#panelDraw .a.k{marker-end:url(#arrow-k)}
+#panelDraw .a.p{marker-end:url(#arrow-p)}
+/* una freccia curva non si riempie anche se ha il colore di una forma */
+#panelDraw path.a{fill:none}
+/* icone: solo tratto */
+#panelDraw .ico path{fill:none}
+/* la penna: compare mentre disegna, poi sparisce */
+.pen{opacity:0;transition:opacity .35s;pointer-events:none}
+.pen.on{opacity:1}
+.pen path{fill:var(--alive);stroke:#1f2a24;stroke-width:1.4;stroke-linejoin:round}
+
+/* segni sullo schermo: solo quelli del passo in corso, nel colore e col numero del passo */
+.marks{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible}
+.marks .veil{fill:rgba(8,10,14,.28);animation:veil .5s ease-out both}
+@keyframes veil{from{opacity:0}to{opacity:1}}
+.marks .mk{fill:none;stroke-width:3.5;stroke-linecap:round;stroke-linejoin:round;filter:drop-shadow(0 0 6px rgba(0,0,0,.45))}
+.marks .badge text,.marks .pill text{font:600 13px var(--font-ui)}
+.marks .badge text{font-family:var(--font-mono);font-weight:500}
+/* numeri dei passi nel disegno */
+#panelBadges text{font:500 13px var(--font-mono)}
+
 /* alone color carta: una linea che passa sotto una scritta non la copre */
 #panelDraw text{paint-order:stroke;stroke:#fbf8f1;stroke-width:5px;stroke-linejoin:round}
 
