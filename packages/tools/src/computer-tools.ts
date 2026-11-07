@@ -1,6 +1,13 @@
 import type { Executor, Screenshot } from '@openmate/computer';
 import { z } from 'zod';
+import { NORMALIZED } from './overlay-tools.js';
 import { type Tool, type ToolContext, defineTool } from './types.js';
+
+export interface ComputerToolsOptions {
+  onShot?: (shot: Screenshot) => void;
+  /** Il modello usa coordinate normalizzate 0-1000 invece dei pixel dello screenshot (Gemini). */
+  normalized?: boolean;
+}
 
 /**
  * Tool `computer.*` (vision-only, cross-platform via l'executor). Ogni azione
@@ -9,9 +16,11 @@ import { type Tool, type ToolContext, defineTool } from './types.js';
  * molti provider). Il risultato del tool è un testo leggero. Tutti passano dal
  * gate di sessione (approvazione una volta per ciclo — vedi executeGated).
  */
-export function createComputerTools(executor: Executor, opts: { onShot?: (shot: Screenshot) => void } = {}): Tool[] {
+export function createComputerTools(executor: Executor, opts: ComputerToolsOptions = {}): Tool[] {
+  let last: Screenshot | undefined;
   const capture = async (ctx: ToolContext) => {
     const s = await executor.screenshot();
+    last = s;
     opts.onShot?.(s); // es. l'overlay disegna nello spazio dell'ultimo screenshot
     ctx.emitImage?.(s.pngBase64);
     return { ok: true, width: s.width, height: s.height };
@@ -19,6 +28,18 @@ export function createComputerTools(executor: Executor, opts: { onShot?: (shot: 
 
   // nota: schema con un campo opzionale (non vuoto) → l'input è sempre un oggetto,
   // così Anthropic non rifiuta il tool_use ("Input should be a valid dictionary").
+  const unit = opts.normalized
+    ? "coordinate NORMALIZZATE 0-1000 sull'ultimo screenshot (x da sinistra, y dall'alto)"
+    : "pixel dell'ultimo screenshot";
+  /** Dalle coordinate del modello ai pixel dell'ultimo screenshot (lo spazio dell'executor). */
+  const toPixels = (x: number, y: number): { x: number; y: number } | undefined => {
+    if (!opts.normalized) return { x, y };
+    if (!last) return undefined;
+    return { x: Math.round((x / NORMALIZED) * last.width), y: Math.round((y / NORMALIZED) * last.height) };
+  };
+  const noShot = { ok: false, error: 'Non ho ancora visto lo schermo: fai prima computer.screenshot.' };
+  const point = z.object({ x: z.number(), y: z.number() });
+
   const noArgs = z.object({ note: z.string().optional().describe('facoltativo, ignorato') });
 
   const screenshot = defineTool({
@@ -45,36 +66,42 @@ export function createComputerTools(executor: Executor, opts: { onShot?: (shot: 
 
   const move = defineTool({
     name: 'computer.move',
-    description: 'Sposta il puntatore a (x,y) nei pixel dell’ultimo screenshot.',
-    parameters: z.object({ x: z.number(), y: z.number() }),
+    description: `Sposta il puntatore a (x,y), in ${unit}.`,
+    parameters: point,
     permission: 'dangerous',
     explain: () => ({ text: 'muovere il puntatore', level: 'dangerous', known: true }),
     execute: async (i, ctx) => {
-      await executor.move(i.x, i.y);
+      const p = toPixels(i.x, i.y);
+      if (!p) return noShot;
+      await executor.move(p.x, p.y);
       return capture(ctx);
     },
   });
 
   const click = defineTool({
     name: 'computer.click',
-    description: 'Clicca a (x,y) nei pixel dell’ultimo screenshot.',
-    parameters: z.object({ x: z.number(), y: z.number(), button: z.enum(['left', 'right', 'middle']).optional() }),
+    description: `Clicca a (x,y), in ${unit}.`,
+    parameters: point.extend({ button: z.enum(['left', 'right', 'middle']).optional() }),
     permission: 'dangerous',
     explain: () => ({ text: 'cliccare sullo schermo', level: 'dangerous', known: true }),
     execute: async (i, ctx) => {
-      await executor.click(i.x, i.y, i.button);
+      const p = toPixels(i.x, i.y);
+      if (!p) return noShot;
+      await executor.click(p.x, p.y, i.button);
       return capture(ctx);
     },
   });
 
   const doubleClick = defineTool({
     name: 'computer.double_click',
-    description: 'Doppio click a (x,y).',
-    parameters: z.object({ x: z.number(), y: z.number(), button: z.enum(['left', 'right', 'middle']).optional() }),
+    description: `Doppio click a (x,y), in ${unit}.`,
+    parameters: point.extend({ button: z.enum(['left', 'right', 'middle']).optional() }),
     permission: 'dangerous',
     explain: () => ({ text: 'fare doppio click sullo schermo', level: 'dangerous', known: true }),
     execute: async (i, ctx) => {
-      await executor.doubleClick(i.x, i.y, i.button);
+      const p = toPixels(i.x, i.y);
+      if (!p) return noShot;
+      await executor.doubleClick(p.x, p.y, i.button);
       return capture(ctx);
     },
   });

@@ -546,6 +546,37 @@ describe('@openmate/tools — computer.* gate di sessione', () => {
   });
 });
 
+describe('@openmate/tools — computer.* in coordinate normalizzate', () => {
+  it('con normalized converte 0-1000 nei pixel dell\'ultimo screenshot', async () => {
+    const clicks: [number, number][] = [];
+    const executor: Executor = {
+      capabilities: () => ({ supported: true, platform: 'darwin' }),
+      screenshot: async () => ({ pngBase64: 'AAAA', width: 1366, height: 768 }),
+      move: async () => {},
+      click: async (x, y) => {
+        clicks.push([x, y]);
+      },
+      doubleClick: async () => {},
+      type: async () => {},
+      key: async () => {},
+      scroll: async () => {},
+      describeUi: async () => [],
+      clickElement: async () => {},
+    };
+    const ctx = createToolContext({ audit: new InMemoryAuditSink(), requestApproval: async () => true });
+    const registry = new ToolRegistry().registerAll(createComputerTools(executor, { normalized: true }));
+
+    // senza uno screenshot non sa a quanti pixel corrisponde 1000: non clicca
+    const before = (await registry.execute('computer.click', { x: 500, y: 500 }, ctx, policy)) as { ok?: boolean };
+    expect(before.ok).toBe(false);
+    expect(clicks).toEqual([]);
+
+    await registry.execute('computer.screenshot', {}, ctx, policy);
+    await registry.execute('computer.click', { x: 500, y: 250 }, ctx, policy);
+    expect(clicks).toEqual([[683, 192]]);
+  });
+});
+
 describe('@openmate/tools — overlay.*', () => {
   it('converte le coordinate dello screenshot nel monitor reale e disegna senza chiedere', async () => {
     const drawn: { items: unknown[]; clear: boolean }[] = [];

@@ -194,6 +194,10 @@ export class Daemon {
         }),
       );
 
+    // I Gemini localizzano bene in 0-1000 e male in pixel (misurato: ~2 px contro ~300 px):
+    // vale per l'overlay e per i click del computer-use.
+    this.normalized = usesNormalizedCoords(opts.config.provider.model);
+
     // Computer-use: solo se abilitato in config e supportato dalla piattaforma.
     this.computerUse = { enabled: false };
     if (opts.config.computerUse.enabled) {
@@ -203,6 +207,7 @@ export class Daemon {
       if (caps.supported) {
         this.registry.registerAll(
           createComputerTools(executor, {
+            normalized: this.normalized,
             // computer.* cattura il monitor principale (origine 0,0)
             onShot: (shot) => {
               this.screenFrame = {
@@ -220,8 +225,6 @@ export class Daemon {
     }
 
     // Overlay: l'agente disegna indicazioni sullo schermo (solo visualizzazione).
-    // I Gemini localizzano bene in 0-1000 e male in pixel (misurato: ~2 px contro ~300 px).
-    this.normalized = usesNormalizedCoords(opts.config.provider.model);
     this.registry.registerAll(
       createOverlayTools({
         normalized: this.normalized,
