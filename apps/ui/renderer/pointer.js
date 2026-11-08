@@ -20,6 +20,7 @@ const BOX_W = 380;
 const GAP = 22;
 let at = { x: 0, y: 0 };
 let focusBox; // zona indicata (se l'utente ha circoscritto un'area)
+let panelHome; // dove stava la lavagna su cui l'utente ha chiesto: la nuova parte da lì
 
 /** Posiziona un box vicino al punto indicato, restando dentro lo schermo. */
 function place(el, p) {
@@ -434,25 +435,72 @@ function clearPanel() {
   stopPen();
   pen.pos = undefined; // un nuovo pannello: la penna compare sul primo tratto
   panel.classList.add('hidden');
+  panel.style.left = ''; // un nuovo pannello sceglie il posto da capo
   panelDraw.replaceChildren();
   panelBadges.replaceChildren();
   marksSvg.replaceChildren();
   panelSvg.setAttribute('viewBox', '0 0 600 380');
 }
 
-/** Accanto alla zona indicata (o al punto), dal lato con più spazio, senza coprirla. */
-function placePanel() {
+/** Area in comune fra due rettangoli {x, y, w, h}. */
+function overlapArea(a, b) {
+  const w = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
+  const h = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+  return w > 0 && h > 0 ? w * h : 0;
+}
+
+/** Ingombro di un segno sullo schermo: ovale, numero ed eventuale etichetta. */
+function markRect(m) {
+  const pad = 30;
+  const label = m.label ? m.label.length * 8 + 48 : 0;
+  return { x: m.x - pad, y: m.y - pad, w: m.w + pad * 2 + label, h: m.h + pad * 2 };
+}
+
+/**
+ * Dove mettere il pannello: mai sopra i segni del passo in corso (poi quelli dei passi già
+ * arrivati), il meno possibile sopra la zona indicata, vicino a lei. Resta dov'è se lì va
+ * già bene, così non salta da un lato all'altro a ogni passo.
+ */
+function placePanel(marks = []) {
   const vw = window.innerWidth;
   const vh = window.innerHeight;
   const h = panel.offsetHeight || 300;
-  const box = focusBox || { x: at.x - 30, y: at.y, w: 60, h: 0 };
-  const roomRight = vw - (box.x + box.w);
   const pw = panelWidth();
-  let x = roomRight >= box.x ? box.x + box.w + 24 : box.x - 24 - pw;
-  x = Math.max(16, Math.min(vw - pw - 16, x));
-  const y = Math.max(16, Math.min(vh - h - 16, box.y + box.h / 2 - h / 2));
-  panel.style.left = `${x}px`;
-  panel.style.top = `${y}px`;
+  const M = 16;
+  const box = focusBox || { x: at.x - 30, y: at.y, w: 60, h: 0 };
+  const now = marks.map(markRect);
+  const later = panelState.steps.flatMap((s, k) => (s && k > panelState.drawn ? s.marks || [] : [])).map(markRect);
+  const clampX = (x) => Math.max(M, Math.min(vw - pw - M, x));
+  const clampY = (y) => Math.max(M, Math.min(vh - h - M, y));
+  const xs = [box.x + box.w + 24, box.x - 24 - pw, M, vw - pw - M, box.x + box.w / 2 - pw / 2];
+  const ys = [box.y + box.h / 2 - h / 2, box.y - 24 - h, box.y + box.h + 24, M, vh - h - M];
+  const cands = [];
+  for (const x of xs) for (const y of ys) cands.push({ x: clampX(x), y: clampY(y) });
+  const cur = panel.style.left ? { x: parseFloat(panel.style.left), y: parseFloat(panel.style.top) } : undefined;
+  if (cur) cands.unshift({ x: clampX(cur.x), y: clampY(cur.y) });
+  // zona che riempie lo schermo (es. finestra a tutto schermo): coprirla è inevitabile, meglio sul bordo destro
+  const huge = pw + 48 > Math.max(box.x, vw - box.x - box.w) && h + 48 > Math.max(box.y, vh - box.y - box.h);
+  const cx = huge ? vw : box.x + box.w / 2;
+  const cy = box.y + box.h / 2;
+  const score = (c) => {
+    const r = { x: c.x, y: c.y, w: pw, h };
+    let s = 0;
+    for (const m of now) s += overlapArea(r, m) * 50;
+    for (const m of later) s += overlapArea(r, m) * 5;
+    s += overlapArea(r, box);
+    // a parità, accanto alla zona (meglio di fianco che sopra o sotto); spostarsi costa un poco
+    s += Math.hypot(c.x + pw / 2 - cx, (c.y + h / 2 - cy) * 2) * 20;
+    if (cur && (Math.abs(c.x - cur.x) > 2 || Math.abs(c.y - cur.y) > 2)) s += 40000;
+    return s;
+  };
+  let best = cands[0];
+  let bestScore = score(best);
+  for (const c of cands.slice(1)) {
+    const s = score(c);
+    if (s < bestScore) [best, bestScore] = [c, s];
+  }
+  panel.style.left = `${best.x}px`;
+  panel.style.top = `${best.y}px`;
 }
 
 /**
@@ -1458,7 +1506,7 @@ function drawStep(i, ms) {
   panelState.drawn = i;
   const items = buildStep(step, i);
   fitPanel();
-  placePanel();
+  placePanel(step.marks);
   refreshProgress(i);
   animateStep(items, ms, renderMarks(step.marks, i, step.ink));
 }
@@ -1532,6 +1580,11 @@ bridge.onPanelStart(({ title, voiced, rows, cols, ownColors }) => {
   panelTitle.textContent = title;
   panelState.voiced = voiced;
   panel.classList.remove('hidden');
+  if (panelHome) {
+    panel.style.left = `${panelHome.x}px`;
+    panel.style.top = `${panelHome.y}px`;
+    panelHome = undefined;
+  }
   placePanel();
 });
 
@@ -1554,7 +1607,40 @@ bridge.onPanelEnd(() => {
 // voce non disponibile per un passo: disegnalo comunque
 bridge.onStep((i) => drawStep(i, sayMs(panelState.steps[i]?.say)));
 
+/*
+ * Domande sulla lavagna: se l'utente preme il tasto col mouse sopra il pannello, il processo
+ * principale lo chiede qui (boardInfo) e lo "ferma" (holdBoard) prima dello screenshot: il
+ * pannello resta visibile, finito di disegnare e muto; via segni, velo e scheda.
+ */
+// eslint-disable-next-line no-unused-vars -- chiamate da main.cjs con executeJavaScript
+function boardInfo() {
+  if (panel.classList.contains('hidden')) return null;
+  const r = panel.getBoundingClientRect();
+  const steps = panelState.steps.slice(0, panelState.drawn + 1).map((s) => s?.say || '');
+  return { box: { x: r.left, y: r.top, w: r.width, h: r.height }, title: panelTitle.textContent || '', steps };
+}
+
+// eslint-disable-next-line no-unused-vars
+function holdBoard() {
+  clearTimeout(panelState.timer);
+  panelState.want = undefined;
+  panelState.steps.length = panelState.drawn + 1; // i passi non ancora mostrati non arrivano più
+  for (const a of panelDraw.getAnimations({ subtree: true })) a.finish();
+  stopPen();
+  remiCursor.classList.add('hidden'); // niente dissolvenza: non deve finire nello screenshot
+  stopSpeaking();
+  marksSvg.replaceChildren();
+  endTrail();
+  clearDrawings();
+  card.classList.add('hidden');
+  anchor.classList.add('hidden');
+  panel.style.transition = 'none'; // nessuno spostamento a metà screenshot
+  return true;
+}
+
 function reset() {
+  panel.style.transition = '';
+  remiCursor.classList.remove('hidden');
   clearPanel();
   stopSpeaking();
   endTrail();
@@ -1576,6 +1662,7 @@ bridge.onAsk((p) => {
   reset();
   at = p;
   focusBox = p.box;
+  panelHome = p.panelAt;
   anchor.style.left = `${p.x}px`;
   anchor.style.top = `${p.y}px`;
   anchor.classList.toggle('hidden', Boolean(p.area));
@@ -1609,6 +1696,8 @@ bridge.onAnchor((p) => {
   reset();
   at = p;
   focusBox = p.box;
+  // domanda su una lavagna: la nuova prende il suo posto (se lì non copre nulla)
+  panelHome = p.panelAt;
   anchor.style.left = `${p.x}px`;
   anchor.style.top = `${p.y}px`;
   anchor.classList.toggle('hidden', Boolean(p.area));
