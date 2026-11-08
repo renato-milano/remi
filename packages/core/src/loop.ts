@@ -10,6 +10,8 @@ import {
   createToolContext,
   wireName,
 } from '@openmate/tools';
+import { SCENE_GUIDE, SceneStream, type SceneStreamEvent } from '@openmate/scene3d';
+import { detailScene } from './scene-detail.js';
 import { PanelStream, type PanelStreamEvent } from './panel-stream.js';
 import type { Task, TaskStore } from './task-store.js';
 import type { AgentEvent, AgentState, CycleResult, Trigger } from './types.js';
@@ -24,6 +26,8 @@ export interface CognitiveLoopOptions {
   requestApproval: (req: ApprovalRequest) => Promise<boolean>;
   audit?: AuditSink;
   onEvent?: (event: AgentEvent) => void;
+  /** Dettaglio dei modelli 3D in altre chiamate (default sì; false nei test). */
+  sceneDetail?: boolean;
 }
 
 /**
@@ -34,6 +38,8 @@ export interface CognitiveLoopOptions {
 export class CognitiveLoop {
   private state: AgentState = { status: 'idle' };
   private readonly audit: AuditSink;
+  /** Dettagli 3D in corso (si annullano quando arriva un altro modello). */
+  private detailAbort?: AbortController;
   /** Grant di sessione (es. 'browser'): persistono tra i cicli, per l'intera
    *  vita del daemon → il browser si approva una volta, non a ogni messaggio. */
   private readonly sessionGrants = new Set<string>();
@@ -123,6 +129,18 @@ export class CognitiveLoop {
     const emitPanel = (events: PanelStreamEvent[]) => {
       for (const e of events) this.opts.onEvent?.({ kind: 'panel', ...e });
     };
+    // modello 3D scritto nel testo: sempre attivo, le parti si costruiscono mentre arrivano
+    const scene = new SceneStream();
+    // la fine del modello (con il JSON scritto): può arrivare a metà testo, non solo alla fine
+    let sceneEnd: Extract<SceneStreamEvent, { op: 'end' }> | undefined;
+    const emitScene = (events: SceneStreamEvent[]) => {
+      for (const e of events) {
+        if (e.op === 'end') sceneEnd = e;
+        this.opts.onEvent?.({ kind: 'scene3d', ...e });
+      }
+    };
+    // chiedere un modello 3D vuol dire una risposta lunga: ragionamento basso, così le parti arrivano subito
+    const lowEffort = trigger.kind === 'user_message' && (Boolean(trigger.fast) || wants3d(trigger.content));
     const flush = () => {
       const seg = pending.trim();
       pending = '';
@@ -137,7 +155,7 @@ export class CognitiveLoop {
         budget: this.opts.budget,
         signal: opts.signal,
         // turni interattivi: ragionamento basso e niente secondo giro dopo l'overlay
-        fast: trigger.kind === 'user_message' && trigger.fast,
+        fast: lowEffort,
         finalTools: trigger.kind === 'user_message' && trigger.fast ? OVERLAY_TOOLS : undefined,
         takeImage: () => {
           const v = imageBuffer.current;
@@ -147,10 +165,14 @@ export class CognitiveLoop {
       })) {
         switch (ev.type) {
           case 'text-delta': {
-            const plain = panel ? panel.feed(ev.text) : { text: ev.text, events: [] };
+            const outside = scene.feed(ev.text);
+            const plain = panel ? panel.feed(outside.text) : { text: outside.text, events: [] };
             pending += plain.text;
             text += plain.text;
             emitPanel(plain.events);
+            // la frase prima del modello esce subito: Remi parla mentre le parti compaiono
+            if (outside.events.some((e) => e.op === 'start')) flush();
+            emitScene(outside.events);
             break;
           }
           case 'tool-call': {
@@ -182,6 +204,28 @@ export class CognitiveLoop {
       else errorMsg = err instanceof Error ? err.message : String(err);
     }
     if (opts.signal?.aborted) interrupted = true;
+    {
+      const rest = scene.end();
+      emitScene(rest.events);
+      // modello finito: le parti spiegate si dettagliano in altre chiamate, in parallelo e
+      // senza far aspettare il turno (un nuovo modello annulla i dettagli del precedente)
+      const end = sceneEnd;
+      if (end?.source && end.nodes > 1 && !interrupted && this.opts.sceneDetail !== false) {
+        this.detailAbort?.abort();
+        const abort = new AbortController();
+        this.detailAbort = abort;
+        void detailScene({
+          backend: this.opts.backend,
+          source: end.source,
+          signal: abort.signal,
+          emit: (e) => this.opts.onEvent?.({ kind: 'scene3d', ...e }),
+        });
+      }
+      const plain = panel ? panel.feed(rest.text) : { text: rest.text, events: [] };
+      pending += plain.text;
+      text += plain.text;
+      emitPanel(plain.events);
+    }
     if (panel) {
       const rest = panel.end();
       pending += rest.text;
@@ -241,7 +285,9 @@ export class CognitiveLoop {
         // la domanda compatta (non il prompt con le guide) e, se c'era, il pannello disegnato:
         // così il turno successivo ("dimmi di più") sa da dove riprendere
         this.history.push({ role: 'user', content: trigger.historyText ?? userText });
-        const drawn = panel?.used ? `[Ho disegnato un pannello: «${panel.title}»] ` : '';
+        const drawn =
+          (panel?.used ? `[Ho disegnato un pannello: «${panel.title}»] ` : '') +
+          (scene.used ? `[Ho mostrato un modello 3D: «${scene.title}», ${scene.nodes} parti] ` : '');
         if (finalText) this.history.push({ role: 'assistant', content: `${drawn}${finalText}` });
       } else if (finalText) {
         // heartbeat/cron che produce un messaggio proattivo: resta nel dialogo
@@ -259,6 +305,13 @@ export class CognitiveLoop {
 
 /** Tool di sola visualizzazione: nei turni rapidi non richiedono un passo successivo. */
 const OVERLAY_TOOLS = ['overlay.draw', 'overlay.clear'].map(wireName);
+
+/** La richiesta chiede un modello 3D, o di vedere un oggetto funzionare in movimento. */
+export function wants3d(text: string): boolean {
+  return /\b3\s?d\b|tridimensional|modell(?:o|ino) da (?:girare|ruotare)|in movimento|mentre (?:gira|girano|funziona|lavora)|come (?:si muov|gira|girano)/i.test(
+    text,
+  );
+}
 
 /** Il campo `answer` di overlay.draw, se presente. */
 function toolAnswer(input: unknown): string {
@@ -328,7 +381,7 @@ function buildSystem(
   task?: Task,
   caps: { computer?: boolean; browser?: boolean } = {},
 ): string {
-  let base = `Sei un agente personale autonomo che vive sul dispositivo dell'utente.\n\n## Persona\n${persona}\n\n## Utente\n${user}\n\n## Stile\n${STYLE}\n\n${AUTONOMY_GUIDE}\n\n${PROJECT_GUIDE}\n\n${WIKI_GUIDE}`;
+  let base = `Sei un agente personale autonomo che vive sul dispositivo dell'utente.\n\n## Persona\n${persona}\n\n## Utente\n${user}\n\n## Stile\n${STYLE}\n\n${AUTONOMY_GUIDE}\n\n${PROJECT_GUIDE}\n\n${WIKI_GUIDE}\n\n${SCENE_GUIDE}`;
   if (caps.browser) base += `\n\n${BROWSER_GUIDE}`;
   if (caps.computer) base += `\n\n${COMPUTER_GUIDE}`;
   return task ? `${base}\n\n## Task attivo\n${task.title}` : base;

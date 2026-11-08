@@ -23,6 +23,21 @@ function loadNut(): Promise<Nut> {
   return nutPromise;
 }
 
+/**
+ * Chiede all'app di togliere di mezzo le proprie finestre sopra lo schermo (modello 3D,
+ * lavagna cliccabile) prima di un'azione o di uno screenshot: coprirebbero la pagina e
+ * si prenderebbero i clic. Senza l'app (OPENMATE_SHOT_URL assente) non fa nulla.
+ */
+async function clearOverlays(): Promise<void> {
+  const shotUrl = process.env.OPENMATE_SHOT_URL;
+  if (!shotUrl) return;
+  try {
+    await fetch(shotUrl.replace(/\/shot$/, '/overlays-off'), { signal: AbortSignal.timeout(500) });
+  } catch {
+    /* app non raggiungibile: si prosegue comunque */
+  }
+}
+
 /** Larghezza e altezza di un PNG lette dall'intestazione (IHDR), senza decodificarlo. */
 function pngSize(buf: Buffer): { width: number; height: number } | undefined {
   if (buf.length < 24 || buf.toString('ascii', 12, 16) !== 'IHDR') return undefined;
@@ -75,6 +90,7 @@ export class NutExecutor implements Executor {
   }
 
   async clickElement(index: number): Promise<void> {
+    await clearOverlays();
     const el = this.lastElements[index];
     if (!el) throw new Error(`elemento ${index} non trovato (usa prima list_elements)`);
     const nut = await loadNut();
@@ -86,6 +102,7 @@ export class NutExecutor implements Executor {
   }
 
   async screenshot(): Promise<Screenshot> {
+    await clearOverlays();
     const nut = await loadNut();
     const { Jimp } = await import('jimp');
     // lo spazio coordinate di input resta quello di nut.js (per mouse/tastiera)
@@ -139,28 +156,33 @@ export class NutExecutor implements Executor {
   }
 
   async move(x: number, y: number): Promise<void> {
+    await clearOverlays();
     const nut = await loadNut();
     await nut.mouse.setPosition(await this.point(x, y));
   }
 
   async click(x: number, y: number, button: MouseButton = 'left'): Promise<void> {
+    await clearOverlays();
     const nut = await loadNut();
     await nut.mouse.setPosition(await this.point(x, y));
     await nut.mouse.click(this.button(nut, button));
   }
 
   async doubleClick(x: number, y: number, button: MouseButton = 'left'): Promise<void> {
+    await clearOverlays();
     const nut = await loadNut();
     await nut.mouse.setPosition(await this.point(x, y));
     await nut.mouse.doubleClick(this.button(nut, button));
   }
 
   async type(text: string): Promise<void> {
+    await clearOverlays();
     const nut = await loadNut();
     await nut.keyboard.type(text);
   }
 
   async key(keys: string[]): Promise<void> {
+    await clearOverlays();
     const nut = await loadNut();
     const K = nut.Key as unknown as Record<string, number>;
     const resolved = keys.map((k) => resolveKey(K, k)).filter((v): v is number => v !== undefined);
@@ -170,6 +192,7 @@ export class NutExecutor implements Executor {
   }
 
   async scroll(dx: number, dy: number): Promise<void> {
+    await clearOverlays();
     const nut = await loadNut();
     if (dy > 0) await nut.mouse.scrollDown(dy);
     else if (dy < 0) await nut.mouse.scrollUp(-dy);

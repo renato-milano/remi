@@ -1,4 +1,5 @@
 import type { TokenUsage } from '@openmate/llm';
+import type { SceneDetailEvent, SceneStreamEvent } from '@openmate/scene3d';
 import type { PanelStreamEvent } from './panel-stream.js';
 
 export type AgentStatus = 'idle' | 'thinking' | 'acting' | 'sleeping' | 'waiting_approval';
@@ -37,7 +38,9 @@ export type AgentEvent =
   | { kind: 'message'; role: 'agent'; content: string; channel?: 'panel' }
   | { kind: 'action'; summary: string }
   /** Pannello di spiegazione in streaming (vedi panel-stream.ts). */
-  | ({ kind: 'panel' } & PanelStreamEvent);
+  | ({ kind: 'panel' } & PanelStreamEvent)
+  /** Modello 3D in streaming (vedi @openmate/scene3d). */
+  | ({ kind: 'scene3d' } & (SceneStreamEvent | SceneDetailEvent));
 
 export interface CycleResult {
   taskId?: string;

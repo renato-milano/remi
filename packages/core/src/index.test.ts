@@ -6,7 +6,7 @@ import type { ReasoningBackend, ReasoningEvent, ReasoningInput } from '@openmate
 import { type MemorySystem, createMemory } from '@openmate/memory';
 import { type AutonomyPolicy, ToolRegistry, createMemoryTools, createOverlayTools, shellRunTool } from '@openmate/tools';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { CognitiveLoop, TaskStore } from './index.js';
+import { CognitiveLoop, TaskStore, wants3d } from './index.js';
 import type { AgentEvent } from './index.js';
 
 const policy: AutonomyPolicy = { shell: { allow: ['echo'], deny: [] }, files: { allow: [] } };
@@ -238,5 +238,62 @@ describe('@openmate/core — cronologia dei turni "indica"', () => {
     const history = backend.calls[1];
     expect(history[0]).toEqual({ role: 'user', content: 'spiegami come funziona [indicando un punto sullo schermo]' });
     expect(history[1]).toEqual({ role: 'assistant', content: '[Ho disegnato un pannello: «Come vola»] Spinge giù.' });
+  });
+});
+
+describe('@openmate/core — modello 3D nella risposta', () => {
+  it('toglie il blocco dal testo, emette le parti e lo ricorda nella cronologia', async () => {
+    const reply =
+      'Eccolo, guarda le pale.<scene3d>{"version":1,"title":"Ventola","materials":{"m":{"color":"#888888"}},' +
+      '"nodes":[{"shape":"cylinder","radius":0.3,"height":0.2,"material":"m"},' +
+      '{"shape":"rotor","axis":"y","count":5,"inner":0.3,"outer":2,"width":0.4,"material":"m"}]}</scene3d>';
+    const inputs: ReasoningInput[] = [];
+    const backend: ReasoningBackend = {
+      id: 'chunks',
+      async *run(input) {
+        inputs.push(input);
+        for (let i = 0; i < reply.length; i += 9) yield { type: 'text-delta', text: reply.slice(i, i + 9) };
+        yield { type: 'finish', finishReason: 'stop', usage: {} };
+      },
+    };
+    const events: AgentEvent[] = [];
+    const loop = new CognitiveLoop({
+      backend,
+      registry: registry(),
+      memory: mem,
+      tasks,
+      policy,
+      budget: { maxSteps: 4 },
+      requestApproval: async () => true,
+      onEvent: (e) => events.push(e),
+    });
+    const result = await loop.runCycle({ kind: 'user_message', content: 'mostrami una ventola in 3D' });
+
+    expect(inputs[0].fast).toBe(true); // ragionamento basso: le parti arrivano subito
+    expect(inputs[0].system).toContain('<scene3d>');
+    expect(result.text).toBe('Eccolo, guarda le pale.');
+    expect(events.filter((e) => e.kind === 'message').map((e) => e.content)).toEqual(['Eccolo, guarda le pale.']);
+    expect(events.filter((e) => e.kind === 'scene3d').map((e) => e.op)).toEqual(['start', 'node', 'node', 'end']);
+    // la frase arriva prima delle parti, non a modello finito
+    expect(events.findIndex((e) => e.kind === 'message')).toBeLessThan(
+      events.findIndex((e) => e.kind === 'scene3d'),
+    );
+
+    await loop.runCycle({ kind: 'user_message', content: 'e il motore?' });
+    expect(inputs[1].fast).toBe(false);
+    expect(inputs[1].messages[1]).toEqual({
+      role: 'assistant',
+      content: '[Ho mostrato un modello 3D: «Ventola», 2 parti] Eccolo, guarda le pale.',
+    });
+  });
+});
+
+describe('@openmate/core — wants3d', () => {
+  it('riconosce il 3D e il funzionamento in movimento, non le altre domande', () => {
+    expect(wants3d('mostrami un drone in 3D')).toBe(true);
+    expect(wants3d('fammi vedere un motore a scoppio in movimento')).toBe(true);
+    expect(wants3d('come girano gli ingranaggi di un cambio?')).toBe(true);
+    expect(wants3d('com’è fatto un drone?')).toBe(false);
+    expect(wants3d('che ore sono?')).toBe(false);
   });
 });

@@ -118,6 +118,9 @@ importers:
       '@electron/notarize':
         specifier: ^2.5.0
         version: 2.5.0
+      '@openmate/scene3d':
+        specifier: workspace:*
+        version: link:../../packages/scene3d
       electron:
         specifier: ^33.0.0
         version: 33.4.11
@@ -130,6 +133,9 @@ importers:
       png2icons:
         specifier: ^2.0.1
         version: 2.0.1
+      three:
+        specifier: 0.180.0
+        version: 0.180.0
 
   packages/browser:
     dependencies:
@@ -199,6 +205,9 @@ importers:
       '@openmate/memory':
         specifier: workspace:*
         version: link:../memory
+      '@openmate/scene3d':
+        specifier: workspace:*
+        version: link:../scene3d
       '@openmate/tools':
         specifier: workspace:*
         version: link:../tools
@@ -332,6 +341,21 @@ importers:
       '@types/better-sqlite3':
         specifier: ^7.6.11
         version: 7.6.13
+      '@types/node':
+        specifier: 'catalog:'
+        version: 22.20.1
+      tsup:
+        specifier: 'catalog:'
+        version: 8.5.1(postcss@8.5.25)(tsx@4.23.1)(typescript@5.9.3)
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vitest:
+        specifier: 'catalog:'
+        version: 2.1.9(@types/node@22.20.1)
+
+  packages/scene3d:
+    devDependencies:
       '@types/node':
         specifier: 'catalog:'
         version: 22.20.1
@@ -3493,6 +3517,9 @@ packages:
 
   thenify@3.3.1:
     resolution: {integrity: sha512-RVZSIV5IG10Hk3enotrhvz0T9em6cyHBLkH/YAZuKqd8hRkKhSfCGIcP2KUY0EPxndzANBmNllzWPwak+bheSw==}
+
+  three@0.180.0:
+    resolution: {integrity: sha512-o+qycAMZrh+TsE01GqWUxUIKR1AL0S8pq7zDkYOQw8GqfX8b8VoCKYUoHbhiX5j+7hr8XsuHDVU6+gkQJQKg9w==}
 
   timm@1.7.1:
     resolution: {integrity: sha512-IjZc9KIotudix8bMaBW6QvMuq64BrJWFs1+4V0lXwWGQZwH+LnX87doAYhem4caOEusRP9/g6jVDQmZ8XOk1nw==}
@@ -7007,6 +7034,8 @@ snapshots:
   thenify@3.3.1:
     dependencies:
       any-promise: 1.3.0
+
+  three@0.180.0: {}
 
   timm@1.7.1: {}
 

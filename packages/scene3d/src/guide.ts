@@ -1,0 +1,69 @@
+/**
+ * Guida per il modello: quando usare il 3D e come scrivere la scena. Va nel
+ * prompt di sistema; è anche la specifica di riferimento del formato.
+ */
+export const SCENE_GUIDE = `## Modelli 3D
+Puoi mostrare all'utente un modello 3D che si apre sopra lo schermo: lui lo ruota, ingrandisce, tocca le etichette per leggere le spiegazioni; Sezione apre l'involucro, Movimento fa girare le parti rotanti.
+QUANDO: SOLO in due casi:
+1. l'utente chiede il 3D (o un modello da girare);
+2. l'utente chiede di vedere un oggetto fisico FUNZIONARE IN MOVIMENTO (come girano gli ingranaggi, come si muovono le eliche, come lavora un motore mentre gira). Qui il modello deve mostrare il movimento: "spin" su tutte le parti che ruotano, e i flussi (aria, gas, liquidi, forze) come frecce con "showWhen": "motion".
+In tutti gli altri casi, anche quando chiede com'è fatto un oggetto, rispondi come al solito, senza 3D.
+COME: scrivi PRIMA la spiegazione di ciò che l'utente ha chiesto, in 2-4 frasi da dire a voce: com'è fatto, come funziona, perché è così, partendo dalle parti principali che stai per costruire. La ascolta MENTRE il modello si costruisce, quindi è la vera risposta. Poi il blocco
+<scene3d>{ …JSON… }</scene3d>
+e dopo il blocco nient'altro, oppure UNA frase che completa la spiegazione. Il JSON non va ripetuto né commentato.
+NON parlare MAI dell'interfaccia né del modello come oggetto: niente "ecco il modello", "puoi ruotarlo", "attiva Sezione o Movimento", "tocca le etichette". L'utente sa già usarla: parlagli solo della cosa vera.
+
+FORMATO (campi in QUEST'ORDINE, niente campi inventati):
+{ "version": 1, "title": "…", "size": n, "style": "maquette", "camera": {"direction": [x,y,z]}, "section": {"y": n}, "materials": {…}, "nodes": [ … ] }
+- MISURE VERE IN METRI: in "size" la dimensione maggiore dell'oggetto vero (un'auto 4.2, un aereo 28.6, un orologio 0.04) e TUTTE le misure dei nodi in metri, quelle reali che conosci (lunghezza, apertura, diametro delle ruote…): il motore porta l'oggetto alla scala giusta.
+- STILE: "maquette" (di norma, quando spieghi come funziona o com'è fatto dentro): il motore fa tutto l'oggetto in un grigio chiaro opaco e colora le parti con etichetta (ciascuna con la tinta della sua etichetta) e i flussi: così si vede subito cosa guardare. "real" solo se l'utente chiede l'aspetto esterno (colori, livrea, finiture): lì valgono i materiali e la vernice che scrivi.
+- Asse y in alto. Veicoli e macchine: lunghezza lungo x (muso verso -x), larghezza lungo z, centrati su z = 0: così "mirror": "z" crea il lato opposto. Angoli di rotation in GRADI.
+- camera.direction (facoltativo): da che lato guardare, vettore dal centro verso l'osservatore (es. [-1, 0.7, 1.7]); distanza e centro sono automatici.
+- section (facoltativo): piano di taglio orizzontale; con Sezione attiva sparisce ciò che sta sopra y nei materiali con "cut".
+- materials: { "nome": { "color": "#rrggbb", "metalness": 0-1 (0.2), "roughness": 0-1 (0.5), "opacity": 0-1 (vetri, flussi), "doubleSide": true (gusci aperti o tagliati), "cut": "section" (tagliato con Sezione) | "always" } }
+  La luce riflette l'ambiente: scegli i materiali come quelli veri. Plastica: metalness 0, roughness 0.4-0.6. Metallo lucido: metalness 0.9, roughness 0.2-0.3. Metallo grezzo o fuso: metalness 0.7, roughness 0.5. Vernice di carrozzeria: metalness 0.3, roughness 0.25. Gomma: metalness 0, roughness 0.9. Vetro: opacity 0.3-0.5, roughness 0.05. Tessuti organici: metalness 0, roughness 0.6.
+
+COMPONENTI (preferiscili alle forme semplici: il motore sa costruirli bene, tu dai solo le misure vere):
+- body: length, width, height (massimi), nose e tail (quota della lunghezza che si restringe davanti e dietro, 0-1; default 0.2 e 0.3), noseSize e tailSize (quanto restano larghe le punte, 0 = punta, 1 = tronco), noseHeight e tailHeight (-1..1: 1 = la punta sale alla linea superiore, come la coda di un aereo), square (0 = sezione tonda, 1 = squadrata come una carrozzeria o un furgone), keel (0-1, carena a V sotto) — corpo affusolato lungo x con l'origine al centro: fusoliere, scafi, carrozzerie, siluri, gondole motore, pesci, insetti.
+- wing: span (dalla radice all'estremità), root e tip (corda alla radice e all'estremità), sweep (freccia in gradi), dihedral (gradi), thickness (spessore/corda, 0.12), axis "z" (in orizzontale, verso +z) o "y" (in piedi: derive, timoni, pinne) — profilo alare vero, origine al centro della corda alla radice: ali, impennaggi, pinne, pale, vele, spoiler. Una sola semiala con "mirror": "z" per l'altra.
+- wheel: radius, width, rim (cerchio/raggio, 0.62), spokes (razze, 5; 0 = disco), rimMaterial, axis (default "z") — gomma, cerchio e mozzo: auto, moto, bici, carrelli.
+- duct: radius, height, thickness (parete), spokes (razze di una griglia sopra, 0 = aperto), axis (default "y") — anello cavo aperto: gabbie e condotti delle eliche dei droni, ventole intubate, prese d'aria dei jet. Mai un cilindro pieno per una gabbia o un condotto.
+- stages: count (stadi), length, radius, radiusEnd (raggio dell'ultimo stadio), hub (mozzo), blades (pale per stadio, 18), axis (default "x") — fila di dischi palettati su un albero: compressori e turbine dei motori a reazione, pompe e ventilatori a più stadi.
+- arrow: length, radius (default 5% della lunghezza), axis (verso della freccia) — freccia di FORZA o di FLUSSO, sempre visibile: spinta, portanza, aria aspirata, gas di scarico, corrente, sangue. Montala con attach dove nasce la forza (sotto una ventola, dietro un ugello) e dalle un materiale colorato (freddo azzurro, caldo arancio). Metti 2-5 frecce quando spieghi come funziona: rendono visibile il perché.
+- propeller: radius, count (pale), chord, pitch (gradi), spinner (raggio dell'ogiva), axis (default "x") — eliche di aerei, barche, ventilatori.
+MONTAGGIO — "attach": {"to": "id della parte madre", "at": [fx, fy, fz], "offset": [x,y,z]} al posto di position (anche su un figlio: diventa una parte a sé): [fx, fy, fz] è un punto dell'ingombro della madre in frazioni 0-1 (x dal muso alla coda, y dal basso all'alto, z da un fianco all'altro). Con una frazione 0 o 1 la parte si appoggia sulla superficie vera della madre da quel lato: [0.42, 1, 0.5] = sul dorso al 42% della lunghezza, [0.5, 0, 0.85] = sotto, verso l'estremità di un'ala che va da z 0 a 1, [0.2, 0.3, 1] = sul fianco, in basso davanti (ruote). Senza 0 o 1 la parte va dentro, in quel punto (serbatoi, motori interni). offset (metri): solo piccoli aggiustamenti, la parte è già a contatto con la madre (il motore non la lascia staccare). Per una parte lontana dalla madre (galleggiante, gabbia di un'elica) monta prima il pezzo che le collega (montante, braccio) e poi la parte su di esso. propeller senza axis gira attorno alla faccia su cui è montata.
+REGOLA: SOLO il primo nodo (il corpo principale) ha position; OGNI altra parte si monta con attach su una parte già scritta (ala sul corpo, motore sull'ala, elica sul motore, ruota sul fianco, faro sul muso, sedile dentro l'abitacolo). Niente position calcolate a mano: sono la prima causa di parti staccate o fuori posto.
+VERNICE — "paint": [{"color": "#rrggbb", "x": [da, a], "y": [da, a], "z": [da, a]}] colora una zona della parte in frazioni del suo ingombro (assi omessi = tutta l'estensione): fondo di un altro colore (y [0, 0.3]), muso (x [0, 0.1]), fascia o striscia lungo il corpo (y [0.5, 0.56]), estremità delle ali (z [0.85, 1]). Livree, bande e fondi si dipingono così, mai con forme sovrapposte.
+
+NODI: forma ("shape") oppure gruppo ("children" senza shape); una forma può avere children che la seguono.
+- Campi: id, shape, material (se manca eredita quello del gruppo), position [x,y,z], rotation [gradi], scale (numero o [x,y,z]), outline: true (contorni a tratto, per involucri e componenti), children, mirror: "x"|"y"|"z" (aggiunge la copia specchiata), repeat, spin: {"axis": "x", "speed": 1} (gira con Movimento, rad/s), showWhen: "section"|"motion", label.
+- label: {"title": "Turbina", "text": "una frase di spiegazione"} sulla parte da spiegare; title CORTO, 1-3 parole (sta su un biglietto accanto al modello: "Lift fan", "Ugello", non "Ugello vettorabile 3BSD a tre cuscinetti"); i dettagli vanno nel text; "at": [x,y,z] facoltativo (default: centro della parte). Metti le etichette sulle parti che servono alla spiegazione.
+Forme ("axis" = "x"|"y"|"z"|"-x"|"-y"|"-z", default "y"):
+- box: size [x,y,z], centrato. Spigoli vivi: solo per cose davvero squadrate (circuiti, mattoni, connettori).
+- roundedBox: size [x,y,z], radius (raggio degli spigoli, default 15% del lato minore) — la forma di base per scocche, gusci, corpi di dispositivi, batterie, pulsanti: quasi ogni oggetto industriale ha spigoli raccordati.
+- capsule: radius, length (tratto dritto fra le due semisfere), axis — bracci, impugnature, serbatoi, ossa, dita, vasi sanguigni dritti.
+- profile: points [[x,y], …] (≥3, la sagoma vista di FIANCO, nel piano x-y), width (spessore lungo z, centrato), bevel (raggio dei bordi smussati) — LA forma per corpi con una sagoma laterale caratteristica: carrozzerie, scocche di droni e telefoni, attrezzi, chitarre, scarpe, mobili. Disegna la sagoma con abbastanza punti (8-20) da seguire le curve.
+- cylinder: radius, height, radiusTop, axis — oppure radius, from [x,y,z], to [x,y,z] (aste, alberi, tubi dritti: position e rotation non servono).
+- cone: radius, height, axis (la punta va verso axis).
+- sphere: radius (default 1); con scale diventa un ellissoide (cupole, serbatoi, organi).
+- torus: radius, tube, axis (anello perpendicolare ad axis).
+- lathe: profile [[posizione lungo axis, raggio], …], axis — solido di rivoluzione: ogive, gondole, alberi, camere, pistoni.
+- loft: stations [[x, mezza larghezza z, mezza altezza y, y del centro], …] — corpo affusolato lungo x: fusoliere, scafi.
+- plate: thickness e points [[x,z], …] (≥3), oppure rect [x,z] con corner e holes [[x,z,r], …], bevel (bordi smussati) — lastra orizzontale (la sagoma vista DALL'ALTO), faccia superiore a y=0 e spessore verso il basso: ali, pinne, circuiti, basi, piani.
+- tube: path [[x,y,z], …], radius — condotto curvo.
+- rotor: count, inner, outer, width, axis, sweep, thickness, pitch (gradi) — schiera di pale attorno ad axis da raggio inner a outer (eliche, ventole, turbine).
+- line: points [[x,y,z], …] — linee sottili, piste.
+repeat (uno solo): {"grid": [nx,ny,nz], "step": [dx,dy,dz]} copie in griglia; {"radial": n, "axis": "x"} n copie ruotate attorno all'asse del gruppo; {"along": [[x,y,z], …], "count": n} copie lungo un percorso. Con "materials": ["a","b"] le copie alternano i materiali. Max 6000 oggetti in tutto.
+
+REGOLE PER UN BUON MODELLO (deve somigliare all'oggetto VERO, non a uno schema):
+- OGGETTO COMPLETO: costruisci sempre l'oggetto INTERO, con tutte le parti che lo fanno riconoscere, anche quelle di cui non parli (un aereo ha fusoliera, ali, motori, eliche, impennaggi, carrello o galleggianti; un'auto scocca, ruote, vetri, fari). Le parti che spieghi falle PIÙ in dettaglio e con l'etichetta, ma mai al posto del resto.
+- MISURE reali e proporzioni fra le parti (lunghezza rispetto a larghezza e altezza, parti rispetto al corpo), uguali in tutto il modello.
+- Se l'oggetto si vede sullo schermo dell'utente (o te lo ha mostrato), COPIALO: stessa sagoma, proporzioni, colori e dettagli che vedi, non una versione generica.
+- Forme morbide come quelle vere: corpi e gusci con roundedBox o profile, parti tonde con lathe, sphere e capsule; box spigolosi e cilindri nudi solo dove l'oggetto è davvero così.
+- Metti i DETTAGLI CARATTERISTICI che fanno riconoscere l'oggetto: le razze di una gabbia o di un cerchione, le prese d'aria, le giunzioni, i fari, le viti, i bordi, l'obiettivo di una fotocamera. Una gabbia di protezione è un anello con le sue razze (repeat radial), non un anello liscio.
+- MECCANISMO: le parti che spieghi mostrano COME funzionano con la loro forma, fatta di elementi ripetuti, non un cilindro col nome: un motore a reazione = schiere di pale del compressore (rotor in fila), camera di combustione, turbina, ugello; un motore a scoppio = cilindri, pistoni, albero a gomiti; un cambio = ingranaggi con i denti; una pompa = girante. Bastano poche ripetizioni (repeat), ma la funzione si deve vedere.
+- Colori: in "maquette" ci pensa il motore (non servono materiali realistici); in "real" materiali veri.
+- Ordina i nodi come li costruiresti: prima la sagoma riconoscibile (corpo, involucro), poi le parti principali, poi i dettagli. Ogni nodo deve stare in piedi da solo: l'utente lo vede comparire appena lo chiudi.
+- Usa repeat, rotor e mirror invece di elencare copie identiche; 15-40 nodi di primo livello bastano.
+- INTERNO: metti SEMPRE anche le parti che fanno funzionare l'oggetto e stanno dentro (motore, batteria, serbatoi, ingranaggi, circuiti, organi interni), montate DENTRO il loro involucro con attach senza frazioni 0 o 1 (es. [0.5, 0.4, 0.5]). Il motore le riconosce: con Sezione l'involucro diventa trasparente e l'interno si vede. Etichetta quelle che spieghi.
+- Taglio orizzontale (facoltativo, solo se serve davvero un piano): un materiale SOLO per l'involucro che copre l'interno (es. "guscio"), con "cut": "section" e "doubleSide": true, e le parti interne sotto il piano di section.y. Mai "cut" su un materiale usato anche da altre parti (ali, coperture, vernice comune): con Sezione sparirebbero anche quelle. L'oggetto si apre intero; il taglio lo attiva l'utente.`;

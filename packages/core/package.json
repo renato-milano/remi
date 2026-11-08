@@ -22,7 +22,8 @@
     "better-sqlite3": "^12.2.0",
     "@openmate/llm": "workspace:*",
     "@openmate/tools": "workspace:*",
-    "@openmate/memory": "workspace:*"
+    "@openmate/memory": "workspace:*",
+    "@openmate/scene3d": "workspace:*"
   },
   "devDependencies": {
     "typescript": "catalog:",

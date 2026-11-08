@@ -79,6 +79,14 @@ export interface PointMessage {
   zoom?: string;
   zoomCursor?: { x: number; y: number };
   frame: { x: number; y: number; w: number; h: number };
+  /** Il punto o la zona sono su una lavagna di Remi ancora aperta: cosa c'era scritto. */
+  board?: PointBoard;
+}
+
+/** Lavagna su cui l'utente sta chiedendo: titolo e frasi dei passi già mostrati. */
+export interface PointBoard {
+  title?: string;
+  steps?: string[];
 }
 
 export interface DaemonOptions {
@@ -418,9 +426,11 @@ export class Daemon {
     // nel prompt cursore e zona nelle stesse coordinate in cui il modello risponde
     const toModel = (p: { x: number; y: number }) =>
       this.normalized ? { x: (p.x / size.w) * NORMALIZED, y: (p.y / size.h) * NORMALIZED } : p;
-    const prompt = pointPrompt(question, toModel(msg.cursor), area?.map(toModel), this.normalized, followUp, msg.target);
+    const prompt = pointPrompt(question, toModel(msg.cursor), area?.map(toModel), this.normalized, followUp, msg.target, msg.board);
     const what = msg.target ? `la finestra${msg.target.app ? ` di ${msg.target.app}` : ''}` : area ? 'una zona' : 'un punto';
-    const historyText = `${question} [indicando ${what} sullo schermo]`;
+    const historyText = msg.board
+      ? `${question} [indicando ${area ? 'una parte' : 'un punto'} della lavagna «${msg.board.title || ''}»]`
+      : `${question} [indicando ${what} sullo schermo]`;
     await this.scheduler.submitUserMessage(prompt, { images, fast: true, historyText });
   }
 
@@ -612,6 +622,7 @@ export function pointPrompt(
   normalized = false,
   followUp = false,
   target?: { app?: string; title?: string },
+  board?: PointBoard,
 ): string {
   const coords = normalized
     ? "coordinate normalizzate 0-1000 dello screenshot (x da sinistra, y dall'alto)"
@@ -633,8 +644,10 @@ export function pointPrompt(
       `Ho premuto il tasto "indica" puntando il mouse: il puntatore è a x=${Math.round(cursor.x)}, y=${Math.round(cursor.y)} ` +
       `(${coords}, cerchio rosso). "Questo", "qui", "quello" si riferiscono a ciò che sta sotto o vicino al puntatore.`;
   }
+  // domanda su una lavagna di Remi: la zona indicata è dentro il pannello disegnato da lui
+  if (board) where += ' ' + boardNote(board);
   // seguito della conversazione: riprendi da quanto già spiegato invece di ripartire da zero
-  const cont = followUp
+  const cont = board ? '' : followUp
     ? 'Questa domanda può continuare la conversazione appena avuta: se si riferisce a quanto hai già spiegato ' +
       '("dimmi di più", "e questo?", "approfondisci", "non ho capito"), riprendi da lì senza ripetere; ' +
       'se chiede più dettagli, apri un NUOVO pannello più approfondito su quella parte. Se invece chiede altro, rispondi a quello. '
@@ -648,6 +661,19 @@ export function pointPrompt(
     "o quando l'utente vuole capire meglio o più nel dettaglio (vedi sotto).\n" +
     '- Solo testo (1-3 frasi) se non serve disegnare nulla.\n' +
     `Se ti chiedo di fare qualcosa, usa gli strumenti adatti.]\n\n${panelGuide(coords)}`
+  );
+}
+
+/** Come leggere una domanda fatta indicando una parte della lavagna che Remi ha appena disegnato. */
+function boardNote(board: PointBoard): string {
+  const steps = (board.steps || []).filter((s) => s.trim());
+  const list = steps.length ? ` I passi che hai spiegato (numerati sulla lavagna): ${steps.map((s, i) => `${i + 1}) ${s.trim()}`).join(' ')}` : '';
+  return (
+    `ATTENZIONE: ciò che indico è sulla LAVAGNA che mi hai disegnato tu poco fa (il riquadro chiaro disegnato a mano ` +
+    `nello screenshot${board.title ? `, titolo «${board.title}»` : ''}).${list} ` +
+    'Chiedo di QUELLA parte della lavagna: riconoscila (riquadro, freccia, passo) e spiegamela meglio, senza ripetere ' +
+    'il resto. Quella lavagna ora si chiude: rispondi con un NUOVO pannello dedicato a quella parte (o solo testo se ' +
+    'basta una frase). Niente <mark> né overlay.draw sulla vecchia lavagna; usali solo per cose dello schermo fuori da essa.'
   );
 }
 
@@ -667,11 +693,12 @@ Regole:
 - Ogni passo AGGIUNGE elementi allo STESSO disegno: costruisci un unico schema che cresce, non disegni separati.
 - PRIMA di disegnare decidi la PIANTA di tutto il pannello, passi futuri compresi, e dichiarala in <panel>: C colonne (2-6) e R righe (3-8). La lavagna è larga 600 e alta 40+72·R; la cella "r,c" (da 1) va da x=20+(c-1)·560/C a y=20+(r-1)·72, larga 560/C e alta 72. Distribuisci gli elementi su TUTTA la pianta (niente zone vuote né ammassi), lasciando libere le celle dove passeranno frecce o disegni. Testi in italiano, font-size 15-22 (di default 17).
 - Spiega il MECCANISMO, cioè ciò che non si vede: come funziona dietro, cosa succede e perché. Non ridisegnare le parti visibili dello schermo (quelle cerchiale con <mark> mentre ne parli).
-- PRIMA scegli il TIPO di disegno:
+- DISEGNA LA COSA, NON IL SUO NOME: chi guarda deve vedere com'è fatta la cosa che spieghi, come la disegnerebbe un esperto alla lavagna o un libro di testo. Un riquadro con scritto il nome di una cosa che ha una forma sua ("Neurone", "Strato", "Array", "Onda", "Albero", "Molecola") è un errore: disegna quella forma. PRIMA scegli il TIPO di disegno:
+  • STRUTTURA — una cosa astratta che ha comunque una forma riconoscibile: DISEGNA QUELLA FORMA e costruiscila un pezzo per passo, mentre ne parli. Esempi del principio (non un elenco chiuso): rete neurale = colonne di cerchi (gli strati) con le linee fra tutti i cerchi di due strati vicini; array o lista = fila di celle con i valori dentro; ordinamento = barre di altezze diverse che cambiano posto; albero o gerarchia = nodi con i rami; grafo o rete di computer = nodi e collegamenti; andamento nel tempo, crescita, funzione, probabilità = assi con la curva o le barre e i punti chiave segnati; onda o segnale = la sinusoide o la sequenza di compressioni; matrice, immagine, pixel = griglia di celle; geometria, forze, orbite = la figura con vettori e angoli; molecola = atomi e legami. Nei passi successivi aggiungi alla stessa figura: un nuovo strato, il valore che scorre lungo un percorso (frecce class="a" sopra le linee), la parte che cambia, l'esempio con numeri veri. Forme semplici e ripetute (cerchi r 10-16, celle, linee), allineate con coordinate calcolate; etichette brevi accanto, non riquadri.
   • OGGETTO — com'è fatta o come funziona una cosa fisica (un motore, un organo, una macchina, un aereo, un attrezzo, un circuito): DISEGNA L'OGGETTO, non uno schema a blocchi. Una sezione o un profilo riconoscibile, con proporzioni verosimili, fatto di forme libere su gran parte della lavagna: nel primo passo il contorno (class="k"), poi in ogni passo le parti di cui parli, ognuna una forma chiusa con id e una <label for>; i flussi (aria, gas, sangue, corrente, forze) come frecce libere class="a" che attraversano il disegno nel verso giusto. Niente riquadri, al massimo 1-2 per un'aggiunta fuori dall'oggetto. Esempio di inizio: <path id="corpo" class="k" d="M40 150 C120 105 460 105 560 140 L560 230 C460 265 120 265 40 220 Z"/> <polygon id="fan" points="90,118 112,118 112,252 90,252"/> <label for="fan" side="top">Ventola</label> <path class="a" d="M10 185 L84 185"/>
-  • PROCESSO o CONCETTO — passaggi, cause ed effetti, sistemi software, idee astratte: schema con riquadri nella griglia e frecce agganciate. Anche qui scegli una forma adatta (flusso, ciclo, confronto, linea del tempo, gerarchia), non sempre la stessa fila di riquadri.
+  • PROCESSO — solo quando la cosa è davvero una sequenza di attori o fasi senza una forma propria (chi chiede cosa a chi, fasi di una procedura, cause ed effetti): schema con riquadri nella griglia e frecce agganciate, in una forma adatta (flusso, ciclo, confronto, linea del tempo), non sempre la stessa fila di riquadri. Se un attore o una fase ha una forma (un dato, una curva, una struttura), disegnala al posto del suo riquadro. Si possono mescolare: una STRUTTURA disegnata con 1-2 riquadri accanto per ciò che non ha forma.
 - COLORI: la lavagna dà a ogni passo il suo colore (riquadri, frecce, parti disegnate senza class, numero del passo e segno sullo schermo): non scrivere class su riquadri e frecce; nei disegni di oggetti metti class="k" solo sul contorno o sulle parti neutre. Solo se il significato chiede un altro criterio (per gruppo: le parti dello stesso sistema; per confronto: prima/dopo, A contro B) scrivi colors="own" in <panel> e metti class su tutti i riquadri con un significato coerente. Classi: b (blu), r (rosso), v (verde), g (giallo), k (grigio); sulle forme = riempimento pastello e bordo colorato, su testi e linee = colore di accento. Non scrivere stroke, stroke-width, font-family né fill="none".
-- POCHI ELEMENTI: al massimo 6-7 riquadri o parti principali in tutto il pannello, testi di 1-3 parole, etichette delle frecce di UNA parola e solo se servono. Sigle, protocolli, formati e numeri di dettaglio vanno detti nella frase, non scritti nel disegno. La lavagna numera da sola i passi: non scrivere numeri di passo.
+- POCHI ELEMENTI: al massimo 6-7 riquadri o parti principali in tutto il pannello (le forme ripetute di una STRUTTURA — cerchi di una rete, celle, barre — contano come una parte sola), testi di 1-3 parole, etichette delle frecce di UNA parola e solo se servono. Sigle, protocolli, formati e numeri di dettaglio vanno detti nella frase, non scritti nel disegno. La lavagna numera da sola i passi: non scrivere numeri di passo.
 - Elementi AGGANCIATI — usali per riquadri, frecce, etichette e icone: misure e collegamenti li calcola la lavagna, quindi sono sempre puliti.
   <box id="mot" class="b" at="1,2">Motore</box> riquadro col suo testo, centrato nella cella "riga,colonna"; span="2x1" lo allarga a 2 colonne (o "1x2" a 2 righe). Il testo va a capo e si adatta alla cella: scrivi testi brevi (1-4 parole). Senza griglia: x,y = angolo in alto a sinistra.
   <arrow from="mot" to="vol" label="coppia"/> freccia da bordo a bordo; from/to = un id oppure un punto "x,y"; bend="30" la curva (negativo dall'altra parte).

@@ -212,6 +212,13 @@ let shotServer;
 function startShotServer() {
   if (shotServer || EXTERNAL) return;
   shotServer = http.createServer(async (req, res) => {
+    // il daemon sta per usare mouse, tastiera o screenshot: niente finestre di Remi in mezzo
+    if (req.url?.startsWith('/overlays-off')) {
+      if (clearOverlaysForRemi()) await new Promise((r) => setTimeout(r, 80));
+      res.writeHead(204);
+      res.end();
+      return;
+    }
     if (!req.url || !req.url.startsWith('/shot')) {
       res.writeHead(404);
       res.end();
@@ -503,6 +510,9 @@ let pendingPoint; // cattura in attesa della domanda
 let pointTurn = false; // un turno "indica" è in corso
 let pointBusy = false; // il daemon ha iniziato a lavorare sul turno (evita idle di un ciclo precedente)
 let pointMuted = false; // l'utente ha chiuso la lavagna: ignora il resto del turno
+let pointBoard; // il turno è una domanda su questa lavagna (chiusa): niente segni dove stava
+// Remi sta usando mouse e tastiera: le sue finestre non devono prendersi i suoi clic (fino a fine turno)
+let remiActing = false;
 let lingerTimer;
 
 function ensurePointerWin(display) {
@@ -563,6 +573,121 @@ function hidePointer() {
   sendPointer('pointer-clear');
   pointerWin?.hide();
 }
+
+/* ---------------- finestra 3D (modelli costruiti in streaming) ---------------- */
+
+let scene3dWin;
+let scene3dReady;
+
+/** Il bundle della finestra 3D (Three.js): in sviluppo si rigenera all'avvio, nel pacchetto è già pronto. */
+function buildScene3dBundle() {
+  if (isPackaged) return Promise.resolve();
+  return new Promise((resolve) => {
+    const child = spawn(process.env.OPENMATE_NODE || 'node', [path.join(__dirname, '..', 'scene3d', 'build.mjs')], {
+      stdio: 'inherit',
+    });
+    child.on('exit', () => resolve());
+    child.on('error', (err) => {
+      console.warn('[scene3d] bundle non generato:', err.message);
+      resolve();
+    });
+  });
+}
+const scene3dBundle = app.whenReady().then(buildScene3dBundle);
+
+/** Finestra trasparente sul monitor dove sta l'utente: i clic passano, tranne sopra il modello e i controlli. */
+function ensureScene3dWin() {
+  const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+  if (!scene3dWin) {
+    scene3dWin = new BrowserWindow({
+      ...display.workArea,
+      frame: false,
+      transparent: true,
+      resizable: false,
+      movable: false,
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      hasShadow: false,
+      fullscreenable: false,
+      show: false,
+      backgroundColor: '#00000000',
+      webPreferences: {
+        preload: path.join(__dirname, 'preload-scene3d.cjs'),
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+      },
+    });
+    scene3dWin.setAlwaysOnTop(true, 'floating');
+    scene3dWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+    scene3dWin.setIgnoreMouseEvents(true, { forward: true });
+    scene3dWin.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    scene3dWin.webContents.on('will-navigate', (event) => event.preventDefault());
+    scene3dReady = scene3dBundle.then(
+      () =>
+        new Promise((resolve) => {
+          scene3dWin.webContents.once('did-finish-load', resolve);
+          scene3dWin.loadFile(path.join(__dirname, '..', 'renderer', 'scene3d.html'));
+        }),
+    );
+    scene3dWin.on('closed', () => {
+      scene3dWin = undefined;
+    });
+  } else if (!scene3dWin.isVisible()) {
+    scene3dWin.setBounds(display.workArea);
+  }
+  return scene3dReady;
+}
+
+/** Eventi del modello 3D dal daemon: 'start' apre (o ripulisce) la finestra, il resto la costruisce. */
+let scene3dQueue = Promise.resolve();
+/** Con OPENMATE_UI_DEBUG ogni scena 3D si salva com'è arrivata (eventi), per riprodurla e misurarla. */
+let scene3dDump;
+function dumpScene3d(event) {
+  if (!process.env.OPENMATE_UI_DEBUG) return;
+  if (event.op === 'start') scene3dDump = { at: Date.now(), events: [] };
+  if (!scene3dDump) return;
+  scene3dDump.events.push({ kind: 'scene3d', ...event });
+  if (event.op !== 'end') return;
+  const dir = path.join(userData, 'debug', 'scenes');
+  const file = path.join(dir, `scene-${scene3dDump.at}.json`);
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(file, JSON.stringify(scene3dDump.events));
+    console.log(`[scene3d] scena salvata: ${file}`);
+  } catch (err) {
+    console.warn('[scene3d] scena non salvata:', err.message);
+  }
+  scene3dDump = undefined;
+}
+
+function handleScene3d(e) {
+  const { kind: _kind, ...event } = e;
+  dumpScene3d(event);
+  if (event.op === 'end' && event.errors?.length)
+    console.warn(`[scene3d] «${event.title}»: ${event.nodes} parti, scartato:\n  ${event.errors.join('\n  ')}`);
+  if (event.op === 'start' && !scene3dWin?.isVisible()) ensureScene3dWin();
+  if (!scene3dWin) return;
+  // in ordine: le parti arrivate prima che la pagina sia pronta aspettano il caricamento
+  scene3dQueue = scene3dQueue
+    .then(() => scene3dReady)
+    .then(() => {
+      if (!scene3dWin) return;
+      if (event.op === 'start') {
+        scene3dWin.setIgnoreMouseEvents(true, { forward: true });
+        scene3dWin.showInactive();
+      }
+      scene3dWin.webContents.send('scene3d-event', event);
+    });
+}
+ipcMain.on('scene3d-interactive', (e, on) => {
+  if (scene3dWin && e.sender === scene3dWin.webContents) scene3dWin.setIgnoreMouseEvents(!on, { forward: true });
+});
+ipcMain.on('scene3d-close', (e) => {
+  if (!scene3dWin || e.sender !== scene3dWin.webContents) return;
+  scene3dWin.setIgnoreMouseEvents(true, { forward: true });
+  scene3dWin.hide();
+});
 
 /** Cattura il monitor `display` a piena risoluzione. */
 async function grabDisplay(display) {
@@ -730,14 +855,19 @@ async function startPoint(hold = false) {
   const t = { display, points: [cur], done: false, pressedAt: Date.now() };
   releasedAt = 0;
   tracing = t;
-  // i disegni precedenti non devono finire nello screenshot
-  if (pointerWin?.isVisible()) {
+  // mouse sopra una lavagna di Remi: la domanda è su quella, che resta nello screenshot
+  t.board = await boardUnderCursor(cur);
+  if (t.board) {
+    if (pointTurn) pointMuted = true; // il resto del turno precedente non si disegna più
+    await new Promise((r) => setTimeout(r, 80)); // un fotogramma senza segni né scheda
+  } else if (pointerWin?.isVisible()) {
+    // i disegni precedenti non devono finire nello screenshot
     hidePointer();
     await new Promise((r) => setTimeout(r, 80));
   }
   t.grab = grabDisplay(display);
   // se resterai fermo, conta la finestra sotto il mouse: chiedila subito, in parallelo
-  if (hold) t.window = windowUnderCursor(cur);
+  if (hold && !t.board) t.window = windowUnderCursor(cur);
   pointDebug('tasto', hold ? 'tieni premuto per indicare e parlare' : 'tocco: modalità punto');
   if (!hold) {
     await endTrace();
@@ -766,14 +896,39 @@ async function startPoint(hold = false) {
       if (t.done || !pointerWin) return;
       pointerWin.setIgnoreMouseEvents(true, { forward: true });
       pointerWin.showInactive();
+      t.shown = true;
       sendTrace(t);
     })
     .catch(() => {});
 }
 
+/**
+ * La lavagna di Remi sotto il mouse, se c'è: { box, title, steps, rect }. `box` è nello spazio
+ * della finestra-lavagna, `rect` in coordinate globali. La lavagna si ferma (muta, finita di
+ * disegnare, senza segni sullo schermo) per finire così nello screenshot.
+ */
+async function boardUnderCursor(cur) {
+  if (!pointerWin?.isVisible()) return null;
+  const wc = pointerWin.webContents;
+  const timeout = new Promise((r) => setTimeout(() => r(null), 150));
+  const info = await Promise.race([wc.executeJavaScript('boardInfo()'), timeout]).catch(() => null);
+  if (!info) return null;
+  const wb = pointerWin.getBounds();
+  const x = cur.x - wb.x;
+  const y = cur.y - wb.y;
+  const m = 16; // si può partire anche appena fuori dal bordo
+  const { box } = info;
+  if (x < box.x - m || x > box.x + box.w + m || y < box.y - m || y > box.y + box.h + m) return null;
+  pointerWin.setIgnoreMouseEvents(true, { forward: true });
+  await Promise.race([wc.executeJavaScript('holdBoard()'), timeout]).catch(() => {});
+  pointDebug(`domanda sulla lavagna «${info.title}»`);
+  return { ...info, rect: { x: box.x + wb.x, y: box.y + wb.y, w: box.w, h: box.h } };
+}
+
 /** Invia la posizione attuale del mouse: la lavagna ne fa alone e scia. */
 function sendTrace(t) {
-  if (!pointerWin?.isVisible()) return;
+  // prima della cattura niente scia (con una lavagna aperta la finestra è già visibile)
+  if (!t.shown || !pointerWin?.isVisible()) return;
   const b = t.display.bounds;
   const p = t.points[t.points.length - 1];
   sendPointer('pointer-trace', { x: p.x - b.x, y: p.y - b.y });
@@ -882,6 +1037,16 @@ function windowUnderCursor(pt) {
   });
 }
 
+/** Rettangolo {x, y, w, h} come percorso chiuso (4 angoli). */
+function rectPath(r) {
+  return [
+    { x: r.x, y: r.y },
+    { x: r.x + r.w, y: r.y },
+    { x: r.x + r.w, y: r.y + r.h },
+    { x: r.x, y: r.y + r.h },
+  ];
+}
+
 /** Rettangolo della finestra, ritagliato sul monitor, come percorso chiuso (4 angoli). */
 function windowArea(win, display) {
   const b = display.bounds;
@@ -970,10 +1135,21 @@ async function endTrace() {
   // tenuto premuto senza muovere il mouse: indica tutta la finestra sotto il puntatore
   // (un tocco breve resta un punto: apre la casella)
   const held = releasedAt - t.pressedAt >= TAP_MS;
-  const { at, area, local, target } = await windowIfStill(resolvePath(points, display), held ? t.window : null, display);
+  let pick = await windowIfStill(resolvePath(points, display), held ? t.window : null, display);
+  // sulla lavagna, tenuto fermo = tutta la lavagna
+  if (t.board && held && !pick.area) pick = { ...pick, area: rectPath(t.board.rect) };
+  const { at, area, local, target } = pick;
   phase('screenshot pronto');
   const capture = buildPointPayload(full, display, at, area);
   if (target) capture.target = target;
+  if (t.board) {
+    const { title, steps, rect, box } = t.board;
+    capture.board = { title, steps, rect };
+    // la vecchia lavagna si chiude: la nuova parte dal suo posto (vedi placePanel)
+    local.area = Boolean(area);
+    local.box = undefined;
+    local.panelAt = { x: box.x, y: box.y };
+  }
   phase('immagini preparate (ridimensiona + ingrandimento)');
 
   // ha parlato? allora niente casella: trascrivi e invia
@@ -1019,6 +1195,7 @@ ipcMain.on('pointer-submit', (_e, text) => {
 /** Invia il turno "indica" al daemon. `voiceTurn`: domanda a voce → risposta anche a voce. */
 async function submitPoint(capture, text, voiceTurn) {
   pointMuted = false;
+  pointBoard = capture.board?.rect;
   setPointTurn(true);
   pointVoiceTurn = voiceTurn;
   try {
@@ -1167,7 +1344,6 @@ ipcMain.on('pointer-speaking', () => phase('voce: inizia a parlare'));
 /** Domanda a voce: trascrive e invia, senza casella di testo. Torna false se non c'è parlato utile. */
 async function submitVoice(capture, wav) {
   sendPointer('pointer-thinking');
-  sendPointer('pointer-status', 'trascrivo…');
   let out;
   try {
     out = await postJson('/voice/transcribe', { audio: Buffer.from(wav).toString('base64') });
@@ -1437,7 +1613,14 @@ function handlePanel(e) {
     phase(`pannello: passo ${e.index + 1}`);
     // zone da cerchiare sullo schermo: da coordinate globali a quelle della lavagna
     const wb = pointerWin?.getBounds();
-    const marks = wb && e.marks ? e.marks.map((m) => ({ ...m, x: m.x - wb.x, y: m.y - wb.y })) : [];
+    // un segno dove stava la lavagna chiusa indicherebbe il vuoto
+    const onBoard = (m) =>
+      pointBoard &&
+      m.x + m.w / 2 > pointBoard.x &&
+      m.x + m.w / 2 < pointBoard.x + pointBoard.w &&
+      m.y + m.h / 2 > pointBoard.y &&
+      m.y + m.h / 2 < pointBoard.y + pointBoard.h;
+    const marks = wb && e.marks ? e.marks.filter((m) => !onBoard(m)).map((m) => ({ ...m, x: m.x - wb.x, y: m.y - wb.y })) : [];
     sendPointer('pointer-panel-step', { index: e.index, say: e.say, svg: e.svg, marks });
   } else if (e.op === 'end') {
     sendPointer('pointer-panel-end');
@@ -1447,8 +1630,28 @@ function handlePanel(e) {
 
 // la scheda della risposta è cliccabile (✕): il resto della lavagna lascia passare i click
 ipcMain.on('pointer-interactive', (_e, on) => {
-  if (pointerWin && !pendingPoint) pointerWin.setIgnoreMouseEvents(!on, { forward: true });
+  if (pointerWin && !pendingPoint && !remiActing) pointerWin.setIgnoreMouseEvents(!on, { forward: true });
 });
+
+/**
+ * Prima di ogni clic, tasto o screenshot del computer-use: il modello 3D si chiude
+ * (coprirebbe la pagina e ne intercetterebbe i clic) e la lavagna lascia passare
+ * tutti i clic fino alla fine del turno. Restituisce true se ha nascosto qualcosa.
+ */
+function clearOverlaysForRemi() {
+  remiActing = true;
+  pointerWin?.setIgnoreMouseEvents(true, { forward: true });
+  if (!scene3dWin?.isVisible()) return false;
+  scene3dWin.setIgnoreMouseEvents(true, { forward: true });
+  scene3dWin.hide();
+  return true;
+}
+
+/** Una risposta che la lavagna non può mostrare arriva comunque: dal fumetto di Remi. */
+function companionSays(text) {
+  showCompanionFor(Math.min(30000, 6000 + text.length * 40));
+  win?.webContents.send('point-error', text);
+}
 
 ipcMain.on('pointer-cancel', () => {
   if (pointTurn) {
@@ -1491,13 +1694,24 @@ function sameBounds(a, b) {
 }
 
 function handleDaemonEvent(e) {
-  if (e.kind === 'state' && e.state?.status === 'idle') pointMuted = false;
+  if (e.kind === 'state' && e.state?.status === 'idle') {
+    pointMuted = false;
+    remiActing = false;
+  }
   if (pointTurn) {
     if (e.kind === 'state') phase(`daemon: stato ${e.state?.status}`);
     else if (e.kind === 'overlay') phase(`daemon: disegno (${e.items?.length ?? 0} elementi)`);
     else if (e.kind === 'message') phase('daemon: testo della risposta');
   }
-  if (pointMuted) return;
+  if (pointMuted) {
+    // lavagna chiusa a metà turno: il resto non si disegna, ma la risposta finale arriva lo stesso
+    if (e.kind === 'message' && !e.channel) companionSays(e.content);
+    return;
+  }
+  if (e.kind === 'scene3d') {
+    handleScene3d(e);
+    return;
+  }
   if (e.kind === 'panel') {
     handlePanel(e);
     return;
@@ -1522,7 +1736,9 @@ function handleDaemonEvent(e) {
       speakAnswer(e.content);
       return;
     }
-    sendPointer('pointer-answer', e.content);
+    // la lavagna può essere stata nascosta nel frattempo (es. un "Hey Remi" sentito per sbaglio)
+    if (pointerWin?.isVisible()) sendPointer('pointer-answer', e.content);
+    else companionSays(e.content);
   } else if (e.kind === 'action' && typeof e.summary === 'string' && !e.summary.startsWith('overlay.')) {
     pointDebug(`azione: ${e.summary}`); // solo nel log: sullo schermo non si elencano le azioni
   } else if (e.kind === 'state' && e.state?.status !== 'idle') {

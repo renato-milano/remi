@@ -1,0 +1,440 @@
+{
+  "version": 1,
+  "title": "Scheda elettronica · stile Raspberry Pi 5",
+  "camera": { "direction": [-9, 11.3, 13.6] },
+  "materials": {
+    "pcb": { "color": "#4e946a", "roughness": 0.75, "metalness": 0.08 },
+    "metal": { "color": "#c4c9c6", "metalness": 0.65 },
+    "dark": { "color": "#303a3e" },
+    "gold": { "color": "#c4a75c" },
+    "white": { "color": "#e6e4d5" },
+    "blue": { "color": "#397696" },
+    "trace": { "color": "#a2b780", "opacity": 0.4 }
+  },
+  "nodes": [
+    {
+      "id": "pcb",
+      "shape": "plate",
+      "rect": [8.5, 5.6],
+      "corner": 0.16,
+      "thickness": 0.12,
+      "holes": [[-3.9, -2.45, 0.14], [-3.9, 2.45, 0.14], [1.9, -2.45, 0.14], [1.9, 2.45, 0.14]],
+      "material": "pcb",
+      "outline": true
+    },
+    {
+      "id": "mount-pads",
+      "shape": "torus",
+      "radius": 0.2,
+      "tube": 0.055,
+      "axis": "y",
+      "material": "gold",
+      "position": [-3.9, 0.055, -2.45],
+      "repeat": { "grid": [2, 1, 2], "step": [5.8, 0, 4.9] }
+    },
+    {
+      "id": "cpu",
+      "children": [
+        {
+          "shape": "box",
+          "size": [1.4, 0.14, 1.4],
+          "material": "dark",
+          "position": [-0.75, 0.09, 0.1],
+          "outline": true
+        },
+        {
+          "shape": "box",
+          "size": [1.14, 0.13, 1.14],
+          "material": "metal",
+          "position": [-0.75, 0.22, 0.1],
+          "outline": true
+        }
+      ]
+    },
+    {
+      "shape": "box",
+      "size": [0.92, 0.13, 0.63],
+      "material": "dark",
+      "position": [-0.9, 0.1, -1.2],
+      "outline": true,
+      "id": "ram"
+    },
+    {
+      "shape": "box",
+      "size": [1, 0.14, 0.95],
+      "material": "dark",
+      "position": [1.02, 0.1, 0.65],
+      "outline": true,
+      "id": "io"
+    },
+    {
+      "shape": "box",
+      "size": [0.65, 0.15, 0.65],
+      "material": "dark",
+      "position": [-2.6, 0.1, 1.1],
+      "outline": true,
+      "id": "wireless"
+    },
+    {
+      "shape": "box",
+      "size": [0.7, 0.11, 0.65],
+      "material": "metal",
+      "position": [-2.8, 0.08, -1.22],
+      "outline": true,
+      "id": "pmic"
+    },
+    {
+      "id": "gpio",
+      "children": [
+        {
+          "shape": "box",
+          "size": [5.08, 0.18, 0.51],
+          "material": "dark",
+          "position": [-0.9, 0.1, -2.14],
+          "outline": true
+        },
+        {
+          "shape": "box",
+          "size": [0.065, 0.53, 0.065],
+          "material": "gold",
+          "position": [-3.3, 0.43, -2.27],
+          "repeat": { "grid": [20, 1, 2], "step": [0.254, 0, 0.254] }
+        }
+      ]
+    },
+    {
+      "id": "usb-2",
+      "children": [
+        {
+          "shape": "box",
+          "size": [1.45, 1.45, 1.27],
+          "material": "metal",
+          "position": [3.62, 0.775, -1.85],
+          "outline": true
+        },
+        {
+          "shape": "box",
+          "size": [0.035, 1.0585, 1.0414],
+          "material": "dark",
+          "position": [4.365, 0.775, -1.85]
+        },
+        {
+          "shape": "box",
+          "size": [0.05, 0.08, 0.8636],
+          "material": "dark",
+          "position": [4.39, 0.58, -1.85]
+        }
+      ]
+    },
+    {
+      "id": "usb-3",
+      "children": [
+        {
+          "shape": "box",
+          "size": [1.45, 1.45, 1.27],
+          "material": "metal",
+          "position": [3.62, 0.775, -0.3],
+          "outline": true
+        },
+        {
+          "shape": "box",
+          "size": [0.035, 1.0585, 1.0414],
+          "material": "dark",
+          "position": [4.365, 0.775, -0.3]
+        },
+        {
+          "shape": "box",
+          "size": [0.05, 0.08, 0.8636],
+          "material": "blue",
+          "position": [4.39, 0.58, -0.3]
+        }
+      ]
+    },
+    {
+      "id": "usb-stack",
+      "position": [0, 0, -1.85],
+      "repeat": { "grid": [1, 1, 2], "step": [0, 0, 1.55] },
+      "children": [
+        {
+          "shape": "box",
+          "size": [0.045, 0.055, 1.08],
+          "material": "metal",
+          "position": [4.39, 0.8, 0],
+          "outline": true
+        },
+        {
+          "shape": "box",
+          "size": [0.05, 0.06, 0.84],
+          "material": "blue",
+          "position": [4.4, 1.12, 0]
+        }
+      ]
+    },
+    {
+      "id": "ethernet",
+      "children": [
+        {
+          "shape": "box",
+          "size": [1.6, 1.3, 1.5],
+          "material": "metal",
+          "position": [3.55, 0.7, 1.55],
+          "outline": true
+        },
+        {
+          "shape": "box",
+          "size": [0.035, 0.949, 1.23],
+          "material": "dark",
+          "position": [4.37, 0.7, 1.55]
+        },
+        {
+          "shape": "box",
+          "size": [0.05, 0.08, 1.02],
+          "material": "dark",
+          "position": [4.395, 0.52, 1.55]
+        }
+      ]
+    },
+    {
+      "id": "ethernet-contacts",
+      "shape": "box",
+      "size": [0.06, 0.045, 0.055],
+      "material": "gold",
+      "position": [4.38, 0.42, 1.18],
+      "repeat": { "grid": [1, 1, 8], "step": [0, 0, 0.105] }
+    },
+    {
+      "id": "usb-c",
+      "children": [
+        {
+          "shape": "box",
+          "size": [0.88, 0.34, 0.55],
+          "material": "metal",
+          "position": [-3.35, 0.18, 2.61],
+          "outline": true
+        },
+        {
+          "shape": "box",
+          "size": [0.6688, 0.17, 0.035],
+          "material": "dark",
+          "position": [-3.35, 0.18, 2.9]
+        }
+      ]
+    },
+    {
+      "id": "hdmi-0",
+      "children": [
+        {
+          "shape": "box",
+          "size": [0.66, 0.34, 0.55],
+          "material": "metal",
+          "position": [-1.95, 0.18, 2.61],
+          "outline": true
+        },
+        {
+          "shape": "box",
+          "size": [0.5016, 0.17, 0.035],
+          "material": "dark",
+          "position": [-1.95, 0.18, 2.9]
+        }
+      ]
+    },
+    {
+      "id": "hdmi-1",
+      "children": [
+        {
+          "shape": "box",
+          "size": [0.66, 0.34, 0.55],
+          "material": "metal",
+          "position": [-0.83, 0.18, 2.61],
+          "outline": true
+        },
+        {
+          "shape": "box",
+          "size": [0.5016, 0.17, 0.035],
+          "material": "dark",
+          "position": [-0.83, 0.18, 2.9]
+        }
+      ]
+    },
+    {
+      "id": "fpc",
+      "position": [0.38, 0, 0],
+      "repeat": { "grid": [2, 1, 1], "step": [0.94, 0, 0] },
+      "children": [
+        {
+          "shape": "box",
+          "size": [0.26, 0.19, 1.35],
+          "material": "white",
+          "position": [0, 0.12, 1.85],
+          "outline": true
+        },
+        {
+          "shape": "box",
+          "size": [0.08, 0.17, 1.2],
+          "material": "dark",
+          "position": [-0.04, 0.21, 1.85],
+          "outline": true
+        },
+        {
+          "shape": "box",
+          "size": [0.1, 0.018, 0.035],
+          "material": "gold",
+          "position": [0.18, 0.06, 1.32],
+          "repeat": { "grid": [1, 1, 12], "step": [0, 0, 0.09] }
+        }
+      ]
+    },
+    {
+      "id": "passives",
+      "children": [
+        {
+          "position": [-2.4, 0.06, -0.3],
+          "repeat": {
+            "grid": [5, 1, 3],
+            "step": [0.2, 0, 0.19],
+            "materials": ["white", "dark", "dark"]
+          },
+          "children": [
+            { "shape": "box", "size": [0.115, 0.085, 0.065] },
+            {
+              "shape": "box",
+              "size": [0.022, 0.087, 0.069],
+              "material": "metal",
+              "position": [0.052, 0, 0],
+              "mirror": "x"
+            }
+          ]
+        },
+        {
+          "position": [0.6, 0.06, -1.15],
+          "repeat": {
+            "grid": [6, 1, 3],
+            "step": [0.2, 0, 0.19],
+            "materials": ["white", "dark", "dark"]
+          },
+          "children": [
+            { "shape": "box", "size": [0.115, 0.085, 0.065] },
+            {
+              "shape": "box",
+              "size": [0.022, 0.087, 0.069],
+              "material": "metal",
+              "position": [0.052, 0, 0],
+              "mirror": "x"
+            }
+          ]
+        },
+        {
+          "position": [-2.65, 0.06, 1.95],
+          "repeat": {
+            "grid": [3, 1, 2],
+            "step": [0.2, 0, 0.19],
+            "materials": ["white", "dark", "dark"]
+          },
+          "children": [
+            { "shape": "box", "size": [0.115, 0.085, 0.065] },
+            {
+              "shape": "box",
+              "size": [0.022, 0.087, 0.069],
+              "material": "metal",
+              "position": [0.052, 0, 0],
+              "mirror": "x"
+            }
+          ]
+        },
+        {
+          "position": [-0.65, 0.06, 0.98],
+          "repeat": {
+            "grid": [5, 1, 2],
+            "step": [0.2, 0, 0.19],
+            "materials": ["white", "dark", "dark"]
+          },
+          "children": [
+            { "shape": "box", "size": [0.115, 0.085, 0.065] },
+            {
+              "shape": "box",
+              "size": [0.022, 0.087, 0.069],
+              "material": "metal",
+              "position": [0.052, 0, 0],
+              "mirror": "x"
+            }
+          ]
+        },
+        {
+          "position": [1.9, 0.06, -1.1],
+          "repeat": {
+            "grid": [2, 1, 5],
+            "step": [0.2, 0, 0.19],
+            "materials": ["white", "dark", "dark"]
+          },
+          "children": [
+            { "shape": "box", "size": [0.115, 0.085, 0.065] },
+            {
+              "shape": "box",
+              "size": [0.022, 0.087, 0.069],
+              "material": "metal",
+              "position": [0.052, 0, 0],
+              "mirror": "x"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "traces",
+      "shape": "line",
+      "points": [[-2.4, 0.015, -0.65], [-1.7, 0.015, -0.65], [-1.45, 0.015, -0.4]],
+      "material": "trace",
+      "repeat": { "grid": [1, 1, 18], "step": [0, 0, 0.09] }
+    }
+  ],
+  "labels": [
+    {
+      "id": "gpio",
+      "title": "GPIO · 40 pin",
+      "at": [-1.2, 0.55, -2.15],
+      "color": "#f6e6a3",
+      "lane": "top",
+      "text": "Quaranta pin per alimentazione e segnali digitali. La disposizione rappresenta un header a due file."
+    },
+    {
+      "id": "ram",
+      "title": "RAM",
+      "at": [-0.9, 0.22, -1.2],
+      "color": "#d5eddc",
+      "lane": "top",
+      "text": "La memoria di lavoro è separata dal processore, come nella disposizione della scheda di riferimento."
+    },
+    {
+      "id": "cpu",
+      "title": "Processore",
+      "at": [-0.75, 0.34, 0.1],
+      "color": "#e8cddb",
+      "lane": "bottom",
+      "text": "Il package del processore è rappresentato con il suo dissipatore termico metallico integrato."
+    },
+    {
+      "id": "io",
+      "title": "Controller I/O",
+      "at": [1.02, 0.22, 0.65],
+      "color": "#d6e1f8",
+      "lane": "bottom",
+      "text": "Il controller I/O gestisce molte delle periferiche esterne della scheda."
+    },
+    {
+      "id": "usb",
+      "title": "USB / Ethernet",
+      "at": [3.6, 1.5, -0.3],
+      "color": "#e1e2f1",
+      "lane": "top",
+      "text": "Connettori sovrapposti e porta di rete. Le aperture e gli inserti aiutano a riconoscere le interfacce."
+    },
+    {
+      "id": "power",
+      "title": "Alimentazione USB-C",
+      "at": [-3.35, 0.35, 2.61],
+      "color": "#f4e4ac",
+      "lane": "bottom",
+      "text": "L’ingresso USB-C porta alimentazione alla scheda."
+    }
+  ]
+}

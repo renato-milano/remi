@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'none'" />
+    <title>Remi · Modello 3D</title>
+    <link rel="stylesheet" href="scene3d.css" />
+  </head>
+  <body>
+    <main aria-label="Modello 3D interattivo">
+      <canvas id="scene" aria-label="Trascina il modello per ruotare, scorri per ingrandire"></canvas>
+      <svg id="leaders" aria-hidden="true"><path id="pin-back" fill="none" stroke="#fffef8" stroke-width="7" stroke-linecap="round"/><path id="pin" fill="none" stroke="#2c383d" stroke-width="2" stroke-dasharray="4 4"/></svg>
+      <div id="labels"></div>
+      <aside id="explanation" hidden aria-live="polite"><strong id="part-title"></strong><p id="part-text"></p><button id="dismiss" aria-label="Chiudi spiegazione">×</button></aside>
+      <div class="bottom">
+        <div class="toolbar" role="toolbar" aria-label="Controlli modello">
+          <span class="brand">remi<span>3D</span></span>
+          <span id="title" class="title"></span>
+          <i></i>
+          <button id="section" aria-pressed="true">Sezione</button>
+          <button id="motion" aria-pressed="false">Movimento</button>
+          <button id="reset" title="Ripristina vista" aria-label="Ripristina vista">↺</button>
+          <button id="close" title="Chiudi" aria-label="Chiudi">×</button>
+        </div>
+        <p id="hint"></p>
+      </div>
+      <div id="error" role="alert" hidden></div>
+    </main>
+    <script src="build/scene3d.js"></script>
+  </body>
+</html>
