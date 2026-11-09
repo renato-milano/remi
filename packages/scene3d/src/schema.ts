@@ -25,6 +25,24 @@ export interface SceneLabel {
   lane?: 'top' | 'bottom';
 }
 
+export interface SceneAnimation {
+  /** Tempi in secondi; offset locali rispetto alla posa iniziale. */
+  duration: number;
+  loop?: 'repeat' | 'pingpong' | 'once';
+  keyframes: { time: number; offset: Vec3 }[];
+}
+
+/** Contatto tra due superfici: punti in metri nello spazio locale dei nodi. */
+export interface SceneContact {
+  id: string;
+  time: number;
+  mover: string;
+  source: { node: string; point?: Vec3; direction?: Vec3 };
+  target: { node: string; point?: Vec3; direction?: Vec3 };
+  /** Corpo che reagisce (nodo di primo livello), se il bersaglio si muove. */
+  response?: string;
+}
+
 /** Un nodo: forma (`shape`) o gruppo (`children`). I parametri della forma stanno sul nodo stesso. */
 export interface SceneNode {
   id?: string;
@@ -32,6 +50,7 @@ export interface SceneNode {
   material?: string;
   label?: SceneLabel;
   children?: SceneNode[];
+  animation?: SceneAnimation;
   [key: string]: unknown;
 }
 
@@ -46,6 +65,7 @@ export interface SceneHeader {
   /** "maquette" (default): base chiara uniforme, colore solo sulle parti spiegate; "real": colori veri. */
   style?: 'maquette' | 'real';
   materials: Record<string, SceneMaterial>;
+  contacts?: SceneContact[];
 }
 
 export interface Scene extends SceneHeader {
@@ -108,6 +128,14 @@ const types: Record<string, Check> = {
     'sezioni [x, mezza larghezza, mezza altezza, y]',
   ),
   holes: list((h) => tuple(3, num)(h) && (h as number[])[2] > 0, 1, 'fori [x, z, raggio]'),
+  balls: (v) =>
+    check(
+      Array.isArray(v) &&
+        v.length >= 1 &&
+        v.length <= 24 &&
+        v.every((b) => tuple(4, num)(b) && (b as number[])[3] > 0),
+      'attese 1-24 sfere [x, y, z, raggio > 0]',
+    ),
   rect: (v) =>
     check(
       tuple(2, num)(v) && (v as number[]).every((n) => n > 0),
@@ -131,7 +159,10 @@ const types: Record<string, Check> = {
     ),
   signed: (v) => check(num(v) && v >= -1 && v <= 1, 'atteso un numero tra -1 e 1'),
   spokes: (v) =>
-    check(Number.isInteger(v) && (v as number) >= 0 && (v as number) <= 24, 'atteso un intero tra 0 e 24'),
+    check(
+      Number.isInteger(v) && (v as number) >= 0 && (v as number) <= 24,
+      'atteso un intero tra 0 e 24',
+    ),
   span: (v) => check(v === 'z' || v === 'y', 'atteso "z" (ala) o "y" (deriva)'),
   style: (v) => check(v === 'maquette' || v === 'real', 'atteso "maquette" o "real"'),
   section: (v) => check(v === 'section' || v === 'always', 'atteso "section" o "always"'),
@@ -158,6 +189,7 @@ export const SHAPES: Record<string, Record<string, [string, boolean?]>> = {
   torus: { radius: ['positive', true], tube: ['positive', true], axis: ['axis'] },
   lathe: { profile: ['profile', true], axis: ['axis'] },
   loft: { stations: ['stations', true] },
+  blob: { balls: ['balls', true], blend: ['positive'] },
   plate: {
     thickness: ['positive', true],
     points: ['points2'],
@@ -255,6 +287,7 @@ const NODE_KEYS: Record<string, string | null> = {
   mirror: null,
   repeat: null,
   spin: null,
+  animation: null,
   showWhen: 'when',
   attach: null,
   paint: null,
@@ -302,11 +335,63 @@ export function validateHeader(header: unknown): string[] {
   const { nodes: _nodes, labels: _labels, ...rest } = header;
   fields(
     rest,
-    { version: null, title: 'text', size: 'positive', style: 'style', camera: null, section: null, materials: null },
+    {
+      version: null,
+      title: 'text',
+      size: 'positive',
+      style: 'style',
+      camera: null,
+      section: null,
+      contacts: null,
+      materials: null,
+    },
     'scena',
     fail,
   );
   if (header.version !== 1) fail('scena.version', 'atteso 1');
+  if (header.contacts !== undefined) {
+    if (!Array.isArray(header.contacts) || header.contacts.length < 1 || header.contacts.length > 8)
+      fail('scena.contacts', 'attesi 1–8 contatti');
+    else
+      header.contacts.forEach((c, i) => {
+        const cp = `contacts[${i}]`;
+        if (!isObject(c)) return fail(cp, 'atteso un contatto');
+        fields(
+          c,
+          {
+            id: 'text',
+            time: 'positive',
+            mover: 'text',
+            source: null,
+            target: null,
+            response: 'text',
+          },
+          cp,
+          fail,
+        );
+        for (const key of ['id', 'time', 'mover'])
+          if (c[key] === undefined) fail(`${cp}.${key}`, 'obbligatorio');
+        for (const key of ['source', 'target']) {
+          const endpoint = c[key];
+          if (!isObject(endpoint)) fail(`${cp}.${key}`, 'atteso { node, point }');
+          else {
+            fields(
+              endpoint,
+              { node: 'text', point: 'vec3', direction: 'vec3' },
+              `${cp}.${key}`,
+              fail,
+            );
+            if (
+              endpoint.node === undefined ||
+              (endpoint.point === undefined) === (endpoint.direction === undefined)
+            )
+              fail(`${cp}.${key}`, 'servono node e uno solo tra point e direction');
+            if (vec3(endpoint.direction) && endpoint.direction.every((v) => v === 0))
+              fail(`${cp}.${key}.direction`, 'la direzione non può essere nulla');
+          }
+        }
+      });
+  }
   const camera = header.camera;
   if (camera !== undefined) {
     if (!isObject(camera)) fail('scena.camera', 'atteso { direction }');
@@ -413,11 +498,13 @@ export function validateNode(
         else if (vec3(a.at) && !a.at.every((f) => f >= 0 && f <= 1))
           fail(`${p}.attach.at`, 'frazioni tra 0 e 1');
       }
-      if (depth > 0) fail(`${p}.attach`, 'solo sulle parti di primo livello');
     }
     if (n.paint !== undefined) {
       const range = (v: unknown) =>
-        tuple(2, num)(v) && (v as number[])[0] >= 0 && (v as number[])[1] <= 1 && (v as number[])[0] < (v as number[])[1];
+        tuple(2, num)(v) &&
+        (v as number[])[0] >= 0 &&
+        (v as number[])[1] <= 1 &&
+        (v as number[])[0] < (v as number[])[1];
       if (!Array.isArray(n.paint) || !n.paint.length || n.paint.length > 8)
         fail(`${p}.paint`, 'atteso un array di 1–8 { color, x, y, z }');
       else
@@ -427,7 +514,8 @@ export function validateNode(
           fields(r, { color: 'color', x: null, y: null, z: null }, rp, fail);
           if (!r.color) fail(`${rp}.color`, 'obbligatorio');
           for (const k of ['x', 'y', 'z'])
-            if (r[k] !== undefined && !range(r[k])) fail(`${rp}.${k}`, 'atteso [da, a] tra 0 e 1, da < a');
+            if (r[k] !== undefined && !range(r[k]))
+              fail(`${rp}.${k}`, 'atteso [da, a] tra 0 e 1, da < a');
         });
     }
     if (n.label !== undefined) errors.push(...validateLabel(n.label, `${p}.label`, true));
@@ -435,10 +523,54 @@ export function validateNode(
       fail(`${p}.mirror`, 'atteso "x", "y" o "z"');
     if (n.showWhen === 'section' && !header.section)
       fail(`${p}.showWhen`, 'richiede scena.section');
+    if (n.animation !== undefined) {
+      const a = n.animation;
+      const ap = `${p}.animation`;
+      if (!isObject(a)) fail(ap, 'atteso { duration, loop, keyframes }');
+      else {
+        fields(a, { duration: 'positive', loop: null, keyframes: null }, ap, fail);
+        if (a.duration === undefined) fail(`${ap}.duration`, 'obbligatorio');
+        if (a.loop !== undefined && !['repeat', 'pingpong', 'once'].includes(a.loop as string))
+          fail(`${ap}.loop`, 'atteso repeat, pingpong o once');
+        if (
+          !Array.isArray(a.keyframes) ||
+          a.keyframes.length < 2 ||
+          a.keyframes.length > LIMITS.list
+        )
+          fail(`${ap}.keyframes`, 'attesi 2–64 fotogrammi');
+        else {
+          let previous = -1;
+          const frames = a.keyframes;
+          frames.forEach((frame, i) => {
+            const fp = `${ap}.keyframes[${i}]`;
+            if (!isObject(frame)) return fail(fp, 'atteso { time, offset }');
+            fields(frame, { time: 'nonNegative', offset: 'vec3' }, fp, fail);
+            if (
+              !num(frame.time) ||
+              frame.time <= previous ||
+              (num(a.duration) && frame.time > a.duration)
+            )
+              fail(`${fp}.time`, 'tempi crescenti tra 0 e duration');
+            if (frame.offset === undefined) fail(`${fp}.offset`, 'obbligatorio');
+            if (i === 0 && frame.time !== 0) fail(`${fp}.time`, 'il primo tempo deve essere 0');
+            if (i === frames.length - 1 && frame.time !== a.duration)
+              fail(`${fp}.time`, 'l’ultimo tempo deve essere duration');
+            if (num(frame.time)) previous = frame.time;
+          });
+        }
+      }
+    }
     if (n.spin !== undefined) {
       if (!isObject(n.spin)) fail(`${p}.spin`, 'atteso { axis, speed }');
       else {
-        fields(n.spin, { axis: 'axis', speed: 'number' }, `${p}.spin`, fail);
+        fields(
+          n.spin,
+          { axis: 'axis', speed: 'number', start: 'nonNegative', end: 'positive' },
+          `${p}.spin`,
+          fail,
+        );
+        if (num(n.spin.end) && n.spin.end <= (num(n.spin.start) ? n.spin.start : 0))
+          fail(`${p}.spin.end`, 'deve essere maggiore di start');
         if (n.spin.axis === undefined || n.spin.speed === undefined)
           fail(`${p}.spin`, 'servono axis e speed');
       }

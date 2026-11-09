@@ -13,12 +13,13 @@
     "bundle:daemon": "esbuild ../../packages/daemon/src/entry.ts --bundle --platform=node --format=cjs --target=node22 --outfile=build/daemon/daemon.cjs --external:better-sqlite3 --external:@nut-tree-fork/nut-js --external:@nut-tree-fork/* --external:playwright-core --external:electron --sourcemap",
     "bundle:scene3d": "node scene3d/build.mjs",
     "icons": "png2icons build/icon.png build/icon -allp -i",
-    "dist:mac": "pnpm run bundle:daemon && pnpm run bundle:scene3d && electron-builder --mac",
-    "dist:win": "pnpm run bundle:daemon && pnpm run bundle:scene3d && electron-builder --win",
-    "dist:linux": "pnpm run bundle:daemon && pnpm run bundle:scene3d && electron-builder --linux",
-    "dist": "pnpm run bundle:daemon && pnpm run bundle:scene3d && electron-builder -mwl",
-    "release": "pnpm run bundle:daemon && pnpm run bundle:scene3d && electron-builder --publish always",
-    "test:scene3d": "node scene3d/build.mjs && node scene3d/smoke.mjs"
+    "dist:mac": "pnpm run prepare:installer && electron-builder --mac",
+    "dist:win": "pnpm run prepare:installer && electron-builder --win",
+    "dist:linux": "pnpm run prepare:installer && electron-builder --linux",
+    "dist": "pnpm run prepare:installer && electron-builder ",
+    "release": "pnpm run prepare:installer && electron-builder --publish always",
+    "test:scene3d": "node scene3d/build.mjs && node scene3d/smoke.mjs && node scene3d/contact-smoke.mjs",
+    "prepare:installer": "pnpm -w build && pnpm run bundle:daemon && pnpm run bundle:scene3d && bash ../../packaging/build-whisper.sh"
   },
   "dependencies": {
     "@nut-tree-fork/nut-js": "^4.2.6",

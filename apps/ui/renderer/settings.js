@@ -15,6 +15,7 @@ const providerEl = document.getElementById('provider');
 const apiKeyEl = document.getElementById('apiKey');
 const baseURLEl = document.getElementById('baseURL');
 const modelEl = document.getElementById('model');
+const sceneModelEl = document.getElementById('sceneModel');
 const provHelp = document.getElementById('provHelp');
 const modelsLink = document.getElementById('modelsLink');
 const subBox = document.getElementById('subBox');
@@ -126,6 +127,7 @@ api.onData(({ config, hasKey }) => {
   providerEl.value = preset;
   selectProvider(preset);
   if (pv.model) modelEl.value = pv.model;
+  sceneModelEl.value = pv.sceneModel || '';
   if (pv.baseURL) baseURLEl.value = pv.baseURL;
   if (hasKey) apiKeyEl.placeholder = '•••••••• (lascia vuoto per non cambiare)';
   setChip('trust', 'trust', config.autonomy?.autoApprove || 'read');
@@ -144,12 +146,13 @@ api.onData(({ config, hasKey }) => {
 function collect() {
   const P = PROVIDERS[provKey];
   const model = modelEl.value.trim() || P.model || 'claude-sonnet-4-5';
+  const sceneModel = sceneModelEl.value.trim() || undefined;
   const baseURL = P.showBase ? baseURLEl.value.trim() || P.base || undefined : P.base || undefined;
   const autoApprove = document.querySelector('#trust .chip.active')?.dataset.trust || 'read';
   const heartbeatMinutes = Number(document.querySelector('#beat .chip.active')?.dataset.min) || 15;
   const auth = P.auth === 'claude-subscription' ? 'claude-subscription' : 'api-key';
   return {
-    provider: { name: P.name, model, baseURL, auth },
+    provider: { name: P.name, model, sceneModel, baseURL, auth },
     autoApprove,
     heartbeatMinutes,
     computerUse: computerUseEl.checked,

@@ -8,6 +8,8 @@ import type { Daemon, PointMessage } from './daemon.js';
 export type ClientCommand =
   | { kind: 'user_message'; content: string }
   | ({ kind: 'point_message' } & PointMessage)
+  /** Viste del modello 3D costruito (PNG base64): il modello le confronta con l'oggetto vero e corregge. */
+  | { kind: 'scene_review'; images: string[] }
   | { kind: 'approval_decision'; requestId: string; approved: boolean; always?: boolean }
   | { kind: 'interrupt' }
   | { kind: 'pause' }
@@ -104,8 +106,19 @@ export function startHttpServer(daemon: Daemon, port: number) {
         if (typeof cmd.image !== 'string' || !cmd.cursor || !cmd.frame) {
           return c.json({ ok: false, error: 'point_message incompleto' }, 400);
         }
+        // screenshot vuoto o non PNG (permesso Registrazione schermo negato): si risponde subito,
+        // così l'interfaccia lo dice invece di restare in attesa di una risposta che non arriva
+        if (!daemon.isPng(cmd.image)) {
+          return c.json({ ok: false, error: 'screenshot vuoto o non valido: controlla il permesso Registrazione schermo' }, 400);
+        }
         void daemon.submitPointMessage(cmd).catch((err) => console.error('[point]', err));
         return c.json({ ok: true });
+      case 'scene_review': {
+        const images = Array.isArray(cmd.images) ? cmd.images.filter((i) => typeof i === 'string' && i.length > 0) : [];
+        if (!images.length) return c.json({ ok: false, error: 'scene_review senza immagini' }, 400);
+        void daemon.submitSceneReview(images.slice(0, 2)).catch((err) => console.error('[scene review]', err));
+        return c.json({ ok: true });
+      }
       case 'approval_decision':
         daemon.resolveApproval(cmd.requestId, cmd.approved, cmd.always ?? false);
         return c.json({ ok: true });

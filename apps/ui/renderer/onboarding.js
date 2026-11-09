@@ -137,7 +137,12 @@ function collect() {
   return { name, tone, apiKey, heartbeatMinutes, autoApprove, computerUse, provider: { name: P.name, model, baseURL, auth } };
 }
 
+let completing = false;
 function hatch() {
+  if (completing) return;
+  completing = true;
+  nextBtn.disabled = true;
+  backBtn.disabled = true;
   const data = collect();
   const overlay = document.getElementById('hatch');
   const text = overlay.querySelector('.hatch-text');
@@ -149,7 +154,43 @@ function hatch() {
   setTimeout(() => bridge.complete(data), 1900);
 }
 
-nextBtn.addEventListener('click', () => {
+document.getElementById('summonShortcut').textContent = bridge.platform === 'darwin' ? '⌘⇧O' : 'Ctrl+Shift+O';
+nextBtn.addEventListener('click', async () => {
+  if (completing) return;
+  const error = document.getElementById('setupError');
+  error.textContent = '';
+  if (steps[current].contains(providerEl)) {
+    if (provKey !== 'ollama' && provKey !== 'claudeSub' && !apiKeyEl.value.trim()) {
+      error.textContent = 'Inserisci la chiave API per continuare.';
+      apiKeyEl.focus();
+      return;
+    }
+    if (!modelEl.value.trim()) {
+      error.textContent = 'Indica il modello da utilizzare.';
+      return;
+    }
+    if (PROVIDERS[provKey].showBase) {
+      try {
+        const url = new URL(baseURLEl.value.trim());
+        if (!['http:', 'https:'].includes(url.protocol)) throw new Error();
+      } catch {
+        error.textContent = 'Inserisci un indirizzo HTTP o HTTPS valido.';
+        return;
+      }
+    }
+    if (provKey === 'claudeSub') {
+      nextBtn.disabled = true;
+      try {
+        if (!(await bridge.claudeStatus())?.loggedIn) {
+          error.textContent = 'Completa il login di Claude Code oppure scegli un provider con chiave API.';
+          return;
+        }
+      } catch {
+        error.textContent = 'Non riesco a verificare il login. Riprova o scegli un altro provider.';
+        return;
+      } finally { nextBtn.disabled = false; }
+    }
+  }
   if (current === steps.length - 1) hatch();
   else {
     current += 1;

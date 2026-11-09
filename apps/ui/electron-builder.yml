@@ -17,12 +17,19 @@ files:
   - node_modules/**
   - "!**/*.map"
   - "!build/**"
+  - build/icon.png
+  - build/icon.ico
 
 # Il daemon (bundle esbuild) viaggia FUORI dall'asar: è un processo figlio.
 extraResources:
   - from: build/daemon
     to: daemon
     filter: ["**/*.cjs"]
+  - from: ../../LICENSE
+    to: LICENSE.txt
+  - from: ../extension
+    to: browser-extension
+    filter: ["manifest.json", "background.js", "README.md"]
   # whisper-server (trascrizione locale della voce), da packaging/build-whisper.sh
   - from: build/whisper
     to: whisper
@@ -69,6 +76,10 @@ nsis:
   oneClick: true                # installazione a un clic (utenti non tecnici)
   perMachine: false             # per-utente: nessun prompt admin
   allowToChangeInstallationDirectory: false
+  shortcutName: Remi
+  uninstallDisplayName: Remi
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
   createDesktopShortcut: true
   createStartMenuShortcut: true
 

@@ -1,0 +1,140 @@
+{
+  "version": 1,
+  "style": "real",
+  "materials": {
+    "a": {
+      "color": "#d62828"
+    },
+    "b": {
+      "color": "#eeeeee"
+    },
+    "ground": {
+      "color": "#67925f"
+    }
+  },
+  "title": "Contatto: urto fra corpi",
+  "size": 3,
+  "contacts": [
+    {
+      "id": "hit",
+      "time": 1,
+      "mover": "striker",
+      "source": {
+        "node": "striker",
+        "point": [
+          -0.1,
+          0,
+          0
+        ]
+      },
+      "target": {
+        "node": "target",
+        "point": [
+          0.1,
+          0,
+          0
+        ]
+      },
+      "response": "target"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "floor",
+      "shape": "box",
+      "size": [
+        4,
+        0.04,
+        2
+      ],
+      "position": [
+        -0.6,
+        -0.02,
+        0
+      ],
+      "material": "ground"
+    },
+    {
+      "id": "striker",
+      "shape": "sphere",
+      "radius": 0.1,
+      "position": [
+        0.8,
+        0.1,
+        0
+      ],
+      "material": "a",
+      "animation": {
+        "duration": 3,
+        "loop": "repeat",
+        "keyframes": [
+          {
+            "time": 0,
+            "offset": [
+              0,
+              0,
+              0
+            ]
+          },
+          {
+            "time": 1,
+            "offset": [
+              -0.6,
+              0,
+              0
+            ]
+          },
+          {
+            "time": 3,
+            "offset": [
+              -0.6,
+              0,
+              0
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "target",
+      "shape": "sphere",
+      "radius": 0.1,
+      "position": [
+        0,
+        0.1,
+        0
+      ],
+      "material": "b",
+      "animation": {
+        "duration": 3,
+        "loop": "repeat",
+        "keyframes": [
+          {
+            "time": 0,
+            "offset": [
+              0,
+              0,
+              0
+            ]
+          },
+          {
+            "time": 2,
+            "offset": [
+              -0.7,
+              0,
+              0
+            ]
+          },
+          {
+            "time": 3,
+            "offset": [
+              -0.7,
+              0,
+              0
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

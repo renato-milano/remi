@@ -1,0 +1,137 @@
+{
+  "version": 1,
+  "title": "Caduta libera",
+  "size": 4,
+  "style": "real",
+  "camera": {
+    "direction": [
+      0,
+      0.4,
+      1.6
+    ]
+  },
+  "materials": {
+    "ball": {
+      "color": "#e89a40"
+    },
+    "ground": {
+      "color": "#85949a"
+    },
+    "force": {
+      "color": "#de6559"
+    }
+  },
+  "nodes": [
+    {
+      "shape": "box",
+      "size": [
+        3,
+        0.15,
+        2
+      ],
+      "position": [
+        0,
+        -0.15,
+        0
+      ],
+      "material": "ground",
+      "label": {
+        "title": "Suolo",
+        "text": "Il suolo interrompe la caduta."
+      }
+    },
+    {
+      "id": "falling",
+      "position": [
+        0,
+        3,
+        0
+      ],
+      "animation": {
+        "duration": 3,
+        "loop": "repeat",
+        "keyframes": [
+          {
+            "time": 0,
+            "offset": [
+              0,
+              0,
+              0
+            ]
+          },
+          {
+            "time": 0.4,
+            "offset": [
+              0,
+              -0.12,
+              0
+            ]
+          },
+          {
+            "time": 0.8,
+            "offset": [
+              0,
+              -0.48,
+              0
+            ]
+          },
+          {
+            "time": 1.2,
+            "offset": [
+              0,
+              -1.08,
+              0
+            ]
+          },
+          {
+            "time": 1.6,
+            "offset": [
+              0,
+              -1.92,
+              0
+            ]
+          },
+          {
+            "time": 1.9,
+            "offset": [
+              0,
+              -2.7,
+              0
+            ]
+          },
+          {
+            "time": 3,
+            "offset": [
+              0,
+              -2.7,
+              0
+            ]
+          }
+        ]
+      },
+      "children": [
+        {
+          "shape": "sphere",
+          "radius": 0.2,
+          "material": "ball"
+        },
+        {
+          "shape": "arrow",
+          "axis": "-y",
+          "length": 0.7,
+          "radius": 0.035,
+          "position": [
+            0.45,
+            0,
+            0
+          ],
+          "material": "force"
+        }
+      ],
+      "label": {
+        "title": "Gravit\u00e0",
+        "text": "La forza peso \u00e8 diretta verso il basso: durante la caduta la velocit\u00e0 aumenta. Tempi rallentati per illustrare il fenomeno."
+      }
+    }
+  ]
+}

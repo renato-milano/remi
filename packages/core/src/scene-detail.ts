@@ -9,6 +9,7 @@ import type { ReasoningBackend } from '@openmate/llm';
 import { SCENE_GUIDE, SceneStream, type SceneDetailEvent, type SceneNode } from '@openmate/scene3d';
 
 /** Forme che non si dettagliano: sono già il loro dettaglio, o sono solo frecce e linee. */
+const moves = (node: SceneNode): boolean => Boolean(node.animation || node.spin || node.children?.some(moves));
 const PLAIN = new Set(['arrow', 'line', 'wheel', 'propeller', 'rotor']);
 
 interface Picked {
@@ -21,7 +22,8 @@ interface Picked {
 function extent(n: SceneNode): number {
   const v = (k: string) => (typeof n[k] === 'number' ? (n[k] as number) : 0);
   const size = Array.isArray(n.size) ? Math.max(...(n.size as number[])) : 0;
-  return Math.max(size, v('length'), v('height'), v('span'), 2 * v('radius'), v('root'));
+  const balls = Array.isArray(n.balls) ? Math.max(...(n.balls as number[][]).map((b) => 2 * (b[3] ?? 0))) : 0;
+  return Math.max(size, balls, v('length'), v('height'), v('span'), 2 * v('radius'), v('root'));
 }
 
 /** La "forma" di una parte, per riconoscere le copie scritte una per una (4 gabbie uguali). */
@@ -36,7 +38,7 @@ export function partsToDetail(nodes: SceneNode[], max = 3): SceneNode[] {
   for (const n of nodes) count.set(signature(n), (count.get(signature(n)) ?? 0) + 1);
   const out: Picked[] = [];
   nodes.forEach((n, i) => {
-    if (i === 0 || !n.id || !n.label || PLAIN.has(String(n.shape))) return;
+    if (i === 0 || moves(n) || !n.shape || !n.id || !n.label || PLAIN.has(String(n.shape))) return;
     if ((count.get(signature(n)) ?? 0) > 1) return;
     const at = (n.attach as { at?: number[] } | undefined)?.at;
     const inside = Array.isArray(at) && !at.some((f) => f <= 0 || f >= 1);
@@ -92,6 +94,7 @@ export async function detailScene(opts: {
       const stream = new SceneStream();
       let ended = false;
       const forward = (events: ReturnType<SceneStream['feed']>['events']) => {
+        if (opts.signal?.aborted) return;
         for (const e of events) {
           if (e.op === 'start') opts.emit({ op: 'detail-start', target, header: e.header });
           else if (e.op === 'node') opts.emit({ op: 'detail-node', target, node: e.node });

@@ -258,7 +258,9 @@ export class Daemon {
       }
     }
 
-    const built = opts.backend ? { backend: opts.backend, vision: true } : buildBackend(opts.config, opts.secrets);
+    const built = opts.backend
+      ? { backend: opts.backend, sceneBackend: undefined, vision: true }
+      : buildBackend(opts.config, opts.secrets);
     const backend = built.backend;
     this.vision = built.vision;
 
@@ -273,6 +275,8 @@ export class Daemon {
 
     this.loop = new CognitiveLoop({
       backend,
+      sceneBackend: built.sceneBackend,
+      sceneFast: opts.config.provider.sceneEffort === 'low',
       registry: this.registry,
       memory: this.memory,
       tasks: this.tasks,
@@ -390,6 +394,20 @@ export class Daemon {
 
   async submitUserMessage(content: string): Promise<void> {
     await this.scheduler.submitUserMessage(content);
+  }
+
+  /**
+   * Seconda passata con la vista sul modello 3D: l'interfaccia manda due viste (PNG base64) di ciò che
+   * ha costruito e il modello corregge le parti sbagliate. Senza vision non si fa nulla.
+   */
+  async submitSceneReview(images: string[]): Promise<void> {
+    if (!this.vision || !images.length) return;
+    await this.loop.reviewScene(images);
+  }
+
+  /** Lo screenshot (base64) è un PNG leggibile? Il server lo controlla prima di accettare il turno. */
+  isPng(b64: string): boolean {
+    return pngSize(b64) !== undefined;
   }
 
   /** "Indica e chiedi": messaggio con lo screenshot del punto indicato dall'utente. */
@@ -711,7 +729,10 @@ Regole:
 - SCHERMO: se un passo parla di qualcosa che si vede sullo schermo dell'utente (una riga di codice, un valore, un pulsante, una parte dell'immagine), cerchiala scrivendo nel passo, fuori dall'svg, <mark x="…" y="…" w="…" h="…" label="1-3 parole"/> (label facoltativa) col riquadro stretto di quella cosa nello screenshot (${coords}). Di preferenza cose piccole e precise (una parola, un numero, un pulsante); una zona più grande (un riquadro dell'app) solo se il passo parla proprio di quella; al massimo 1-2 per passo, e solo dove aiuta a collegare la spiegazione a ciò che l'utente guarda.
 - Scrivi <say> PRIMA di <svg> (e di <mark>) in ogni passo.]`;
 
-function buildBackend(config: OpenMateConfig, secrets?: Secrets): { backend: ReasoningBackend; vision: boolean } {
+function buildBackend(
+  config: OpenMateConfig,
+  secrets?: Secrets,
+): { backend: ReasoningBackend; sceneBackend?: ReasoningBackend; vision: boolean } {
   // Modalità abbonamento Claude: riusa il login di Claude Code (nessuna API key).
   const subscription =
     config.provider.auth === 'claude-subscription'
@@ -726,8 +747,15 @@ function buildBackend(config: OpenMateConfig, secrets?: Secrets): { backend: Rea
   const backend = new DirectProviderBackend(provider.languageModel(config.provider.model), {
     systemPrefix: provider.systemPrefix,
   });
+  // modello dedicato ai modelli 3D (stesso provider): turno che chiede il 3D, dettagli, revisione
+  const sceneModel = config.provider.sceneModel?.trim();
+  const sceneBackend =
+    sceneModel && sceneModel !== config.provider.model
+      ? new DirectProviderBackend(provider.languageModel(sceneModel), { systemPrefix: provider.systemPrefix })
+      : undefined;
+  if (sceneBackend) console.log(`[llm] modelli 3D con ${sceneModel} (il resto con ${config.provider.model})`);
   // openai-compatible è dichiarato senza vision perché dipende dal modello dietro
   // il gateway (es. Claude via Vercel la ha): lì escludiamo solo i modelli noti ciechi.
   const vision = provider.capabilities.vision || !BLIND_MODELS.test(config.provider.model);
-  return { backend, vision };
+  return { backend, sceneBackend, vision };
 }

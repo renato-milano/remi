@@ -15,6 +15,13 @@ const fs = require('node:fs');
 const os = require('node:os');
 const { spawn, execFile, execFileSync } = require('node:child_process');
 
+// Preserve the existing userData path when branding development builds.
+const existingUserData = app.getPath('userData');
+app.setName('Remi');
+app.setPath('userData', existingUserData);
+if (process.platform === 'win32') app.setAppUserModelId('com.holyn.remi');
+const appIcon = path.join(__dirname, '..', 'build', process.platform === 'win32' ? 'icon.ico' : 'icon.png');
+
 const WIDTH = 500; // largo: robot su un lato, fumetto sull'altro (verso il centro)
 const HEIGHT = 540;
 const ROBOT_W = 200;
@@ -81,6 +88,9 @@ function saveSettings(data) {
   const p = data.provider || {};
   config.provider.name = p.name || config.provider.name || 'anthropic';
   if (p.model) config.provider.model = p.model;
+  // modello dedicato ai modelli 3D (facoltativo): vuoto = stesso modello
+  if (p.sceneModel) config.provider.sceneModel = p.sceneModel;
+  else delete config.provider.sceneModel;
   if (p.baseURL) config.provider.baseURL = p.baseURL;
   else delete config.provider.baseURL;
   config.provider.auth = p.auth === 'claude-subscription' ? 'claude-subscription' : 'api-key';
@@ -283,6 +293,7 @@ function createCompanion() {
   if (win) return;
   const { workArea } = screen.getPrimaryDisplay();
   win = new BrowserWindow({
+    icon: appIcon,
     width: WIDTH,
     height: HEIGHT,
     x: workArea.x + workArea.width - WIDTH - 8,
@@ -326,6 +337,7 @@ function createCompanion() {
 /* ---------------- finestra onboarding ---------------- */
 function openOnboarding() {
   onbWin = new BrowserWindow({
+    icon: appIcon,
     width: 560,
     height: 640,
     resizable: false,
@@ -364,6 +376,7 @@ function openDashboard() {
     return;
   }
   dashboardWin = new BrowserWindow({
+    icon: appIcon,
     width: 640,
     height: 720,
     title: 'Remi — Cruscotto',
@@ -387,6 +400,7 @@ function openSettings() {
     return;
   }
   settingsWin = new BrowserWindow({
+    icon: appIcon,
     width: 520,
     height: 660,
     resizable: false,
@@ -518,6 +532,7 @@ let lingerTimer;
 function ensurePointerWin(display) {
   if (!pointerWin) {
     pointerWin = new BrowserWindow({
+    icon: appIcon,
       ...display.bounds,
       frame: false,
       transparent: true,
@@ -577,6 +592,11 @@ function hidePointer() {
 /* ---------------- finestra 3D (modelli costruiti in streaming) ---------------- */
 
 let scene3dWin;
+let scene3dVisible = Promise.resolve();
+let resolveScene3dVisible;
+ipcMain.on('scene3d-visible', (event) => {
+  if (event.sender === scene3dWin?.webContents) { resolveScene3dVisible?.(); resolveScene3dVisible = undefined; }
+});
 let scene3dReady;
 
 /** Il bundle della finestra 3D (Three.js): in sviluppo si rigenera all'avvio, nel pacchetto è già pronto. */
@@ -600,6 +620,7 @@ function ensureScene3dWin() {
   const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
   if (!scene3dWin) {
     scene3dWin = new BrowserWindow({
+    icon: appIcon,
       ...display.workArea,
       frame: false,
       transparent: true,
@@ -632,6 +653,8 @@ function ensureScene3dWin() {
     );
     scene3dWin.on('closed', () => {
       scene3dWin = undefined;
+      resolveScene3dVisible?.();
+      resolveScene3dVisible = undefined;
     });
   } else if (!scene3dWin.isVisible()) {
     scene3dWin.setBounds(display.workArea);
@@ -648,17 +671,18 @@ function dumpScene3d(event) {
   if (event.op === 'start') scene3dDump = { at: Date.now(), events: [] };
   if (!scene3dDump) return;
   scene3dDump.events.push({ kind: 'scene3d', ...event });
-  if (event.op !== 'end') return;
+  // si scrive alla fine del modello e poi di nuovo a ogni evento successivo (dettagli, revisione)
+  if (event.op !== 'end' && !scene3dDump.written) return;
   const dir = path.join(userData, 'debug', 'scenes');
   const file = path.join(dir, `scene-${scene3dDump.at}.json`);
   try {
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(file, JSON.stringify(scene3dDump.events));
-    console.log(`[scene3d] scena salvata: ${file}`);
+    if (!scene3dDump.written) console.log(`[scene3d] scena salvata: ${file}`);
+    scene3dDump.written = true;
   } catch (err) {
     console.warn('[scene3d] scena non salvata:', err.message);
   }
-  scene3dDump = undefined;
 }
 
 function handleScene3d(e) {
@@ -666,7 +690,12 @@ function handleScene3d(e) {
   dumpScene3d(event);
   if (event.op === 'end' && event.errors?.length)
     console.warn(`[scene3d] «${event.title}»: ${event.nodes} parti, scartato:\n  ${event.errors.join('\n  ')}`);
-  if (event.op === 'start' && !scene3dWin?.isVisible()) ensureScene3dWin();
+  if (event.op === 'start') {
+    resolveScene3dVisible?.();
+    scene3dVisible = new Promise((resolve) => { resolveScene3dVisible = resolve; });
+    if (!scene3dWin?.isVisible()) ensureScene3dWin();
+  }
+  if (event.op === 'end' && !event.pendingRepair && !event.nodes && !event.preview) { resolveScene3dVisible?.(); resolveScene3dVisible = undefined; }
   if (!scene3dWin) return;
   // in ordine: le parti arrivate prima che la pagina sia pronta aspettano il caricamento
   scene3dQueue = scene3dQueue
@@ -680,13 +709,22 @@ function handleScene3d(e) {
       scene3dWin.webContents.send('scene3d-event', event);
     });
 }
+ipcMain.on('scene3d-snapshot', (e, images) => {
+  if (!scene3dWin || e.sender !== scene3dWin.webContents) return;
+  if (!Array.isArray(images) || !images.length) return;
+  fetch(`${DAEMON_URL}/command`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ kind: 'scene_review', images: images.slice(0, 2) }),
+  }).catch((err) => console.error('[scene3d] revisione non inviata:', err.message));
+});
 ipcMain.on('scene3d-interactive', (e, on) => {
   if (scene3dWin && e.sender === scene3dWin.webContents) scene3dWin.setIgnoreMouseEvents(!on, { forward: true });
 });
 ipcMain.on('scene3d-close', (e) => {
   if (!scene3dWin || e.sender !== scene3dWin.webContents) return;
   scene3dWin.setIgnoreMouseEvents(true, { forward: true });
-  scene3dWin.hide();
+  scene3dWin.destroy();
 });
 
 /** Cattura il monitor `display` a piena risoluzione. */
@@ -696,6 +734,12 @@ async function grabDisplay(display) {
   const size = { width: Math.round(b.width * sf), height: Math.round(b.height * sf) };
   const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: size });
   const src = sources.find((s) => String(s.display_id) === String(display.id)) || sources[0];
+  // senza il permesso Registrazione schermo macOS restituisce nessuna sorgente o un'immagine vuota:
+  // meglio fermarsi qui con un messaggio chiaro che mandare al daemon uno screenshot non valido
+  if (!src || src.thumbnail.isEmpty()) {
+    const status = systemPreferences.getMediaAccessStatus('screen');
+    throw new Error(`cattura vuota (Registrazione schermo: ${status})`);
+  }
   return src.thumbnail;
 }
 
@@ -1204,12 +1248,17 @@ async function submitPoint(capture, text, voiceTurn) {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ kind: 'point_message', content: text, ...capture }),
     });
-    if (!res.ok) throw new Error(`daemon ${res.status}`);
+    if (!res.ok) {
+      // il daemon ha rifiutato il turno (es. screenshot non valido): si dice il perché, non "irraggiungibile"
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error ? `rifiutato: ${body.error}` : `daemon ${res.status}`);
+    }
     phase('turno inviato al daemon');
   } catch (err) {
     console.error('[point] invio fallito', err);
     setPointTurn(false);
-    sendPointer('pointer-answer', 'Non riesco a raggiungere Remi in questo momento.');
+    const refused = /rifiutato: (.*)/.exec(String(err.message))?.[1];
+    sendPointer('pointer-answer', refused ? `Non riesco a usare lo screenshot: ${refused}.` : 'Non riesco a raggiungere Remi in questo momento.');
     lingerTimer = setTimeout(hidePointer, 6000);
   }
 }
@@ -1426,7 +1475,9 @@ ipcMain.on('pointer-wake-segment', async (_e, wav) => {
   wakeBusy = true;
   try {
     const out = await postJson('/voice/wake', { audio: Buffer.from(wav).toString('base64') });
-    pointDebug(`ascoltato: "${out.text ?? out.error}"${out.wake ? ' → Hey Remi!' : ''}`);
+    // nel log solo i pezzi che chiamano Remi: il resto è audio ambientale (video, chiamate) e non va trascritto da nessuna parte
+    if (out.wake) pointDebug(`ascoltato: "${out.text}" → Hey Remi!`);
+    else if (out.error) pointDebug(`ascolto fallito: ${out.error}`);
     if (out.ok && out.wake) {
       const question = String(out.question || '').trim();
       // detta di fila con "Hey Remi": la domanda si ritrascrive col modello cloud (whisper locale
@@ -1553,9 +1604,13 @@ function speakAnswer(text) {
  * viene rivelato subito, così il pannello non resta a metà.
  */
 function speakParts(parts) {
+  const visible = scene3dVisible;
+  const dispatched = scene3dQueue;
   phase(`voce: richiesta audio (${parts.length} parti)`);
   const pending = parts.map((p) => postJson('/voice/speak', { text: p.text }).catch(() => ({ ok: false })));
   speakChain = speakChain.then(async () => {
+    await dispatched.catch(() => {});
+    await visible;
     for (const [i, req] of pending.entries()) {
       const { text, step } = parts[i];
       const out = await req;
@@ -1643,7 +1698,7 @@ function clearOverlaysForRemi() {
   pointerWin?.setIgnoreMouseEvents(true, { forward: true });
   if (!scene3dWin?.isVisible()) return false;
   scene3dWin.setIgnoreMouseEvents(true, { forward: true });
-  scene3dWin.hide();
+  scene3dWin.destroy();
   return true;
 }
 
@@ -1855,6 +1910,9 @@ ipcMain.on('context-menu', showContextMenu);
 
 /* ---------------- avvio ---------------- */
 app.whenReady().then(() => {
+  if (process.platform === 'darwin') app.dock?.setIcon(appIcon);
+  // lo stato del permesso nel log: una cattura vuota ("indica" che non parte) si spiega da qui
+  if (process.platform === 'darwin') console.log(`[point] Registrazione schermo: ${systemPreferences.getMediaAccessStatus('screen')}`);
   restoreVolumeLeftLow();
   globalShortcut.register(HOTKEY, summon);
   if (!startKeyHook() && !globalShortcut.register(POINT_HOTKEY, () => void startPoint())) {

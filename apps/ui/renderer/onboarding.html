@@ -48,7 +48,7 @@
           <p class="hint">⚠️ Modalità avanzata, per uso personale: riuso il login di <b>Claude Code</b> sul tuo Mac. Non è ufficialmente supportata da Anthropic e potrebbe smettere di funzionare. Serve avere Claude Code installato e loggato (<span class="mono">claude</span> oppure <span class="mono">claude setup-token</span>).</p>
         </div>
         <a class="link" id="provHelp" href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer">Dove trovo la chiave?</a>
-        <p class="hint" id="keyHint">La chiave resta cifrata in locale. Puoi anche saltare e inserirla dopo.</p>
+        <p class="hint" id="keyHint">La chiave resta cifrata in locale. Serve una chiave API del provider; eventuali costi sono addebitati dal provider. Ollama richiede un’installazione e un modello locali.</p>
       </section>
 
       <!-- 3: autonomia -->
@@ -85,14 +85,16 @@
       <section class="step">
         <h1>Come funziono</h1>
         <ul class="how">
-          <li><b>Parlami</b> con la scorciatoia <span class="kbd">⌘⇧O</span> o passandoci sopra il mouse.</li>
+          <li><b>Parlami</b> con la scorciatoia <span class="kbd" id="summonShortcut">⌘⇧O</span> o passandoci sopra il mouse.</li>
           <li><b>Ti chiedo il permesso</b> prima di azioni delicate, in parole semplici.</li>
           <li><b>Tasto destro</b> su di me: Dormi, Interrompi, Esci.</li>
         </ul>
+        <p class="hint">Voce locale: scarica un modello dalle Impostazioni. Navigazione web: richiede Google Chrome. Queste funzioni sono facoltative.</p>
         <div class="mini-card">Leggere dei file<br><span>Posso elencare i file nella cartella Documenti?</span></div>
       </section>
     </div>
 
+    <p id="setupError" class="hint" role="alert" aria-live="polite"></p>
     <div class="nav">
       <button id="back" class="btn ghost">Indietro</button>
       <button id="next" class="btn primary">Avanti</button>

@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { SceneStream, type SceneStreamEvent, validateScene } from './index.js';
+import { SceneStream, type SceneStreamEvent, validateScene, sampleAnimation } from './index.js';
 
 const example = (name: string) =>
   readFileSync(new URL(`../examples/${name}.json`, import.meta.url), 'utf8');
@@ -25,6 +25,7 @@ describe('validateScene', () => {
   it('accetta le scene di esempio', () => {
     expect(validateScene(JSON.parse(example('jet')))).toEqual([]);
     expect(validateScene(JSON.parse(example('board')))).toEqual([]);
+    expect(validateScene(JSON.parse(example('free-fall')))).toEqual([]);
   });
 
   it('riporta gli errori col percorso JSON', () => {
@@ -36,9 +37,9 @@ describe('validateScene', () => {
         { shape: 'box', size: [1, -1, 1], label: { text: 'x' } },
       ],
     });
-    expect(errors).toContain(
-      'nodes[0].shape: forma sconosciuta «gear»; disponibili: box, cylinder, cone, sphere, roundedBox, capsule, profile, torus, lathe, loft, plate, tube, rotor, line, body, wing, wheel, duct, stages, arrow, propeller',
-    );
+    expect(
+      errors.some((e) => e.startsWith('nodes[0].shape: forma sconosciuta «gear»; disponibili: ')),
+    ).toBe(true);
     expect(errors.some((e) => e.startsWith('nodes[0].material: materiale non definito'))).toBe(
       true,
     );
@@ -172,7 +173,10 @@ describe('SceneStream', () => {
     );
     const nodes = events.filter((e) => e.op === 'node');
     expect(nodes).toHaveLength(3);
-    expect(nodes[1].op === 'node' && nodes[1].node.attach).toEqual({ to: 'scocca', at: [0.2, 0, 1] });
+    expect(nodes[1].op === 'node' && nodes[1].node.attach).toEqual({
+      to: 'scocca',
+      at: [0.2, 0, 1],
+    });
     expect(events.find((e) => e.op === 'start')).toMatchObject({ header: { size: 4.2 } });
     expect(events.find((e) => e.op === 'end')).toMatchObject({ errors: [] });
   });
@@ -189,7 +193,11 @@ describe('SceneStream', () => {
     expect(nodes.map((n) => n && n.id)).toEqual(['corpo', 'batteria', undefined, 'motore']);
     expect(nodes[0]).not.toHaveProperty('children');
     // ereditano materiale e specchiatura; senza "to" si attaccano al genitore
-    expect(nodes[2]).toMatchObject({ material: 'g', mirror: 'z', attach: { to: 'corpo', at: [0.3, 0.5, 1] } });
+    expect(nodes[2]).toMatchObject({
+      material: 'g',
+      mirror: 'z',
+      attach: { to: 'corpo', at: [0.3, 0.5, 1] },
+    });
     expect(nodes[3]).toMatchObject({ material: 'g', mirror: 'z' });
     expect(events.find((e) => e.op === 'end')).toMatchObject({ errors: [] });
   });
@@ -216,4 +224,115 @@ describe('SceneStream', () => {
     expect(text).toBe('a < b e <scene non è un tag');
     expect(events).toEqual([]);
   });
+});
+
+describe('traiettorie illustrative', () => {
+  const animation = {
+    duration: 2,
+    keyframes: [
+      { time: 0, offset: [0, 0, 0] as [number, number, number] },
+      { time: 2, offset: [4, -2, 0] as [number, number, number] },
+    ],
+  };
+  it('interpola e ripete senza deriva, oppure torna indietro e si ferma', () => {
+    expect(sampleAnimation(animation, 1)).toEqual([2, -1, 0]);
+    expect(sampleAnimation(animation, 3)).toEqual([2, -1, 0]);
+    expect(sampleAnimation(animation, 2000)).toEqual([0, 0, 0]);
+    expect(sampleAnimation({ ...animation, loop: 'pingpong' }, 3)).toEqual([2, -1, 0]);
+    expect(sampleAnimation({ ...animation, loop: 'once' }, 10)).toEqual([4, -2, 0]);
+  });
+  it('rifiuta durate, offset e tempi non validi', () => {
+    for (const value of [
+      { ...animation, duration: 0 },
+      { ...animation, loop: 'unknown' },
+      {
+        ...animation,
+        keyframes: [
+          { time: 1, offset: [0, 0, 0] },
+          { time: 0, offset: [0, 0, 0] },
+        ],
+      },
+      { ...animation, keyframes: [{ time: 0 }, { time: 2, offset: [0, Infinity, 0] }] },
+    ])
+      expect(
+        validateScene({ version: 1, materials: {}, nodes: [{ shape: 'sphere', animation: value }] })
+          .length,
+      ).toBeGreaterThan(0);
+  });
+  it('mantiene le animazioni durante lo streaming', () => {
+    const { events } = streamIn(`<scene3d>${example('free-fall')}</scene3d>`);
+    expect(events.find((e) => e.op === 'node' && e.node.id === 'falling')).toMatchObject({
+      node: { animation: { duration: 3 } },
+    });
+    expect(events.at(-1)).toMatchObject({ op: 'end', errors: [] });
+  });
+});
+
+it('conserva nel gruppo animato tutte le parti montate, anche annidate', () => {
+  const scene = {
+    version: 1,
+    materials: {},
+    nodes: [
+      {
+        id: 'jet',
+        animation: {
+          duration: 2,
+          keyframes: [
+            { time: 0, offset: [0, 0, 0] },
+            { time: 2, offset: [0, 3, 0] },
+          ],
+        },
+        children: [
+          { id: 'body', shape: 'box', size: [4, 1, 1] },
+          {
+            id: 'wing',
+            shape: 'box',
+            size: [1, 0.1, 2],
+            attach: { to: 'body', at: [0.5, 0.5, 1] },
+            children: [
+              {
+                id: 'engine',
+                shape: 'sphere',
+                radius: 0.2,
+                attach: { to: 'wing', at: [0.5, 0, 0.5] },
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+  expect(validateScene(scene)).toEqual([]);
+  const { events } = streamIn(`<scene3d>${JSON.stringify(scene)}</scene3d>`);
+  const nodes = events.filter((e) => e.op === 'node');
+  expect(nodes).toHaveLength(1);
+  expect(nodes[0]).toMatchObject({ node: scene.nodes[0] });
+  expect(events.at(-1)).toMatchObject({ errors: [] });
+});
+
+it('sincronizza lo spin con il contatto e con ogni ciclo della traiettoria', async () => {
+  const { spinAngle } = await import('./animation.js');
+  const timeline = {
+    duration: 4,
+    loop: 'repeat' as const,
+    keyframes: [
+      { time: 0, offset: [0, 0, 0] as [number, number, number] },
+      { time: 0.8, offset: [0, 0, 0] as [number, number, number] },
+      { time: 4, offset: [-3, 0, 1] as [number, number, number] },
+    ],
+  };
+  expect(spinAngle({ speed: 10 }, 0.7, timeline)).toBe(0);
+  expect(spinAngle({ speed: 10 }, 1.8, timeline)).toBe(10);
+  expect(spinAngle({ speed: 10 }, 4.5, timeline)).toBe(0);
+  expect(spinAngle({ speed: 10, start: 1, end: 2 }, 3, timeline)).toBe(10);
+  expect(spinAngle({ speed: 10, start: 0 }, 0.5, timeline)).toBe(5);
+  expect(spinAngle({ speed: 10 }, 3)).toBe(30);
+  expect(spinAngle({ speed: 10 }, 10, { ...timeline, loop: 'once' })).toBe(32);
+  expect(
+    validateScene({
+      version: 1,
+      materials: {},
+      nodes: [{ shape: 'sphere', spin: { axis: 'y', speed: 1, start: 2, end: 1 } }],
+    }).length,
+  ).toBeGreaterThan(0);
 });

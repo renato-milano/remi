@@ -1,0 +1,194 @@
+{
+  "version": 1,
+  "style": "real",
+  "materials": {
+    "a": {
+      "color": "#d62828"
+    },
+    "b": {
+      "color": "#eeeeee"
+    },
+    "ground": {
+      "color": "#67925f"
+    }
+  },
+  "title": "Contatto: tiro a giro",
+  "size": 4,
+  "contacts": [
+    {
+      "id": "kick",
+      "time": 1,
+      "mover": "foot",
+      "source": {
+        "node": "shoe",
+        "direction": [
+          0,
+          0,
+          -1
+        ]
+      },
+      "target": {
+        "node": "ball",
+        "direction": [
+          0.8660254,
+          0,
+          0.5
+        ]
+      },
+      "response": "ball"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "floor",
+      "shape": "box",
+      "size": [
+        4,
+        0.04,
+        2
+      ],
+      "position": [
+        -0.6,
+        -0.02,
+        0
+      ],
+      "material": "ground"
+    },
+    {
+      "id": "foot",
+      "position": [
+        0.6,
+        0.11,
+        0.3
+      ],
+      "rotation": [
+        0,
+        60,
+        0
+      ],
+      "animation": {
+        "duration": 3,
+        "loop": "repeat",
+        "keyframes": [
+          {
+            "time": 0,
+            "offset": [
+              0,
+              0,
+              0
+            ]
+          },
+          {
+            "time": 1,
+            "offset": [
+              -0.3464101615,
+              0,
+              -0.2
+            ]
+          },
+          {
+            "time": 3,
+            "offset": [
+              -0.3464101615,
+              0,
+              -0.2
+            ]
+          }
+        ]
+      },
+      "children": [
+        {
+          "id": "shoe",
+          "shape": "roundedBox",
+          "size": [
+            0.26,
+            0.09,
+            0.1
+          ],
+          "radius": 0.015,
+          "material": "a",
+          "label": {
+            "title": "Superficie interna",
+            "text": "Questa faccia della scarpa raggiunge il punto decentrato sul pallone."
+          }
+        }
+      ]
+    },
+    {
+      "id": "ball",
+      "shape": "sphere",
+      "radius": 0.11,
+      "position": [
+        0,
+        0.11,
+        0
+      ],
+      "material": "b",
+      "spin": {
+        "axis": "y",
+        "speed": 12
+      },
+      "animation": {
+        "duration": 3,
+        "loop": "repeat",
+        "keyframes": [
+          {
+            "time": 0,
+            "offset": [
+              0,
+              0,
+              0
+            ]
+          },
+          {
+            "time": 1.4,
+            "offset": [
+              -0.5,
+              0.05,
+              -0.01
+            ]
+          },
+          {
+            "time": 2,
+            "offset": [
+              -1.2,
+              0.1,
+              -0.1
+            ]
+          },
+          {
+            "time": 2.6,
+            "offset": [
+              -2,
+              0.08,
+              -0.4
+            ]
+          },
+          {
+            "time": 3,
+            "offset": [
+              -2,
+              0.08,
+              -0.4
+            ]
+          }
+        ]
+      },
+      "children": [
+        {
+          "shape": "box",
+          "size": [
+            0.04,
+            0.222,
+            0.04
+          ],
+          "material": "a"
+        }
+      ],
+      "label": {
+        "title": "Pallone",
+        "text": "Parte e inizia a ruotare al contatto, dopo un secondo."
+      }
+    }
+  ]
+}

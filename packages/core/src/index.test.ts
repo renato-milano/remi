@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { FakeReasoningBackend } from '@openmate/llm';
@@ -269,14 +269,14 @@ describe('@openmate/core — modello 3D nella risposta', () => {
     });
     const result = await loop.runCycle({ kind: 'user_message', content: 'mostrami una ventola in 3D' });
 
-    expect(inputs[0].fast).toBe(true); // ragionamento basso: le parti arrivano subito
+    expect(inputs[0].fast).toBe(false); // pianifica la scena nella prima chiamata
     expect(inputs[0].system).toContain('<scene3d>');
     expect(result.text).toBe('Eccolo, guarda le pale.');
     expect(events.filter((e) => e.kind === 'message').map((e) => e.content)).toEqual(['Eccolo, guarda le pale.']);
     expect(events.filter((e) => e.kind === 'scene3d').map((e) => e.op)).toEqual(['start', 'node', 'node', 'end']);
-    // la frase arriva prima delle parti, non a modello finito
+    // la frase si dice appena il blocco inizia, prima delle parti, non a modello finito
     expect(events.findIndex((e) => e.kind === 'message')).toBeLessThan(
-      events.findIndex((e) => e.kind === 'scene3d'),
+      events.findIndex((e) => e.kind === 'scene3d' && e.op === 'node'),
     );
 
     await loop.runCycle({ kind: 'user_message', content: 'e il motore?' });
@@ -291,9 +291,59 @@ describe('@openmate/core — modello 3D nella risposta', () => {
 describe('@openmate/core — wants3d', () => {
   it('riconosce il 3D e il funzionamento in movimento, non le altre domande', () => {
     expect(wants3d('mostrami un drone in 3D')).toBe(true);
+    expect(wants3d('spiegami il tiro con una scena animata')).toBe(true);
     expect(wants3d('fammi vedere un motore a scoppio in movimento')).toBe(true);
     expect(wants3d('come girano gli ingranaggi di un cambio?')).toBe(true);
     expect(wants3d('com’è fatto un drone?')).toBe(false);
     expect(wants3d('che ore sono?')).toBe(false);
   });
+});
+
+
+
+for (const valid of [true, false]) it(`una sola generazione 3D, anche con contatto ${valid ? 'valido' : 'respinto'}`, async () => {
+  const source = JSON.parse(readFileSync(new URL('../../scene3d/examples/contact-collision.json', import.meta.url), 'utf8'));
+  if (!valid) source.contacts[0].source.point = [0, 0, 0];
+  const calls: ReasoningInput[] = []; const events: AgentEvent[] = [];
+  const backend: ReasoningBackend = { id: 'single-scene', async *run(input) {
+    calls.push(input);
+    yield { type: 'text-delta', text: `La palla trasferisce il movimento.<scene3d>${JSON.stringify(source)}</scene3d>` };
+    yield { type: 'finish', finishReason: 'stop', usage: {} };
+  } };
+  const loop = new CognitiveLoop({ backend, registry: registry(), memory: mem, tasks, policy, budget: { maxSteps: 3 }, sceneDetail: true, sceneReview: true, requestApproval: async () => true, onEvent: (e) => events.push(e) });
+  await loop.runCycle({ kind: 'user_message', content: 'spiegami un urto con una scena animata', fast: true });
+  await loop.reviewScene(['test-image']);
+  expect(calls).toHaveLength(1);
+  expect(calls[0].fast).toBe(false);
+  const sceneEvents = events.filter((e) => e.kind === 'scene3d');
+  expect(sceneEvents.some((e) => e.op.startsWith('detail-') || e.op === 'patch')).toBe(false);
+  expect(sceneEvents.at(-1)).toMatchObject({ op: 'end', nodes: valid ? 3 : 0 });
+  expect(sceneEvents.at(-1)).not.toHaveProperty('pendingRepair', true);
+});
+
+it('non avvia dettagli o revisione nemmeno per un modello statico', async () => {
+  const calls: ReasoningInput[] = []; const events: AgentEvent[] = [];
+  const backend: ReasoningBackend = { id: 'static-single', async *run(input) {
+    calls.push(input);
+    yield { type: 'text-delta', text: '<scene3d>{"version":1,"materials":{},"nodes":[{"id":"floor","shape":"box","size":[4,0.1,4]},{"id":"engine","shape":"sphere","radius":0.5,"label":{"title":"Motore"}}]}</scene3d>' };
+    yield { type: 'finish', finishReason: 'stop', usage: {} };
+  } };
+  const loop = new CognitiveLoop({ backend, registry: registry(), memory: mem, tasks, policy, budget: { maxSteps: 3 }, requestApproval: async () => true, onEvent: (e) => events.push(e) });
+  await loop.runCycle({ kind: 'user_message', content: 'mostrami un motore in 3D' });
+  await loop.reviewScene(['test-image']);
+  expect(calls).toHaveLength(1);
+  expect(events.filter((e) => e.kind === 'scene3d').map((e) => e.op)).toEqual(['start', 'node', 'node', 'end']);
+});
+
+
+it('pubblica una sola scena anche se la risposta contiene un secondo blocco', async () => {
+  const events: AgentEvent[] = [];
+  const backend: ReasoningBackend = { id: 'two-blocks', async *run() {
+    for (const title of ['Prima', 'Seconda']) yield { type: 'text-delta', text: `<scene3d>{"version":1,"title":"${title}","materials":{},"nodes":[{"shape":"sphere"}]}</scene3d>` };
+    yield { type: 'finish', finishReason: 'stop', usage: {} };
+  } };
+  const loop = new CognitiveLoop({ backend, registry: registry(), memory: mem, tasks, policy, budget: { maxSteps: 3 }, requestApproval: async () => true, onEvent: (e) => events.push(e) });
+  await loop.runCycle({ kind: 'user_message', content: 'mostrami una sfera in 3D' });
+  expect(events.filter((e) => e.kind === 'scene3d' && e.op === 'start')).toHaveLength(1);
+  expect(events.filter((e) => e.kind === 'scene3d' && e.op === 'end')).toHaveLength(1);
 });

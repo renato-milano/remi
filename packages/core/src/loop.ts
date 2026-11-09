@@ -11,7 +11,6 @@ import {
   wireName,
 } from '@openmate/tools';
 import { SCENE_GUIDE, SceneStream, type SceneStreamEvent } from '@openmate/scene3d';
-import { detailScene } from './scene-detail.js';
 import { PanelStream, type PanelStreamEvent } from './panel-stream.js';
 import type { Task, TaskStore } from './task-store.js';
 import type { AgentEvent, AgentState, CycleResult, Trigger } from './types.js';
@@ -26,8 +25,14 @@ export interface CognitiveLoopOptions {
   requestApproval: (req: ApprovalRequest) => Promise<boolean>;
   audit?: AuditSink;
   onEvent?: (event: AgentEvent) => void;
-  /** Dettaglio dei modelli 3D in altre chiamate (default sì; false nei test). */
+  /** Compatibilità configurazione: dettaglio successivo disattivato nella pipeline a generazione unica. */
   sceneDetail?: boolean;
+  /** Compatibilità configurazione: revisione successiva disattivata nella pipeline a generazione unica. */
+  sceneReview?: boolean;
+  /** Backend dedicato ai turni che chiedono un modello 3D (config provider.sceneModel); se manca si usa `backend`. */
+  sceneBackend?: ReasoningBackend;
+  /** Ragionamento basso anche nei turni 3D (config provider.sceneEffort = "low"). */
+  sceneFast?: boolean;
 }
 
 /**
@@ -38,8 +43,12 @@ export interface CognitiveLoopOptions {
 export class CognitiveLoop {
   private state: AgentState = { status: 'idle' };
   private readonly audit: AuditSink;
-  /** Dettagli 3D in corso (si annullano quando arriva un altro modello). */
-  private detailAbort?: AbortController;
+  /** Endpoint conservato per compatibilità: la scena non viene rigenerata dopo la visualizzazione. */
+  reviewScene(_images: string[]): Promise<void> { return Promise.resolve(); }
+  /** Backend per i turni che costruiscono un modello 3D. */
+  private sceneBackend(): ReasoningBackend {
+    return this.opts.sceneBackend ?? this.opts.backend;
+  }
   /** Grant di sessione (es. 'browser'): persistono tra i cicli, per l'intera
    *  vita del daemon → il browser si approva una volta, non a ogni messaggio. */
   private readonly sessionGrants = new Set<string>();
@@ -135,12 +144,22 @@ export class CognitiveLoop {
     let sceneEnd: Extract<SceneStreamEvent, { op: 'end' }> | undefined;
     const emitScene = (events: SceneStreamEvent[]) => {
       for (const e of events) {
+        if (sceneEnd) continue; // Una sola scena pubblicata per turno, nessuna sostituzione successiva.
         if (e.op === 'end') sceneEnd = e;
         this.opts.onEvent?.({ kind: 'scene3d', ...e });
+        // la spiegazione scritta prima del blocco si dice SUBITO, mentre la scena si costruisce
+        // (anche 40-60 s per una scena animata): l'esito della verifica arriva dopo, come frase a parte
+        if (e.op === 'start' || (e.op === 'end' && e.nodes > 0)) flush();
       }
     };
-    // chiedere un modello 3D vuol dire una risposta lunga: ragionamento basso, così le parti arrivano subito
-    const lowEffort = trigger.kind === 'user_message' && (Boolean(trigger.fast) || wants3d(trigger.content));
+    // Una scena richiede pianificazione nella prima chiamata, anche nei turni a voce.
+    const asks3d = trigger.kind === 'user_message' && wants3d(trigger.content);
+    // di norma una scena si pianifica a ragionamento pieno; con sceneFast (config provider.sceneEffort
+    // = "low") anche il 3D va a ragionamento basso: molto più rapido, da misurare caso per caso
+    const lowEffort =
+      trigger.kind === 'user_message' && Boolean(trigger.fast) && (!asks3d || Boolean(this.opts.sceneFast));
+    // chi chiede un modello 3D può avere un modello LLM dedicato (config provider.sceneModel)
+    const backend = asks3d ? this.sceneBackend() : this.opts.backend;
     const flush = () => {
       const seg = pending.trim();
       pending = '';
@@ -148,7 +167,7 @@ export class CognitiveLoop {
       return seg;
     };
     try {
-      for await (const ev of this.opts.backend.run({
+      for await (const ev of backend.run({
         system,
         messages,
         tools,
@@ -170,8 +189,7 @@ export class CognitiveLoop {
             pending += plain.text;
             text += plain.text;
             emitPanel(plain.events);
-            // la frase prima del modello esce subito: Remi parla mentre le parti compaiono
-            if (outside.events.some((e) => e.op === 'start')) flush();
+            // La spiegazione attende una scena visibile, anche in anteprima ferma.
             emitScene(outside.events);
             break;
           }
@@ -207,20 +225,17 @@ export class CognitiveLoop {
     {
       const rest = scene.end();
       emitScene(rest.events);
-      // modello finito: le parti spiegate si dettagliano in altre chiamate, in parallelo e
-      // senza far aspettare il turno (un nuovo modello annulla i dettagli del precedente)
-      const end = sceneEnd;
-      if (end?.source && end.nodes > 1 && !interrupted && this.opts.sceneDetail !== false) {
-        this.detailAbort?.abort();
-        const abort = new AbortController();
-        this.detailAbort = abort;
-        void detailScene({
-          backend: this.opts.backend,
-          source: end.source,
-          signal: abort.signal,
-          emit: (e) => this.opts.onEvent?.({ kind: 'scene3d', ...e }),
-        });
+      if (sceneEnd?.errors.length) {
+        // la spiegazione è già stata detta all'inizio del blocco: qui solo l'esito, se c'è da dirlo.
+        // anteprima: la scena si muove con le traiettorie così come scritte, il contatto non è garantito
+        const notice = sceneEnd.preview
+          ? 'Il contatto tra i corpi non ha superato la verifica: il movimento è quello scritto, senza correzioni.'
+          : sceneEnd.nodes > 0
+            ? ''
+            : 'Non sono riuscito a costruire questa scena.';
+        pending = [pending.trim(), notice].filter(Boolean).join(' ');
       }
+      if (opts.signal?.aborted) interrupted = true;
       const plain = panel ? panel.feed(rest.text) : { text: rest.text, events: [] };
       pending += plain.text;
       text += plain.text;
@@ -308,7 +323,7 @@ const OVERLAY_TOOLS = ['overlay.draw', 'overlay.clear'].map(wireName);
 
 /** La richiesta chiede un modello 3D, o di vedere un oggetto funzionare in movimento. */
 export function wants3d(text: string): boolean {
-  return /\b3\s?d\b|tridimensional|modell(?:o|ino) da (?:girare|ruotare)|in movimento|mentre (?:gira|girano|funziona|lavora)|come (?:si muov|gira|girano)/i.test(
+  return /\b3\s?d\b|scen[ae] (?:3d |tridimensional[ei] )?(?:animat|dinamic)|tridimensional|modell(?:o|ino) da (?:girare|ruotare)|in movimento|mentre (?:gira|girano|funziona|lavora)|come (?:si muov|gira|girano)/i.test(
     text,
   );
 }

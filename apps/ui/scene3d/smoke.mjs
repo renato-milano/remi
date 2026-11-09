@@ -34,6 +34,91 @@ try {
   const snapshot = () => page.evaluate(() => window.remi3d.getSnapshot());
   const feed = (e) => page.evaluate((ev) => window.remi3d.feed(ev), e);
 
+  // Contatti: la scena valida si riproduce; quella respinta resta ferma e mostra l'errore.
+  for (const e of events(`<scene3d>${await example('contact-kick')}</scene3d>`)) await feed(e);
+  await page.waitForTimeout(650);
+  assert.equal((await snapshot()).parts, 3);
+  assert.equal((await snapshot()).state.motion, true);
+  await page.screenshot({ path: `${shots}contact-kick.png`, omitBackground: true });
+  const invalidContact = JSON.parse(await example('contact-collision'));
+  invalidContact.contacts[0].source.point = [0, 0, 0];
+  const rejected = events(`<scene3d>${JSON.stringify(invalidContact)}</scene3d>`);
+  for (const e of rejected) await feed(e.op === 'end' ? { ...e, pendingRepair: true } : e);
+  assert.equal(await page.locator('#error').isVisible(), false, 'nessun errore tecnico durante la riparazione');
+  assert.equal((await snapshot()).state.building, true);
+  assert.match(await page.locator('#hint').textContent(), /Correggo il movimento/);
+  await feed({ ...rejected.at(-1), pendingRepair: false });
+  assert.equal((await snapshot()).parts, 3, 'i corpi restano visibili in anteprima ferma');
+  assert.equal((await snapshot()).state.motion, false);
+  assert.equal(await page.locator('#motion').isDisabled(), true, 'l’anteprima non può avviare un movimento respinto');
+  assert.equal(await page.locator('#error').isVisible(), true);
+  assert.match(await page.locator("#error").textContent(), /Movimento non verificato/);
+
+  // Una scena illustrativa arriva dallo stesso parser: il gruppo si muove e pausa lo ferma.
+  for (const e of events(`<scene3d>${await example('free-fall')}</scene3d>`)) await feed(e);
+  await page.waitForTimeout(650);
+  const fallBefore = await snapshot();
+  assert.equal(fallBefore.state.motion, true);
+  assert.equal(fallBefore.renderScheduled, true);
+  await page.waitForTimeout(350);
+  const fallAfter = await snapshot();
+  assert.notDeepEqual(fallAfter.labelPoints, fallBefore.labelPoints, 'le etichette seguono il corpo animato');
+  await page.locator('#motion').click();
+  await page.waitForTimeout(150);
+  const pausedFall = await snapshot();
+  await page.waitForTimeout(150);
+  assert.deepEqual((await snapshot()).labelPoints, pausedFall.labelPoints, 'pausa conserva la posizione');
+  await page.screenshot({ path: `${shots}free-fall.png`, omitBackground: true });
+
+  // Più corpi animati, con montaggi conservati dentro il gruppo mobile.
+  const move = (offset) => ({ duration: 6, loop: 'once', keyframes: [
+    { time: 0, offset: [0, 0, 0] }, { time: 6, offset },
+  ] });
+  const multi = { version: 1, style: 'real', materials: {}, nodes: [
+    { id: 'aircraft', animation: move([0, 6, 0]), children: [
+      { id: 'hull', shape: 'box', size: [4, 1, 1] },
+      { id: 'mountedWing', shape: 'box', size: [1, 0.1, 2], attach: { to: 'hull', at: [0.5, 0.5, 1] } },
+    ] },
+    { id: 'otherBody', shape: 'sphere', radius: 0.3, position: [3, 0, 0], animation: move([-6, 0, 0]) },
+  ] };
+  for (const e of events(`<scene3d>${JSON.stringify(multi)}</scene3d>`)) await feed(e);
+  await page.waitForTimeout(650);
+  const multiBefore = (await snapshot()).boxes;
+  await page.waitForTimeout(400);
+  const multiAfter = (await snapshot()).boxes;
+  const rise = multiAfter.hull.min[1] - multiBefore.hull.min[1];
+  const wingRise = multiAfter.mountedWing.min[1] - multiBefore.mountedWing.min[1];
+  assert.ok(rise > 0.1, 'il primo corpo si muove');
+  assert.ok(multiAfter.otherBody.min[0] < multiBefore.otherBody.min[0] - 0.1, 'anche il secondo corpo si muove');
+  assert.ok(Math.abs(rise - wingRise) < 0.001, 'l’ala segue la fusoliera senza separarsi');
+
+  // Una revisione annidata durante un dettaglio non duplica parti né perde il moto.
+  const vehicle = { version: 1, materials: {}, nodes: [
+    { id: 'floor', shape: 'box', size: [6, .1, 6], position: [0, -.5, 0] },
+    { id: 'vehicle', shape: 'box', size: [2, 1, 1], animation: move([0, 6, 0]), children: [
+      { id: 'shaft', shape: 'cylinder', radius: .1, height: .3, attach: { to: 'vehicle', at: [.5, 1, .5] }, children: [
+        { id: 'rotor', shape: 'propeller', radius: 1.5, axis: 'y', spin: { axis: 'y', speed: 4 }, position: [0, .2, 0] },
+      ] },
+    ] },
+  ] };
+  for (const e of events(`<scene3d>${JSON.stringify(vehicle)}</scene3d>`)) await feed(e);
+  await feed({ op: 'detail-start', target: 'vehicle', header: { version: 1, materials: {} } });
+  await feed({ op: 'detail-node', target: 'vehicle', node: { id: 'stale', shape: 'sphere', radius: .4 } });
+  await feed({ op: 'patch', remove: ['shaft'], nodes: [{ id: 'shaft', shape: 'cylinder', radius: .1, height: .5, children: [{ id: 'rotor', shape: 'propeller', radius: 1.6, axis: 'y' }] }], errors: [] });
+  await feed({ op: 'detail-end', target: 'vehicle', nodes: 1, errors: [] });
+  assert.equal((await snapshot()).parts, 2, 'la revisione non promuove le parti annidate a copie indipendenti');
+  await feed({ op: 'detail-start', target: 'vehicle', header: { version: 1, materials: {} } });
+  await feed({ op: 'detail-node', target: 'vehicle', node: { id: 'refined', shape: 'roundedBox', size: [2, 1, 1], radius: .1 } });
+  await feed({ op: 'detail-end', target: 'vehicle', nodes: 1, errors: [] });
+  await page.waitForTimeout(650);
+  const detailedBefore = (await snapshot()).boxes;
+  await page.waitForTimeout(350);
+  const detailedAfter = (await snapshot()).boxes;
+  const bodyRise = detailedAfter.vehicle.min[1] - detailedBefore.vehicle.min[1];
+  assert.ok(bodyRise > .1, 'il corpo dettagliato continua a salire');
+  assert.ok(Math.abs(detailedAfter.shaft.min[1] - detailedBefore.shaft.min[1] - bodyRise) < .001, 'il rotore resta montato sul corpo in movimento');
+  assert.ok((await snapshot()).triangles > 0, 'la sostituzione della geometria resta visibile');
+
   // il jet arriva parte per parte: la scena cresce mentre è ancora "in costruzione"
   const jet = events(`Ecco il jet.<scene3d>${await example('jet')}</scene3d>`);
   const nodes = jet.filter((e) => e.op === 'node').length;

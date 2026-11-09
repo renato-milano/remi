@@ -2,6 +2,7 @@
 import * as T from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { applyScenePatch } from '@openmate/scene3d';
 import { createScene } from './build.js';
 
 const bridge = window.scene3d;
@@ -18,6 +19,7 @@ try {
 } catch {
   $('error').textContent = 'La vista 3D richiede WebGL: verifica l’accelerazione grafica.';
   $('error').hidden = false;
+  bridge?.ready?.();
   bridge?.interactive(true);
   throw new Error('WebGL non disponibile');
 }
@@ -152,6 +154,9 @@ let frame = 0;
 let lastTime = 0;
 let width = innerWidth;
 let height = innerHeight;
+let sceneVisiblePending = false;
+function notifySceneVisible() { sceneVisiblePending = true; invalidate(); }
+let validating = false;
 let state = { section: true, motion: true, selected: null, building: false };
 let labels = [];
 let dragging = false;
@@ -170,6 +175,13 @@ let entering = [];
 let cameraGoal;
 /** Ingombri delle parti (coordinate di root): la sagoma vera del modello sullo schermo. */
 let partBoxes = [];
+/**
+ * Com'è arrivata la scena (intestazione, parti, etichette, eventi dei dettagli per parte): serve alla
+ * revisione con la vista, che corregge alcune parti e fa ricostruire il modello senza riscriverlo.
+ */
+let history = null;
+/** Ricostruzione in corso (dopo una revisione): niente animazione d'ingresso, la camera resta dov'è. */
+let rebuilding = false;
 /** Ultima posa della camera con cui si sono scelte le ancore dei fili; timer del ricalcolo. */
 const anchorsCamera = new T.Matrix4();
 let anchorTimer = 0;
@@ -194,7 +206,7 @@ function render(time) {
   lastTime = time;
   let busy = false;
   if (model) {
-    if (state.motion) model.animate(dt);
+    if (state.motion && !state.building) model.animate(dt);
     busy = animateEntering(time) || busy;
     busy = approachCamera() || busy;
     placeRim();
@@ -202,6 +214,7 @@ function render(time) {
   // piena risoluzione da fermo; mentre si gira, si costruisce o la camera si sposta basta meno
   setResolution(!(busy || dragging || state.building));
   renderer.render(scene, camera);
+  if (sceneVisiblePending) { sceneVisiblePending = false; bridge?.ready?.(); }
   // quando la camera si ferma, i fili cercano di nuovo un punto visibile del loro pezzo
   if (labels.length && !anchorsCamera.equals(camera.matrixWorld)) {
     anchorsCamera.copy(camera.matrixWorld);
@@ -221,31 +234,38 @@ function animateEntering(time) {
   });
   return entering.length > 0;
 }
-/** Camera che inquadra le parti visibili lungo la direzione della scena, lasciando spazio alle etichette. */
+/**
+ * Camera che inquadra le parti visibili lungo la direzione della scena, lasciando spazio alle etichette.
+ * Si inquadrano gli spigoli degli ingombri delle SINGOLE parti, non la scatola dell'intero modello:
+ * un aereo visto in diagonale ha angoli vuoti enormi (davanti-sopra alle estremità alari) che
+ * altrimenti allontanano la camera e lasciano metà schermo vuoto.
+ */
 function framing() {
   const center = model.bounds.getCenter(new T.Vector3());
   const dir = new T.Vector3(...model.direction).normalize();
   const right = new T.Vector3(0, 1, 0).cross(dir).normalize();
   if (right.lengthSq() === 0) right.set(1, 0, 0);
   const up = dir.clone().cross(right);
-  const tanV = Math.tan((camera.fov * Math.PI) / 360);
-  const tanH = tanV * camera.aspect;
-  const { min, max } = model.bounds;
+  // spazio riservato: ai lati le colonne dei biglietti (se ci sono etichette), sotto la barra dei comandi
+  const side = model.labels.length ? Math.min(0.24, 250 / width) : 0.03;
+  const tanV = Math.tan((camera.fov * Math.PI) / 360) * 0.82;
+  const tanH = Math.tan((camera.fov * Math.PI) / 360) * camera.aspect * (1 - 2 * side);
+  // ingombri delle parti in coordinate di root → mondo (root è scalato alla misura della scena)
+  const boxes = model.partBounds().map((b) => b.applyMatrix4(model.root.matrixWorld));
+  if (!boxes.length) boxes.push(model.bounds);
   let distance = 0;
-  for (let i = 0; i < 8; i++) {
-    const p = new T.Vector3(
-      i & 1 ? max.x : min.x,
-      i & 2 ? max.y : min.y,
-      i & 4 ? max.z : min.z,
-    ).sub(center);
-    const depth = p.dot(dir);
-    distance = Math.max(
-      distance,
-      depth + Math.abs(p.dot(up)) / tanV,
-      depth + Math.abs(p.dot(right)) / tanH,
-    );
-  }
-  distance = Math.max(distance * 1.12, 1e-3);
+  const p = new T.Vector3();
+  for (const { min, max } of boxes)
+    for (let i = 0; i < 8; i++) {
+      p.set(i & 1 ? max.x : min.x, i & 2 ? max.y : min.y, i & 4 ? max.z : min.z).sub(center);
+      const depth = p.dot(dir);
+      distance = Math.max(
+        distance,
+        depth + Math.abs(p.dot(up)) / tanV,
+        depth + Math.abs(p.dot(right)) / tanH,
+      );
+    }
+  distance = Math.max(distance * 1.02, 1e-3);
   return { center, position: center.clone().addScaledVector(dir, distance), distance };
 }
 function applyFraming(goal) {
@@ -268,6 +288,7 @@ function fitCamera() {
 }
 /** Mentre arrivano le parti la camera si allarga con dolcezza verso la nuova inquadratura invece di saltare. */
 function moveCamera() {
+  if (!model || model.bounds.isEmpty()) return;
   const goal = framing();
   applyFraming(goal);
   cameraGoal = {
@@ -488,7 +509,7 @@ function refreshAnchors() {
 function placeLabels() {
   if (!model) return;
   for (const item of labels) {
-    projected.copy(item.anchor ?? item.part.at).applyMatrix4(model.root.matrixWorld).project(camera);
+    projected.copy((item.part.dynamic ? item.part.at : item.anchor ?? item.part.at)).applyMatrix4(model.root.matrixWorld).project(camera);
     item.x = (projected.x * 0.5 + 0.5) * width;
     item.y = (-projected.y * 0.5 + 0.5) * height;
   }
@@ -559,7 +580,7 @@ function placeLabels() {
 function status() {
   $('title').textContent = model?.title || 'Modello 3D';
   $('hint').textContent = state.building
-    ? `Costruisco il modello… ${parts} ${parts === 1 ? 'parte' : 'parti'}`
+    ? validating ? 'Correggo il movimento…' : `Costruisco il modello… ${parts} ${parts === 1 ? 'parte' : 'parti'}`
     : pending
       ? `Aggiungo i dettagli… ${pending} ${pending === 1 ? 'parte' : 'parti'}`
       : 'Modello illustrativo · trascina per ruotare · scorri per ingrandire';
@@ -572,6 +593,9 @@ function status() {
 /* ---------- eventi dello streaming ---------- */
 
 function start(header) {
+  sceneVisiblePending = false;
+  validating = false;
+  $('error').hidden = true;
   if (model) {
     scene.remove(model.root);
     model.dispose();
@@ -611,6 +635,7 @@ function addNode(node) {
     return;
   }
   parts++;
+  history?.nodes.push(node);
   syncLabels();
   shadowify();
   placeShadow();
@@ -618,7 +643,7 @@ function addNode(node) {
   refreshAnchors();
   if (first) fitCamera();
   else if (!userMoved) moveCamera();
-  if (!model.bounds.isEmpty()) {
+  if (!model.bounds.isEmpty() && !rebuilding) {
     // l'altezza di partenza è nella scala della scena; il gruppo sta dentro root (misure del modello)
     holder.position.y = (model.bounds.getSize(new T.Vector3()).y * 0.25 + 0.2) / model.unit;
     entering.push({ holder, from: holder.position.y, start: performance.now() });
@@ -628,12 +653,32 @@ function addNode(node) {
 }
 function addLabels(list) {
   if (!model) return;
+  history?.labels.push(list);
   model.addLabels(list);
   syncLabels();
   invalidate();
 }
-function end() {
+function end(event) {
   if (!model) return;
+  if (event?.pendingRepair) {
+    if (event.preview) {
+      for (const { holder } of entering) holder.position.y = 0;
+      entering = [];
+      model.finish();
+      state.motion = false;
+      model.hasMotion = false;
+      model.setMotion(false);
+      if (!userMoved) moveCamera();
+      notifySceneVisible();
+    }
+    validating = true;
+    state.building = true;
+    $('error').hidden = true;
+    status();
+    invalidate();
+    return;
+  }
+  validating = false;
   // le parti ancora in ingresso vanno al loro posto prima di unire i box fermi
   for (const { holder } of entering) holder.position.y = 0;
   entering = [];
@@ -642,23 +687,139 @@ function end() {
   partBoxes = model.partBounds();
   refreshAnchors();
   state.building = false;
+  if ((history?.header.contacts && event?.errors?.length) || event?.errors?.some((e) => e.includes('contacts'))) {
+    if (event.preview) {
+      // anteprima: le traiettorie sono quelle scritte dal modello, senza le correzioni del contatto.
+      // Meglio un movimento non garantito che una scena ferma: si avvisa e si lascia girare.
+      console.warn('Contatto non verificato, movimento come scritto:', event.errors);
+      $('error').textContent = 'Movimento non verificato: le traiettorie sono quelle scritte, il contatto può essere impreciso.';
+    } else {
+      state.motion = false;
+      model.setMotion(false);
+      model.hasMotion = false;
+      console.warn('Scena non riprodotta:', event.errors);
+      $('error').textContent = event.errors.some((e) => e.includes('verifica interrotta'))
+        ? 'Verifica del movimento interrotta.'
+        : 'Non sono riuscito a costruire un movimento coerente tra gli oggetti.';
+    }
+    $('error').hidden = false;
+  }
   if (!userMoved) moveCamera();
+  if (history) history.ended = event ?? { errors: [] };
+  if (parts) notifySceneVisible();
   status();
   invalidate();
 }
+/**
+ * Revisione con la vista: alcune parti riscritte (stesso id), nuove o da togliere. Si ricostruisce la
+ * scena dalla cronologia con le correzioni, nello stesso giro di eventi (niente sfarfallio), senza
+ * animazione d'ingresso; la camera resta dov'è se l'utente l'ha mossa; i dettagli delle parti
+ * rimaste uguali si rimettono al loro posto.
+ */
+function patch(event) {
+  // I contatti compilati non possono essere modificati da una patch non verificata.
+  if (!model || !history || !history.ended || history.header.contacts) return;
+  const checked = applyScenePatch({ ...history.header, nodes: history.nodes }, event);
+  if (checked.errors.length) {
+    console.warn('Revisione scartata:', checked.errors);
+    return;
+  }
+  const nodes = checked.scene.nodes;
+  const touched = new Set(checked.touched);
+  const prev = { ...state, time: model.elapsed, position: camera.position.clone(), target: controls.target.clone(), moved: userMoved };
+  const old = history;
+  rebuilding = true;
+  try {
+    start(old.header);
+    // la cronologia riparte: addNode/addLabels/recordDetail la riempiono con la scena corretta
+    history = { header: old.header, nodes: [], labels: [], details: new Map(), ended: null };
+    for (const n of nodes) addNode(n);
+    for (const list of old.labels) addLabels(list);
+    end(old.ended);
+    for (const [target, events] of old.details) {
+      if (touched.has(target)) continue;
+      for (const e of events) handle(e);
+    }
+  } finally {
+    rebuilding = false;
+  }
+  model.animate(prev.time);
+  if (!prev.section) {
+    state.section = false;
+    model.setSection(false);
+  }
+  if (!prev.motion) {
+    state.motion = false;
+    model.setMotion(false);
+  }
+  if (prev.moved) {
+    userMoved = true;
+    camera.position.copy(prev.position);
+    controls.target.copy(prev.target);
+    controls.update();
+  } else fitCamera();
+  partBoxes = model.partBounds();
+  refreshAnchors();
+  status();
+  invalidate();
+}
+/**
+ * Due viste del modello costruito (PNG base64, sfondo bianco) per la revisione con la vista:
+ * quella attuale e una dall'altro lato, un po' più dall'alto. Solo il 3D, senza biglietti né barra.
+ */
+function snapshot() {
+  if (history?.header.contacts || !model || model.bounds.isEmpty()) return [];
+  const W = 960;
+  const H = Math.round((W * height) / width);
+  const off = document.createElement('canvas');
+  off.width = W;
+  off.height = H;
+  const ctx = off.getContext('2d');
+  const out = [];
+  const shoot = () => {
+    renderer.render(scene, camera); // il canvas WebGL non conserva il buffer: si disegna appena reso
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, W, H);
+    ctx.drawImage(renderer.domElement, 0, 0, W, H);
+    out.push(off.toDataURL('image/png').split(',')[1]);
+  };
+  shoot();
+  const position = camera.position.clone();
+  const target = controls.target.clone();
+  const offset = position.clone().sub(target);
+  const other = new T.Vector3(-offset.x, Math.abs(offset.y) * 1.4 + offset.length() * 0.1, -offset.z).setLength(offset.length());
+  camera.position.copy(target).add(other);
+  camera.lookAt(target);
+  shoot();
+  camera.position.copy(position);
+  camera.lookAt(target);
+  controls.update();
+  invalidate();
+  return out;
+}
 function handle(event) {
-  if (event.op === 'start') start(event.header);
-  else if (event.op === 'node') addNode(event.node);
+  if (history?.header.contacts && event.op.startsWith('detail-')) return;
+  if (event.op === 'start') {
+    start(event.header);
+    history = { header: event.header, nodes: [], labels: [], details: new Map(), ended: null };
+  } else if (event.op === 'node') addNode(event.node);
   else if (event.op === 'labels') addLabels(event.labels);
-  else if (event.op === 'end') end();
+  else if (event.op === 'end') end(event);
+  else if (event.op === 'patch') patch(event);
   // dettaglio di una parte (seconda chiamata): si costruisce a parte e sostituisce il pezzo
   else if (event.op === 'detail-plan') {
     pending = event.targets.length;
     status();
-  } else if (event.op === 'detail-start') model?.beginDetail(event.target, event.header);
-  else if (event.op === 'detail-node') model?.addDetailNode(event.target, event.node);
-  else if (event.op === 'detail-end') {
-    if (model?.endDetail(event.target)) {
+  } else if (event.op === 'detail-start') {
+    recordDetail(event);
+    model?.beginDetail(event.target, event.header);
+  } else if (event.op === 'detail-node') {
+    recordDetail(event);
+    model?.addDetailNode(event.target, event.node);
+  } else if (event.op === 'detail-end') {
+    recordDetail(event);
+    if (event.errors?.length || !event.nodes) model?.discardDetail(event.target);
+    else if (model?.endDetail(event.target)) {
       details++;
       shadowify();
       partBoxes = model.partBounds();
@@ -669,7 +830,14 @@ function handle(event) {
     invalidate();
   }
 }
+function recordDetail(event) {
+  if (!history) return;
+  const list = history.details.get(event.target) ?? [];
+  list.push(event);
+  history.details.set(event.target, list);
+}
 bridge?.onEvent(handle);
+bridge?.onSnapshot?.(() => bridge.snapshot(snapshot()));
 
 /* ---------- interazione e clic passanti ---------- */
 
@@ -794,6 +962,7 @@ document.addEventListener('visibilitychange', () => {
 window.remi3d = {
   feed: handle,
   refreshAnchors,
+  snapshot,
   getSnapshot: () => ({
     state: { ...state },
     parts,

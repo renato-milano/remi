@@ -1,3 +1,4 @@
+import { compileContacts } from './contacts.js';
 import {
   LIMITS,
   SHAPES,
@@ -28,7 +29,16 @@ export type SceneStreamEvent =
   | { op: 'labels'; labels: SceneLabel[] }
   /** `nodes`: nodi mostrati; `errors`: cosa è stato scartato e perché. */
   /** `source`: il JSON della scena così come l'ha scritto il modello (per i dump di debug). */
-  | { op: 'end'; title: string; nodes: number; errors: string[]; source?: string };
+  | {
+      op: 'end';
+      title: string;
+      nodes: number;
+      errors: string[];
+      source?: string;
+      warnings?: string[];
+      pendingRepair?: boolean;
+      preview?: boolean;
+    };
 
 /**
  * Dettaglio di una parte (seconda chiamata al modello, vedi core/scene-detail): una scena a sé,
@@ -39,7 +49,12 @@ export type SceneDetailEvent =
   | { op: 'detail-plan'; targets: string[] }
   | { op: 'detail-start'; target: string; header: SceneHeader }
   | { op: 'detail-node'; target: string; node: SceneNode }
-  | { op: 'detail-end'; target: string; nodes: number; errors: string[] };
+  | { op: 'detail-end'; target: string; nodes: number; errors: string[] }
+  /**
+   * Revisione con la vista (vedi core/scene-review): parti riscritte (stesso id) o nuove in `nodes`,
+   * parti da togliere in `remove`. L'interfaccia ricostruisce la scena con le correzioni.
+   */
+  | { op: 'patch'; remove: string[]; nodes: SceneNode[]; errors: string[] };
 
 const OPEN = '<scene3d>';
 const CLOSE = '</scene3d>';
@@ -130,6 +145,9 @@ export class SceneStream {
     this.nodeStart = -1;
     this.done = false;
     this.header = undefined;
+    this.deferredNodes = [];
+    this.warnings = [];
+    this.preview = false;
     this.shown = 0;
     this.objects = 0;
     this.errors = [];
@@ -212,23 +230,29 @@ export class SceneStream {
       // un materiale sbagliato perde solo i campi sbagliati (es. "cut" senza section);
       // si scarta solo se nemmeno così è valido
       const ok = (name: string, def: unknown) =>
-        validateHeader({ version: 1, materials: { [name]: def }, section: candidate.section }).length === 0;
+        validateHeader({ version: 1, materials: { [name]: def }, section: candidate.section })
+          .length === 0;
       const materials = Object.fromEntries(
-        Object.entries((candidate.materials ?? {}) as Record<string, unknown>).flatMap(([name, def]) => {
-          if (ok(name, def)) return [[name, def]];
-          if (def && typeof def === 'object' && !Array.isArray(def)) {
-            const fixed = Object.fromEntries(
-              Object.entries(def).filter(([k, v]) => ok(name, { color: '#888888', [k]: v })),
-            );
-            if (ok(name, fixed)) return [[name, fixed]];
-          }
-          return [];
-        }),
+        Object.entries((candidate.materials ?? {}) as Record<string, unknown>).flatMap(
+          ([name, def]) => {
+            if (ok(name, def)) return [[name, def]];
+            if (def && typeof def === 'object' && !Array.isArray(def)) {
+              const fixed = Object.fromEntries(
+                Object.entries(def).filter(([k, v]) => ok(name, { color: '#888888', [k]: v })),
+              );
+              if (ok(name, fixed)) return [[name, fixed]];
+            }
+            return [];
+          },
+        ),
       );
       const header = { version: 1 as const, materials } as SceneHeader;
+      if (candidate.contacts !== undefined)
+        header.contacts = candidate.contacts as SceneHeader['contacts'];
       if (typeof candidate.title === 'string') header.title = candidate.title;
       if (typeof candidate.size === 'number' && candidate.size > 0) header.size = candidate.size;
-      if (candidate.style === 'maquette' || candidate.style === 'real') header.style = candidate.style;
+      if (candidate.style === 'maquette' || candidate.style === 'real')
+        header.style = candidate.style;
       if (validateHeader({ ...header, camera: candidate.camera }).length === 0 && candidate.camera)
         header.camera = candidate.camera as SceneHeader['camera'];
       if (
@@ -252,6 +276,10 @@ export class SceneStream {
       return;
     }
     if (!this.header) return;
+    if (this.header.contacts !== undefined) {
+      this.adopt(normalize(node), index, events);
+      return;
+    }
     // sotto-pezzi con attach (es. la batteria dentro la fusoliera scritta come suo figlio):
     // diventano parti a sé, montate dopo la loro madre
     const [own, ...mounted] = hoist(normalize(node), () => `parte_${index}_${++this.hoisted}`);
@@ -260,10 +288,15 @@ export class SceneStream {
   }
 
   private hoisted = 0;
+  private deferredNodes: SceneNode[] = [];
+  private warnings: string[] = [];
+  private preview = false;
 
   private source(): string | undefined {
     // fino all'ultima graffa: niente tag di chiusura né testo dopo il JSON
-    return this.rootStart >= 0 ? this.json.slice(this.rootStart, this.json.lastIndexOf('}') + 1) : undefined;
+    return this.rootStart >= 0
+      ? this.json.slice(this.rootStart, this.json.lastIndexOf('}') + 1)
+      : undefined;
   }
 
   private adopt(node: unknown, index: number, events: SceneStreamEvent[]): void {
@@ -275,7 +308,7 @@ export class SceneStream {
       if (!n || typeof n !== 'object' || Array.isArray(n)) return;
       const o = n as Record<string, unknown>;
       if (typeof o.material === 'string' && !(o.material in known)) {
-        this.errors.push(`${path}: materiale «${o.material}» non definito, uso quello di base`);
+        this.warnings.push(`${path}: materiale «${o.material}» non definito, uso quello di base`);
         delete o.material;
       }
       if (Array.isArray(o.children)) o.children.forEach(dropMissing);
@@ -289,7 +322,8 @@ export class SceneStream {
       ({ errors, objects } = validateNode(node, this.header, path));
       if (errors.length) {
         // nel log anche com'era scritto il nodo: si vede dove il modello ha messo ciò che manca
-        if (node && typeof node === 'object') this.errors.push(`${path}: scritto con ${Object.keys(node).join(', ')}`);
+        if (node && typeof node === 'object')
+          this.errors.push(`${path}: scritto con ${Object.keys(node).join(', ')}`);
         return;
       }
     }
@@ -300,7 +334,8 @@ export class SceneStream {
     this.objects += objects;
     this.shown++;
     this.nodes = this.shown;
-    events.push({ op: 'node', index, node: node as SceneNode });
+    if (this.header.contacts !== undefined) this.deferredNodes.push(node as SceneNode);
+    else events.push({ op: 'node', index, node: node as SceneNode });
   }
 
   /** Fine del blocco: etichette in coda (se il JSON è completo) e riepilogo. */
@@ -318,6 +353,27 @@ export class SceneStream {
         this.adoptHeader(head, events);
         if (Array.isArray(nodes)) for (const n of nodes) this.takeNode(JSON.stringify(n), events);
       }
+      if (this.header?.contacts !== undefined) {
+        if (!full) this.errors.push('contacts: JSON della scena incompleto');
+        const compiled = compileContacts({ ...this.header, nodes: this.deferredNodes });
+        this.errors.push(...compiled.errors);
+        if (!this.errors.length && full) {
+          compiled.scene.nodes.forEach((node, index) => events.push({ op: 'node', index, node }));
+        } else {
+          this.shown = this.nodes = 0;
+          if (
+            full &&
+            this.errors.every((e) => e.startsWith('contacts.')) &&
+            this.deferredNodes.length
+          ) {
+            this.preview = true;
+            this.deferredNodes.forEach((node, index) => events.push({ op: 'node', index, node }));
+          }
+        }
+      } else if (full?.contacts !== undefined) {
+        this.errors.push('contacts: il campo contacts deve precedere nodes');
+        this.shown = this.nodes = 0;
+      }
       if (full && Array.isArray(full.labels)) {
         const labels = full.labels.filter((l, i) => {
           const errors = validateLabel(l, `labels[${i}]`);
@@ -329,14 +385,30 @@ export class SceneStream {
       if (!full && !this.header) this.errors.push('scena: JSON incompleto o non valido');
     }
     if (this.header || this.shown)
-      events.push({ op: 'end', title: this.title, nodes: this.shown, errors: this.errors, source: this.source() });
+      events.push({
+        op: 'end',
+        title: this.title,
+        nodes: this.shown,
+        errors: this.errors,
+        ...(this.preview ? { preview: true } : {}),
+        ...(this.warnings.length ? { warnings: this.warnings } : {}),
+        source: this.source(),
+      });
     else if (this.errors.length)
       events.push({ op: 'end', title: '', nodes: 0, errors: this.errors, source: this.source() });
   }
 }
 
 /** Oggetti in cui il modello a volte racchiude i parametri della forma. */
-const PARAM_WRAPPERS = ['shapeArgs', 'shapeParams', 'args', 'params', 'parameters', 'geometry', 'props'];
+const PARAM_WRAPPERS = [
+  'shapeArgs',
+  'shapeParams',
+  'args',
+  'params',
+  'parameters',
+  'geometry',
+  'props',
+];
 /** Forme la cui misura è `size`: un `scale` senza `size` è la misura (box unitario scalato). */
 const SIZED = new Set(['box', 'roundedBox']);
 const isVec3 = (v: unknown): v is number[] =>
@@ -375,7 +447,8 @@ function normalize(node: unknown): unknown {
     }
     if (SIZED.has(n.shape as string) && n.size === undefined) {
       const { dimensions, dims, scale, ...rest } = n;
-      const size = [dimensions, dims, scale].find(isVec3) ??
+      const size =
+        [dimensions, dims, scale].find(isVec3) ??
         (typeof scale === 'number' && scale > 0 ? [scale, scale, scale] : undefined);
       if (size) n = { ...rest, size, ...(isVec3(dimensions) || isVec3(dims) ? { scale } : {}) };
       if (n.scale === undefined) delete n.scale;
@@ -384,7 +457,10 @@ function normalize(node: unknown): unknown {
   // aggancio appena fuori dall'ingombro (es. 1.05): vale il bordo, la parte non va persa
   const at = isParams(n.attach) ? (n.attach as Record<string, unknown>).at : undefined;
   if (Array.isArray(at) && at.length === 3 && at.every((v) => typeof v === 'number'))
-    n = { ...n, attach: { ...(n.attach as object), at: at.map((v) => Math.min(1, Math.max(0, v))) } };
+    n = {
+      ...n,
+      attach: { ...(n.attach as object), at: at.map((v) => Math.min(1, Math.max(0, v))) },
+    };
   if (Array.isArray(n.children)) n = { ...n, children: n.children.map(normalize) };
   return n;
 }
@@ -394,17 +470,29 @@ function normalize(node: unknown): unknown {
  * livello, in ordine, dopo il nodo. Ereditano dal genitore il materiale (se non ne hanno) e la
  * specchiatura; un genitore senza id ne riceve uno, se un figlio non dice a cosa attaccarsi.
  */
-function hoist(node: unknown, newId: () => string, inherited?: { material?: unknown; mirror?: unknown }): unknown[] {
+function hoist(
+  node: unknown,
+  newId: () => string,
+  inherited?: { material?: unknown; mirror?: unknown },
+): unknown[] {
   if (node === null || typeof node !== 'object' || Array.isArray(node)) return [node];
   const n = { ...(node as Record<string, unknown>) };
   if (!Array.isArray(n.children)) return [n];
+  // Un gruppo in movimento è un corpo unico: i montaggi restano nel suo spazio locale.
+  if (n.animation || n.spin) return [n];
   const material = n.material ?? inherited?.material;
   const mirror = n.mirror ?? inherited?.mirror;
   const keep: unknown[] = [];
   const out: unknown[] = [];
   for (const child of n.children) {
     const c = child as Record<string, unknown>;
-    if (c && typeof c === 'object' && !Array.isArray(c) && c.attach && typeof c.attach === 'object') {
+    if (
+      c &&
+      typeof c === 'object' &&
+      !Array.isArray(c) &&
+      c.attach &&
+      typeof c.attach === 'object'
+    ) {
       const attach = { ...(c.attach as Record<string, unknown>) };
       if (attach.to === undefined) {
         if (typeof n.id !== 'string') n.id = newId();

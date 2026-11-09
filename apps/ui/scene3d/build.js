@@ -1,7 +1,8 @@
 /* Costruisce in Three.js una scena 3D (formato @openmate/scene3d) un nodo alla volta, mentre arriva. */
-import { SHAPES } from '@openmate/scene3d';
+import { SHAPES, sampleAnimation, spinAngle } from '@openmate/scene3d';
 import * as T from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { MarchingCubes } from 'three/addons/objects/MarchingCubes.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 const DEG = Math.PI / 180;
@@ -273,8 +274,61 @@ function arrow({ length: L, radius = L * 0.05, axis = 'y' }) {
   return orient(g, axis);
 }
 
+/**
+ * Corpo morbido: sfere che si fondono (metaball, marching cubes) in una superficie liscia e continua.
+ * `blend` dice fin dove arriva l'influenza di ogni sfera rispetto al suo raggio (1.3 lobi distinti,
+ * 2 un corpo unico). La griglia copre l'ingombro delle sfere con un margine; la mesh esce in metri.
+ */
+function blob(n) {
+  const blend = Math.min(3, Math.max(1.05, n.blend ?? 1.6));
+  const balls = n.balls;
+  const box = new T.Box3();
+  for (const [x, y, z, r] of balls) {
+    box.expandByPoint(new T.Vector3(x - r * blend, y - r * blend, z - r * blend));
+    box.expandByPoint(new T.Vector3(x + r * blend, y + r * blend, z + r * blend));
+  }
+  const size = box.getSize(new T.Vector3());
+  const extent = Math.max(size.x, size.y, size.z) * 1.1; // margine: la superficie non tocca il bordo
+  const center = box.getCenter(new T.Vector3());
+  const resolution = balls.length > 8 ? 56 : 48;
+  const field = new MarchingCubes(resolution, new T.MeshBasicMaterial(), false, false, 60000);
+  const iso = field.isolation; // 80
+  // campo di una sfera: strength / d² − subtract. Sulla superficie (d = r) vale iso; si annulla a d = r·blend
+  const subtract = iso / (blend * blend - 1);
+  for (const [x, y, z, r] of balls) {
+    const rn = r / extent; // raggio nello spazio normalizzato 0-1 della griglia
+    field.addBall(
+      (x - center.x) / extent + 0.5,
+      (y - center.y) / extent + 0.5,
+      (z - center.z) / extent + 0.5,
+      rn * rn * (iso + subtract),
+      subtract,
+    );
+  }
+  field.update();
+  // la griglia riempie il cubo [-1, 1]: si riportano i vertici in metri attorno al centro delle sfere.
+  // Le normali vengono dal gradiente del campo (lisce): quelle per faccia renderebbero la superficie sfaccettata
+  const count = field.count;
+  const pos = new Float32Array(count * 3);
+  const half = extent / 2;
+  for (let i = 0; i < count * 3; i += 3) {
+    pos[i] = field.positionArray[i] * half + center.x;
+    pos[i + 1] = field.positionArray[i + 1] * half + center.y;
+    pos[i + 2] = field.positionArray[i + 2] * half + center.z;
+  }
+  const normals = field.normalArray.slice(0, count * 3);
+  field.geometry.dispose();
+  const g = new T.BufferGeometry();
+  g.setAttribute('position', new T.BufferAttribute(pos, 3));
+  g.setAttribute('normal', new T.BufferAttribute(normals, 3));
+  g.normalizeNormals();
+  return g;
+}
+
 function geometryFor(n) {
   switch (n.shape) {
+    case 'blob':
+      return blob(n);
     case 'arrow':
       return arrow(n);
     case 'duct':
@@ -464,6 +518,34 @@ export function createScene(header) {
   const edges = new Map();
   const cutOnSection = [];
   const spinners = [];
+  const animations = [];
+  const movingLabels = [];
+  /** Parti che girano su se stesse (spin): oggetto → voce di spinners. */
+  const spinOf = new Map();
+  /**
+   * Matrice di una parte in coordinate di root IGNORANDO le rotazioni di spin sue e dei suoi antenati:
+   * l'etichetta di un'elica deve seguire l'elica dove si sposta (traiettorie), non girare con lei.
+   */
+  const staticMatrix = (o, out = new T.Matrix4()) => {
+    const chain = [];
+    for (let p = o; p && p !== root; p = p.parent) chain.unshift(p);
+    out.identity();
+    const m = new T.Matrix4();
+    const e = new T.Euler();
+    const q = new T.Quaternion();
+    for (const p of chain) {
+      const s = spinOf.get(p);
+      if (s) {
+        e.copy(p.rotation);
+        e[s.axis] = s.base;
+        q.setFromEuler(e);
+        m.compose(p.position, q, p.scale);
+      } else m.copy(p.matrix);
+      out.multiply(m);
+    }
+    return out;
+  };
+  let elapsed = 0;
   const toggles = { section: [], motion: [] };
   const edgeMat = new T.LineBasicMaterial({ color: '#333e43', transparent: true, opacity: 0.65 });
   materials.add(edgeMat);
@@ -689,11 +771,7 @@ for (int i = 0; i < ${PAINT_MAX}; i++) {
   }
 
   function single(n, parent, material, labelled) {
-    // le frecce devono vedersi: misura minima rispetto all'oggetto intero
-    if (n.shape === 'arrow' && header.size) {
-      const length = Math.max(n.length, header.size * 0.14);
-      n = { ...n, length, radius: Math.max(n.radius ?? length * 0.05, header.size * 0.012) };
-    }
+    // Rispetta le misure della freccia: la scena non deve gonfiare i vettori.
     let obj;
     if (!n.shape) obj = new T.Group();
     else if (n.shape === 'wheel') obj = wheelObject(n, maquette ? '__clay' : material);
@@ -723,18 +801,22 @@ for (int i = 0; i < ${PAINT_MAX}; i++) {
       obj.scale.set(...(Array.isArray(n.scale) ? n.scale : [n.scale, n.scale, n.scale]));
     if (n.outline && obj.isMesh && !obj.isInstancedMesh)
       obj.add(new T.LineSegments(outline(obj.geometry), edgeMat));
-    if (n.spin)
+    if (n.animation) animations.push({ obj, animation: n.animation, base: obj.position.clone() });
+    if (n.spin) {
       spinners.push({
         obj,
         axis: n.spin.axis.replace('-', ''),
-        speed: n.spin.speed * (n.spin.axis[0] === '-' ? -1 : 1),
+        spin: { ...n.spin, speed: n.spin.speed * (n.spin.axis[0] === '-' ? -1 : 1) },
+        base: obj.rotation[n.spin.axis.replace('-', '')],
       });
+      spinOf.set(obj, spinners.at(-1));
+    }
     if (n.showWhen) {
       obj.userData.when = n.showWhen;
       toggles[n.showWhen].push(obj);
       obj.visible = n.showWhen === 'section' ? section : motion;
     }
-    if (n.spin || n.showWhen) obj.userData.dynamic = true;
+    if (n.spin || n.animation || n.showWhen) obj.userData.dynamic = true;
     if (n.paint && !maquette && obj.isMesh && !obj.isInstancedMesh) painted(obj, n.paint);
     // un condotto lungo (un tubo, non una gabbia) fa da carter: può aprirsi nello spaccato
     obj.userData.shape = n.shape === 'duct' && n.height >= n.radius * 1.2 ? 'casing' : n.shape;
@@ -749,7 +831,13 @@ for (int i = 0; i < ${PAINT_MAX}; i++) {
     for (const child of n.children ?? []) {
       // un'elica dentro un condotto, senza asse, gira come il condotto (non come quella di un aereo)
       const inDuct = child.shape === 'propeller' && !child.axis && n.shape === 'duct';
-      place(inDuct ? { ...child, axis: n.axis ?? 'y' } : child, obj, material, labelled);
+      if (child.attach) {
+        // attached misura nello spazio root. Conserva poi la posa nel gruppo che si muove.
+        const mount = new T.Group();
+        root.add(mount);
+        attached({ ...child, material: child.material ?? material }, mount, labelled);
+        obj.attach(mount);
+      } else place(inDuct ? { ...child, axis: n.axis ?? 'y' } : child, obj, material, labelled);
     }
   }
   function repeated(n, parent, inherited, labelled) {
@@ -942,25 +1030,41 @@ for (int i = 0; i < ${PAINT_MAX}; i++) {
      * parte, costruita a parte e messa al suo posto, in tutte le copie, quando è completa.
      */
     beginDetail(target, detailHeader) {
-      if (!parts.has(target)) return false;
+      if (!parts.get(target)?.parent) return false;
+      const previous = details.get(target);
+      if (previous?.installed) return false;
+      if (previous) model.discardDetail(target);
       const sub = createScene({ ...detailHeader, size: undefined, style: 'real' });
       details.set(target, sub);
       return true;
     },
     addDetailNode(target, node) {
       const sub = details.get(target);
-      if (!sub) return;
+      if (!sub || sub.installed) return;
       try {
         sub.addNode(node);
       } catch (err) {
         console.warn('dettaglio: parte scartata', err);
       }
     },
+    discardDetail(target) {
+      const sub = details.get(target);
+      if (!sub || sub.installed) return;
+      sub.dispose();
+      details.delete(target);
+    },
     endDetail(target) {
       const sub = details.get(target);
       const first = parts.get(target);
-      if (!sub || !first || sub.parts === 0) return false;
+      if (!sub || !first || sub.parts === 0) { model.discardDetail(target); return false; }
+      if (!first.isMesh || first.isInstancedMesh || sub.installed) { model.discardDetail(target); return false; }
       sub.finish();
+      first.geometry.computeBoundingBox();
+      const envelope = first.geometry.boundingBox?.clone();
+      const detailBox = new T.Box3().setFromObject(sub.root);
+      if (!envelope || envelope.isEmpty() || detailBox.isEmpty()) { model.discardDetail(target); return false; }
+      envelope.expandByScalar(envelope.getSize(new T.Vector3()).length() * .1 + .002);
+      if (!envelope.containsBox(detailBox)) { model.discardDetail(target); return false; }
       model.highlight(null);
       // in maquette il dettaglio prende la tinta dell'etichetta della parte, in più toni
       const id = first.userData.labelNode ? labelOf.get(first.userData.labelNode) : null;
@@ -976,15 +1080,19 @@ for (int i = 0; i < ${PAINT_MAX}; i++) {
           }),
         );
       }
+      if (!first.isMesh || sub.installed) return false;
       for (const copy of copiesOf(first)) {
+        // Il nodo originale continua a governare posa, animazioni e figli già montati.
         const holder = copy === first ? sub.root : sub.root.clone();
-        holder.position.copy(copy.position);
-        holder.quaternion.copy(copy.quaternion);
-        holder.scale.copy(copy.scale);
         holder.userData.labelNode = copy.userData.labelNode;
-        copy.parent.add(holder);
-        copy.visible = false;
+        copy.add(holder);
+        const empty = new T.BufferGeometry();
+        geometries.add(empty);
+        copy.geometry = empty;
       }
+      sub.installed = true;
+      sub.animate(elapsed);
+      model.hasMotion ||= sub.hasMotion;
       // il dettaglio ora sta al posto del pezzo: le sue finestre di spaccato vanno spostate lì
       sub.refreshWindows();
       return true;
@@ -1055,6 +1163,7 @@ for (int i = 0; i < ${PAINT_MAX}; i++) {
         }),
       );
     },
+    get elapsed() { return elapsed; },
     title: header.title ?? '',
     labels: [],
     direction: header.camera?.direction ?? [-0.45, 0.32, 0.8],
@@ -1073,9 +1182,29 @@ for (int i = 0; i < ${PAINT_MAX}; i++) {
       const labelled = new Map();
       if (node.attach) attached(node, holder, labelled);
       else place(node, holder, undefined, labelled);
-      model.hasMotion = spinners.length > 0 || toggles.motion.length > 0;
+      model.hasMotion = spinners.length > 0 || animations.length > 0 || toggles.motion.length > 0;
       const box = visibleBounds(holder, new T.Box3());
       if (!box.isEmpty()) model.bounds.union(box);
+      // Inquadra anche le traiettorie, comprese quelle di gruppi annidati.
+      root.updateMatrixWorld(true);
+      const minTravel = new T.Vector3();
+      const maxTravel = new T.Vector3();
+      for (const a of animations) {
+        if (a.obj !== holder && !holder.getObjectById(a.obj.id)) continue;
+        const matrix = a.obj.parent.matrixWorld;
+        const origin = new T.Vector3().applyMatrix4(matrix);
+        const swept = new T.Box3().expandByPoint(new T.Vector3());
+        for (const f of a.animation.keyframes)
+          swept.expandByPoint(new T.Vector3(...f.offset).applyMatrix4(matrix).sub(origin));
+        minTravel.add(swept.min);
+        maxTravel.add(swept.max);
+      }
+      if (!box.isEmpty()) {
+        const swept = box.clone();
+        swept.min.add(minTravel);
+        swept.max.add(maxTravel);
+        model.bounds.union(swept);
+      }
       // etichetta della parte: nel punto indicato o al centro della parte. Una parte montata con
       // attach non ha coordinate note al modello: lì "at" non vuol dire nulla, vale il centro
       for (const [n, obj] of labelled) {
@@ -1085,6 +1214,16 @@ for (int i = 0; i < ${PAINT_MAX}; i++) {
           : root.worldToLocal(visibleBounds(obj, new T.Box3()).getCenter(new T.Vector3()));
         addLabel(n.label, at);
         labelOf.set(n, model.labels.at(-1).id);
+        let dynamic = false;
+        for (let ancestor = obj; ancestor && ancestor !== root; ancestor = ancestor.parent)
+          if (ancestor.userData.dynamic) dynamic = true;
+        if (dynamic) {
+          const label = model.labels.at(-1);
+          label.dynamic = true;
+          // punto fisso rispetto alla parte senza il suo spin: segue le traiettorie, non la rotazione
+          root.updateMatrixWorld(true);
+          movingLabels.push({ label, obj, local: at.clone().applyMatrix4(staticMatrix(obj).invert()) });
+        }
         // maquette: la parte spiegata prende la tinta della sua etichetta (non il corpo principale)
         // una parte grande (ala, scocca) colorata coprirebbe tutto: resta chiara, si accende al passaggio
         const big = header.size && Math.max(...localBounds(obj).getSize(new T.Vector3()).toArray()) > header.size * 0.5;
@@ -1105,6 +1244,9 @@ for (int i = 0; i < ${PAINT_MAX}; i++) {
     },
     /** Scena completa: i box fermi con lo stesso materiale diventano una mesh sola. */
     finish() {
+      // La scena completa parte dalla stessa origine temporale per tutti i corpi.
+      elapsed = 0;
+      model.animate(0);
       root.updateMatrixWorld(true);
       const batches = new Map();
       root.traverse((o) => {
@@ -1158,7 +1300,22 @@ for (int i = 0; i < ${PAINT_MAX}; i++) {
       for (const o of toggles.motion) o.visible = on;
     },
     animate(dt) {
-      for (const s of spinners) s.obj.rotation[s.axis] += dt * s.speed;
+      elapsed += dt;
+      for (const sub of details.values()) if (sub.installed) sub.animate(dt);
+      for (const a of animations) {
+        a.obj.position.copy(a.base).add(new T.Vector3(...sampleAnimation(a.animation, elapsed)));
+      }
+      for (const s of spinners) {
+        let timeline;
+        for (let parent = s.obj; parent && parent !== root; parent = parent.parent) {
+          timeline = animations.find((a) => a.obj === parent)?.animation;
+          if (timeline) break;
+        }
+        s.obj.rotation[s.axis] = s.base + spinAngle(s.spin, elapsed, timeline);
+      }
+      root.updateMatrixWorld(true);
+      const m = new T.Matrix4();
+      for (const l of movingLabels) l.label.at.copy(l.local).applyMatrix4(staticMatrix(l.obj, m));
     },
     dispose() {
       for (const sub of details.values()) sub.dispose();

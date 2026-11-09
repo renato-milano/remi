@@ -1,0 +1,106 @@
+{
+  "version": 1,
+  "style": "real",
+  "materials": {
+    "a": {
+      "color": "#d62828"
+    },
+    "b": {
+      "color": "#eeeeee"
+    },
+    "ground": {
+      "color": "#67925f"
+    }
+  },
+  "title": "Contatto: caduta su un piano",
+  "size": 2,
+  "contacts": [
+    {
+      "id": "landing",
+      "time": 1,
+      "mover": "falling",
+      "source": {
+        "node": "falling",
+        "point": [
+          0,
+          -0.1,
+          0
+        ]
+      },
+      "target": {
+        "node": "floor",
+        "point": [
+          0,
+          0.02,
+          0
+        ]
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "id": "floor",
+      "shape": "box",
+      "size": [
+        4,
+        0.04,
+        2
+      ],
+      "position": [
+        -0.6,
+        -0.02,
+        0
+      ],
+      "material": "ground"
+    },
+    {
+      "id": "falling",
+      "shape": "sphere",
+      "radius": 0.1,
+      "position": [
+        0,
+        1,
+        0
+      ],
+      "material": "a",
+      "animation": {
+        "duration": 3,
+        "loop": "repeat",
+        "keyframes": [
+          {
+            "time": 0,
+            "offset": [
+              0,
+              0,
+              0
+            ]
+          },
+          {
+            "time": 0.5,
+            "offset": [
+              0,
+              -0.225,
+              0
+            ]
+          },
+          {
+            "time": 1,
+            "offset": [
+              0,
+              -0.9,
+              0
+            ]
+          },
+          {
+            "time": 3,
+            "offset": [
+              0,
+              -0.9,
+              0
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -33,6 +33,11 @@ jobs:
       # un node_modules flat da impacchettare e ricompilare per l'ABI di Electron.
       - run: pnpm install --frozen-lockfile
 
+      - name: Check release version
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: test "$GITHUB_REF_NAME" = "v$(node -p "require('./apps/ui/package.json').version")"
+
       - run: pnpm build
 
       # Bundle del daemon + electron-builder (targeta l'OS host) → pubblica sulla Release.
@@ -44,6 +49,7 @@ jobs:
         shell: bash
         run: |
           pnpm --filter @openmate/ui bundle:daemon
+          pnpm --filter @openmate/ui bundle:scene3d
           # whisper-server per la trascrizione locale della voce (universale su macOS:
           # lo stesso runner produce il DMG arm64 e quello x64)
           if [ "$RUNNER_OS" = "macOS" ]; then export CMAKE_OSX_ARCHITECTURES="arm64;x86_64"; fi

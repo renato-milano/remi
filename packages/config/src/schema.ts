@@ -4,6 +4,13 @@ import { z } from 'zod';
 export const providerSchema = z.object({
   name: z.enum(['anthropic', 'openai', 'openai-compatible']).default('anthropic'),
   model: z.string().default('claude-sonnet-4-5'),
+  /**
+   * Modello per i turni che costruiscono un modello 3D (richiesta esplicita di 3D) e per le chiamate
+   * collegate (dettagli, revisione con la vista, riparazioni). Stesso provider; se manca vale `model`.
+   */
+  sceneModel: z.string().optional(),
+  /** Ragionamento nei turni 3D: "high" (default, pianifica meglio) o "low" (molto più rapido). */
+  sceneEffort: z.enum(['high', 'low']).optional(),
   /** Base URL per provider OpenAI-compatible (OpenRouter/Vercel/Ollama/LiteLLM…). */
   baseURL: z.string().url().optional(),
   /**
