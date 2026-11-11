@@ -63,7 +63,7 @@ mac:
     NSMicrophoneUsageDescription: "Remi ascolta la tua voce solo mentre tieni premuta la scorciatoia per parlargli."
 
 dmg:
-  title: "Remi ${version}"
+  title: "Remi ${version}${arch}"   # volume diverso per arm64 e x64: i due DMG si creano in parallelo
 
 win:
   target:
