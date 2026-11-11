@@ -1,6 +1,6 @@
 {
   "name": "@openmate/ui",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Remi — overlay tamagotchi (Electron), companion 'senza finestra'",
   "author": "Holyn <tools.holyn@gmail.com>",
