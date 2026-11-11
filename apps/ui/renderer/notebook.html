@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' file: data:; connect-src 'none'" />
+    <title>Remi · Quaderno</title>
+    <link rel="stylesheet" href="notebook.css" />
+  </head>
+  <body>
+    <div class="app">
+      <aside class="side">
+        <div class="drag"></div>
+        <div class="logo"><img src="remi-icon.png" alt="" width="34" height="34" />Quaderno</div>
+        <label class="search"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="Cerca un argomento o una frase…" spellcheck="false" /></label>
+        <div class="grp">Argomenti</div>
+        <nav id="topics" class="topics" aria-label="Argomenti"></nav>
+        <div class="grp">Quando</div>
+        <nav id="dates" class="topics" aria-label="Periodo"></nav>
+        <p class="tip">Doppio clic su un argomento per rinominarlo.</p>
+      </aside>
+      <main class="main">
+        <div class="drag"></div>
+        <header class="head">
+          <div>
+            <h1 id="heading">Tutto quello che abbiamo visto</h1>
+            <p id="count" class="count"></p>
+          </div>
+          <div id="kinds" class="chips" role="group" aria-label="Tipo">
+            <button class="chip" data-kind="all" aria-pressed="true">Tutto</button>
+            <button class="chip" data-kind="panel" aria-pressed="false"><svg viewBox="0 0 12 12" aria-hidden="true"><rect x="1" y="2" width="10" height="8" rx="1.5" /></svg>Lavagne</button>
+            <button class="chip" data-kind="scene" aria-pressed="false"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M6 1 11 3.5v5L6 11 1 8.5v-5z" /></svg>Modelli 3D</button>
+            <button class="chip" data-kind="motion" aria-pressed="false"><svg viewBox="0 0 12 12" aria-hidden="true"><path class="fill" d="M3 2v8l7-4z" /></svg>Scene animate</button>
+            <button class="chip" data-kind="answer" aria-pressed="false"><svg viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="4.6" /></svg>Domande</button>
+          </div>
+        </header>
+        <div class="body">
+          <section id="cards" class="cards" aria-label="Sessioni"></section>
+          <aside id="detail" class="detail" hidden aria-label="Dettaglio"></aside>
+        </div>
+      </main>
+    </div>
+    <script src="notebook.js"></script>
+  </body>
+</html>

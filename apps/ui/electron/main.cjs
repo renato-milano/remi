@@ -5,6 +5,8 @@ const {
   screen,
   globalShortcut,
   Menu,
+  nativeImage,
+  Tray,
   safeStorage,
   shell,
   systemPreferences,
@@ -15,11 +17,16 @@ const fs = require('node:fs');
 const os = require('node:os');
 const { spawn, execFile, execFileSync } = require('node:child_process');
 
-// Preserve the existing userData path when branding development builds.
+// Nome "Remi" anche in sviluppo, ma solo ad app pronta: su macOS il nome all'avvio sceglie la voce
+// del portachiavi di safeStorage, e rinominare prima renderebbe illeggibile la chiave API già salvata.
+// La cartella dati resta quella di sempre.
 const existingUserData = app.getPath('userData');
-app.setName('Remi');
-app.setPath('userData', existingUserData);
+app.whenReady().then(() => {
+  app.setName('Remi');
+  app.setPath('userData', existingUserData);
+});
 if (process.platform === 'win32') app.setAppUserModelId('com.holyn.remi');
+const { createNotebook } = require('./notebook.cjs');
 const appIcon = path.join(__dirname, '..', 'build', process.platform === 'win32' ? 'icon.ico' : 'icon.png');
 
 const WIDTH = 500; // largo: robot su un lato, fumetto sull'altro (verso il centro)
@@ -34,6 +41,8 @@ const HOTKEY = process.env.OPENMATE_HOTKEY || 'CommandOrControl+Shift+O';
 const POINT_KEY = process.env.OPENMATE_POINT_KEY || (process.platform === 'darwin' ? 'AltRight' : 'CtrlRight');
 // Ripiego se l'hook nativo non parte (manca il permesso Accessibilità): combinazione classica.
 const POINT_HOTKEY = process.env.OPENMATE_POINT_HOTKEY || 'Control+Alt+Space';
+/** Apre il quaderno senza passare dal personaggio. ⌘⇧Q no: su Mac fa uscire dall'account. */
+const NOTEBOOK_HOTKEY = process.env.OPENMATE_NOTEBOOK_HOTKEY || 'CommandOrControl+Shift+Y';
 const PORT = Number(process.env.OPENMATE_PORT || 8787);
 const SHOT_PORT = PORT + 1; // mini-server screenshot (Electron desktopCapturer)
 const DAEMON_URL = process.env.OPENMATE_URL || `http://127.0.0.1:${PORT}`;
@@ -113,6 +122,8 @@ function saveSettings(data) {
     tts: ['auto', 'system', 'off'].includes(data.voiceTts) ? data.voiceTts : config.voice?.tts || 'auto',
     wakeWord: Boolean(data.wakeWord),
   };
+  // interfaccia (la legge solo l'app: il daemon ignora la sezione)
+  config.ui = { ...(config.ui || {}), tray: data.tray !== false };
   if (!config.storage) config.storage = { root: storageRoot };
   if (!config.budget) config.budget = { maxSteps: 12, wallClockMs: 120000 };
   fs.writeFileSync(configFile, JSON.stringify(config, null, 2), 'utf8');
@@ -290,6 +301,7 @@ function stopDaemon() {
 
 /* ---------------- finestra companion (overlay) ---------------- */
 function createCompanion() {
+  refreshTray(); // anche a fine onboarding: da qui Remi è raggiungibile dalla barra
   if (win) return;
   const { workArea } = screen.getPrimaryDisplay();
   win = new BrowserWindow({
@@ -424,6 +436,7 @@ function openSettings() {
 
 ipcMain.on('settings-save', (_e, data) => {
   saveSettings(data);
+  refreshTray();
   if (data.voice) void askMicrophone();
   stopDaemon();
   startDaemon(); // riparte con la nuova config/chiave
@@ -571,9 +584,21 @@ function sendPointer(channel, payload) {
 }
 
 /** Restituisce il fuoco all'app che l'utente stava usando (macOS: niente "attivazione" di Remi). */
+/**
+ * Finestra di Remi a cui restituire il focus quando si chiude la lavagna: il quaderno, se la
+ * lavagna è stata riaperta da lì. Senza, il focus torna all'app di prima nascondendo Remi
+ * (app.hide), che però nasconderebbe anche il quaderno.
+ */
+let focusReturn;
 function releaseFocus() {
   if (!pointerWin) return;
   pointerWin.setIgnoreMouseEvents(true, { forward: true });
+  const back = focusReturn;
+  focusReturn = undefined;
+  if (back && !back.isDestroyed() && back.isVisible()) {
+    back.focus();
+    return;
+  }
   if (process.platform === 'darwin') {
     const visible = BrowserWindow.getAllWindows().filter((w) => w.isVisible());
     app.hide();
@@ -685,9 +710,9 @@ function dumpScene3d(event) {
   }
 }
 
-function handleScene3d(e) {
+function handleScene3d(e, { replay = false } = {}) {
   const { kind: _kind, ...event } = e;
-  dumpScene3d(event);
+  if (!replay) dumpScene3d(event); // una scena riaperta dal quaderno non è una sessione nuova
   if (event.op === 'end' && event.errors?.length)
     console.warn(`[scene3d] «${event.title}»: ${event.nodes} parti, scartato:\n  ${event.errors.join('\n  ')}`);
   if (event.op === 'start') {
@@ -806,7 +831,9 @@ function buildPointPayload(full, display, cur, path) {
 const TRACE_TICK_MS = 16;
 // byte al secondo dei WAV dalla lavagna (16 kHz, 16 bit, mono)
 const SAMPLE_RATE_BYTES = 16000 * 2;
-const TRACE_MAX_MS = 10000; // sicurezza: se il rilascio non arriva, chiudi comunque
+// si ascolta finché il tasto è premuto, senza limite di parole: questo è solo una rete di
+// sicurezza se il rilascio non arriva (hook perso)
+const TRACE_MAX_MS = 5 * 60_000;
 const TRACE_MIN_SIZE = 24; // sotto questa dimensione (punti) è un punto, non un'area
 
 let hook;
@@ -887,6 +914,7 @@ function cancelPoint() {
 /** `hold`: avviato dal tasto tenuto premuto (si conclude al rilascio); altrimenti è un tocco. */
 async function startPoint(hold = false) {
   if (tracing) return; // ripetizione automatica del tasto mentre si traccia
+  focusReturn = undefined; // un turno "indica" nuovo: chiuso, il focus torna all'app indicata
   // seconda pressione mentre si sta chiedendo: annulla
   if (pendingPoint) {
     pendingPoint = undefined;
@@ -1287,7 +1315,9 @@ async function askMicrophone() {
  * non è ripristinato: se Remi si chiude male, lo rimette al prossimo avvio.
  */
 const DUCK_RATIO = 0.15;
-const DUCK_MAX_MS = 20000;
+const DUCK_MAX_MS = 5 * 60_000;
+/** Attesa massima della domanda dopo "Hey Remi": oltre il tetto della lavagna (LISTEN_MAX_MS). */
+const LISTEN_WAIT_MS = 125_000;
 const duckFile = path.join(userData, 'volume-before-listen.json');
 let duck; // { before, ducked, timer }
 
@@ -1360,6 +1390,132 @@ function restoreVolumeLeftLow() {
     void restoreVolume(JSON.parse(fs.readFileSync(duckFile, 'utf8')));
   } catch {
     fs.rmSync(duckFile, { force: true });
+  }
+}
+
+/* ---------------- quaderno: le sessioni con Remi per argomento ---------------- */
+
+let notebook;
+let notebookWin;
+/** L'archivio nasce alla prima occorrenza (primo turno o apertura della finestra). */
+function getNotebook() {
+  if (!notebook) {
+    notebook = createNotebook({
+      dir: path.join(userData, 'notebook'),
+      debugDir: path.join(userData, 'debug'),
+      rendererDir: path.join(__dirname, '..', 'renderer'),
+      thumbPreload: path.join(__dirname, 'preload-thumb.cjs'),
+      sceneReady: scene3dBundle,
+      daemonUrl: DAEMON_URL,
+      onChange: () => notebookWin?.webContents.send('notebook-changed'),
+      log: (...args) => console.log(...args),
+    });
+  }
+  return notebook;
+}
+
+function openNotebook() {
+  if (notebookWin) {
+    notebookWin.show();
+    notebookWin.focus();
+    return;
+  }
+  // le lavagne e le scene salvate per il debug prima del quaderno entrano una volta sola
+  const imported = getNotebook().importDebug();
+  if (imported) console.log(`[quaderno] importate ${imported} sessioni dal debug`);
+  notebookWin = new BrowserWindow({
+    icon: appIcon,
+    width: 1180,
+    height: 780,
+    minWidth: 760,
+    minHeight: 520,
+    title: 'Remi — Quaderno',
+    backgroundColor: '#fbf8f1',
+    ...(process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 14, y: 12 } } : {}),
+    webPreferences: {
+      preload: path.join(__dirname, 'preload-notebook.cjs'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  });
+  notebookWin.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  notebookWin.webContents.on('will-navigate', (event) => event.preventDefault());
+  notebookWin.loadFile(path.join(__dirname, '..', 'renderer', 'notebook.html'));
+  notebookWin.on('closed', () => {
+    notebookWin = undefined;
+  });
+}
+
+/** Solo la finestra del quaderno legge e modifica l'archivio. */
+const fromNotebook = (e) => Boolean(notebookWin) && e.sender === notebookWin.webContents;
+ipcMain.on('notebook-open', (e) => {
+  // dal pulsante del modello 3D: la finestra 3D sta sopra tutto e coprirebbe il quaderno.
+  // Si chiude (la scena è già nel quaderno e si riapre da lì)
+  if (scene3dWin && e.sender === scene3dWin.webContents) {
+    scene3dWin.setIgnoreMouseEvents(true, { forward: true });
+    scene3dWin.destroy();
+  }
+  openNotebook();
+});
+ipcMain.handle('notebook-list', (e) => (fromNotebook(e) ? getNotebook().list() : { entries: [], topics: [] }));
+ipcMain.handle('notebook-get', (e, id) => (fromNotebook(e) ? getNotebook().get(id) : null));
+ipcMain.handle('notebook-update', (e, id, patch) => fromNotebook(e) && getNotebook().update(id, patch));
+ipcMain.handle('notebook-delete', (e, id) => fromNotebook(e) && getNotebook().remove(id));
+ipcMain.handle('notebook-rename-topic', (e, from, to) => fromNotebook(e) && getNotebook().renameTopic(from, to));
+ipcMain.handle('notebook-replay', (e, id, voice) => fromNotebook(e) && replayEntry(id, voice));
+ipcMain.handle('notebook-ask', (e, id, text) => fromNotebook(e) && askAbout(id, text));
+
+/** Riapre una sessione com'era: il modello nella finestra 3D, la lavagna sullo schermo (anche a voce). */
+function replayEntry(id, voice) {
+  const got = getNotebook().get(id);
+  const { panel, scene } = got?.data ?? {};
+  if (!panel && !scene) return false;
+  pointMuted = false;
+  if (scene) {
+    for (const ev of scene.events) if (!String(ev.op).startsWith('detail-')) handleScene3d({ kind: 'scene3d', ...ev }, { replay: true });
+  }
+  if (panel) replayPanel(panel, voice);
+  return true;
+}
+
+function replayPanel(panel, voice) {
+  focusReturn = notebookWin; // chiusa la lavagna, si torna al quaderno
+  const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+  const reuse = pointerWin?.isVisible() && sameBounds(pointerWin.getBounds(), display.bounds);
+  void (reuse ? Promise.resolve() : ensurePointerWin(display)).then(() => {
+    if (!pointerWin) return;
+    pointerWin.setIgnoreMouseEvents(true, { forward: true });
+    pointerWin.showInactive();
+    // al centro dello schermo, senza il cerchio del punto indicato (non c'è un punto)
+    const { width: w, height: h } = display.bounds;
+    sendPointer('pointer-anchor', { x: w / 2, y: h / 2, area: true, panelAt: { x: Math.round(w / 2 - 300), y: Math.round(h * 0.1) } });
+    const voiced = voice && readConfig().voice?.tts !== 'off';
+    sendPointer('pointer-panel-start', { title: panel.title, voiced, rows: panel.rows, cols: panel.cols, ownColors: panel.ownColors });
+    panel.steps.forEach((step, index) => sendPointer('pointer-panel-step', { index, say: step.say, svg: step.svg, marks: [] }));
+    sendPointer('pointer-panel-end');
+    if (voiced) speakParts(panel.steps.map((step, i) => ({ text: step.say, step: i })));
+    // resta aperta il tempo di rileggerla, poi come le altre lavagne
+    const readMs = panel.steps.reduce((t, step) => t + Math.max(2200, (step.say?.length || 0) * 62), 0);
+    clearTimeout(lingerTimer);
+    lingerTimer = setTimeout(hidePointer, POINT_LINGER_MS + readMs);
+  });
+}
+
+/** «Chiedi ancora» dal quaderno: un messaggio a Remi con il riassunto di quella spiegazione. */
+async function askAbout(id, text) {
+  const entry = getNotebook().get(id)?.entry;
+  const question = String(text || '').trim().slice(0, 2000);
+  if (!entry || !question) return false;
+  const said = (entry.sentences?.length ? entry.sentences : [entry.answer]).filter(Boolean).join(' ').slice(0, 1500);
+  const content =
+    `[Riprendo dal quaderno «${entry.title}»${entry.topic ? `, argomento «${entry.topic}»` : ''}.` +
+    `${entry.question ? ` Allora avevo chiesto: «${entry.question}».` : ''}${said ? ` Tu avevi spiegato: «${said}».` : ''}]\n\n${question}`;
+  try {
+    const out = await postJson('/command', { kind: 'user_message', content });
+    return Boolean(out?.ok);
+  } catch {
+    return false;
   }
 }
 
@@ -1558,7 +1714,7 @@ async function onWake(question, spokenPath, refined) {
     sendPointer('pointer-trace', { x: p.x - b.x, y: p.y - b.y });
   }, TRACE_TICK_MS);
   const rec = await new Promise((resolve) => {
-    const timer = setTimeout(() => resolve(null), 17000);
+    const timer = setTimeout(() => resolve(null), LISTEN_WAIT_MS);
     listenWaiter = (data) => {
       clearTimeout(timer);
       listenWaiter = undefined;
@@ -1749,6 +1905,12 @@ function sameBounds(a, b) {
 }
 
 function handleDaemonEvent(e) {
+  // il quaderno registra tutto, anche ciò che la lavagna chiusa a metà non mostra più
+  try {
+    getNotebook().observe(e);
+  } catch (err) {
+    console.warn('[quaderno]', err.message);
+  }
   if (e.kind === 'state' && e.state?.status === 'idle') {
     pointMuted = false;
     remiActing = false;
@@ -1887,24 +2049,61 @@ async function postDaemon(kind) {
   }
 }
 
-function showContextMenu() {
-  const menu = Menu.buildFromTemplate([
+/** Voci comuni al menu del personaggio e a quello dell'icona nella barra. */
+function remiMenu({ fromTray = false } = {}) {
+  return [
+    ...(fromTray ? [{ label: 'Chiama Remi', accelerator: HOTKEY, registerAccelerator: false, click: () => summon() }, { type: 'separator' }] : []),
+    { label: 'Quaderno…', accelerator: NOTEBOOK_HOTKEY, registerAccelerator: false, click: () => openNotebook() },
+    { type: 'separator' },
     {
       label: paused ? '☀  Sveglia' : '☾  Dormi',
       click: () => {
         postDaemon(paused ? 'resume' : 'pause');
         paused = !paused;
+        refreshTray(); // l'etichetta Dormi/Sveglia cambia
       },
     },
     { label: '⏹  Interrompi', click: () => postDaemon('interrupt') },
     { type: 'separator' },
-    { label: 'Cosa stai facendo?', click: () => win?.webContents.send('show-activity') },
+    ...(fromTray ? [] : [{ label: 'Cosa stai facendo?', click: () => win?.webContents.send('show-activity') }]),
     { label: 'Cruscotto…', click: () => openDashboard() },
     { label: 'Impostazioni…', click: () => openSettings() },
     { type: 'separator' },
     { label: 'Esci', role: 'quit' },
-  ]);
-  menu.popup({ window: win });
+  ];
+}
+function showContextMenu() {
+  Menu.buildFromTemplate(remiMenu()).popup({ window: win });
+}
+
+/* ---------------- icona nella barra dei menu (Mac) e nell'area di notifica (Windows) ---------------- */
+
+let tray;
+function trayImage() {
+  if (process.platform === 'darwin') {
+    // icona "template": macOS la colora secondo il tema della barra (carica da sola la versione @2x)
+    const img = nativeImage.createFromPath(path.join(__dirname, '..', 'assets', 'trayTemplate.png'));
+    img.setTemplateImage(true);
+    return img;
+  }
+  if (process.platform === 'win32') return nativeImage.createFromPath(path.join(__dirname, '..', 'build', 'icon.ico'));
+  return nativeImage.createFromPath(appIcon).resize({ width: 22, height: 22 });
+}
+/** Crea, aggiorna o toglie l'icona secondo le Impostazioni (di norma c'è). */
+function refreshTray() {
+  const wanted = readConfig().ui?.tray !== false && (EXTERNAL || isOnboarded());
+  if (!wanted) {
+    tray?.destroy();
+    tray = undefined;
+    return;
+  }
+  if (!tray) {
+    tray = new Tray(trayImage());
+    tray.setToolTip('Remi');
+    // su Windows il clic sinistro apre il quaderno (il menu sta sul destro); su Mac il clic apre il menu
+    if (process.platform === 'win32') tray.on('click', () => openNotebook());
+  }
+  tray.setContextMenu(Menu.buildFromTemplate(remiMenu({ fromTray: true })));
 }
 ipcMain.on('context-menu', showContextMenu);
 
@@ -1915,6 +2114,9 @@ app.whenReady().then(() => {
   if (process.platform === 'darwin') console.log(`[point] Registrazione schermo: ${systemPreferences.getMediaAccessStatus('screen')}`);
   restoreVolumeLeftLow();
   globalShortcut.register(HOTKEY, summon);
+  if (!globalShortcut.register(NOTEBOOK_HOTKEY, () => openNotebook())) {
+    console.warn(`[quaderno] scorciatoia ${NOTEBOOK_HOTKEY} non disponibile (usata da un'altra app?)`);
+  }
   if (!startKeyHook() && !globalShortcut.register(POINT_HOTKEY, () => void startPoint())) {
     console.warn(`[point] hotkey ${POINT_HOTKEY} non disponibile (usata da un'altra app?)`);
   }

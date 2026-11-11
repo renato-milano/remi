@@ -55,7 +55,7 @@ Scrivi SOLO il blocco <scene3d>{…}</scene3d>, niente testo.
 - Spazio: quello della parte. Origine al CENTRO della parte, stessi assi (x dal muso alla coda, y in alto, z di lato), misure in METRI. Il tutto deve stare dentro l'ingombro della parte originale (stesse misure massime).
 - NON scrivere "size" né "style". Niente etichette (label): la parte ha già la sua.
 - 6-20 nodi: le sotto-parti vere, nell'ordine in cui lavorano, con il loro meccanismo visibile (stadi di pale con "stages", camere, iniettori, ingranaggi con i denti, pistoni, celle, condotti). Usa attach fra le sotto-parti; il primo nodo ha position.
-- Materiali: sfumature chiare e scure dello stesso colore per distinguere gli stadi; arancio/rosso solo per ciò che è caldo o brucia; frecce (arrow) per il flusso che attraversa la parte.`;
+- Materiali: i colori veri delle sotto-parti, coerenti con la parte com'è scritta ora (stesso colore di fondo); arancio/rosso solo per ciò che è caldo o brucia; frecce (arrow) per il flusso che attraversa la parte.`;
 
 /** Prompt per il dettaglio di una parte: l'oggetto intero (in breve) e la parte com'è scritta. */
 export function detailPrompt(title: string, part: SceneNode): string {

@@ -29,7 +29,8 @@ export interface SceneAnimation {
   /** Tempi in secondi; offset locali rispetto alla posa iniziale. */
   duration: number;
   loop?: 'repeat' | 'pingpong' | 'once';
-  keyframes: { time: number; offset: Vec3 }[];
+  /** rotation: assetto in gradi rispetto alla posa iniziale, negli assi del genitore (facoltativo). */
+  keyframes: { time: number; offset: Vec3; rotation?: Vec3 }[];
 }
 
 /** Contatto tra due superfici: punti in metri nello spazio locale dei nodi. */
@@ -62,7 +63,7 @@ export interface SceneHeader {
   section?: { y: number };
   /** Dimensione maggiore dell'oggetto vero, in metri: le misure dei nodi sono in metri. */
   size?: number;
-  /** "maquette" (default): base chiara uniforme, colore solo sulle parti spiegate; "real": colori veri. */
+  /** Campo storico, ignorato dal motore: i colori sono sempre quelli dei materiali (colori veri). */
   style?: 'maquette' | 'real';
   materials: Record<string, SceneMaterial>;
   contacts?: SceneContact[];
@@ -543,8 +544,8 @@ export function validateNode(
           const frames = a.keyframes;
           frames.forEach((frame, i) => {
             const fp = `${ap}.keyframes[${i}]`;
-            if (!isObject(frame)) return fail(fp, 'atteso { time, offset }');
-            fields(frame, { time: 'nonNegative', offset: 'vec3' }, fp, fail);
+            if (!isObject(frame)) return fail(fp, 'atteso { time, offset, rotation? }');
+            fields(frame, { time: 'nonNegative', offset: 'vec3', rotation: 'vec3' }, fp, fail);
             if (
               !num(frame.time) ||
               frame.time <= previous ||

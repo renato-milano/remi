@@ -158,6 +158,8 @@ let sceneVisiblePending = false;
 function notifySceneVisible() { sceneVisiblePending = true; invalidate(); }
 let validating = false;
 let state = { section: true, motion: true, selected: null, building: false };
+/** Moviola: velocità della riproduzione, scie e pose fantasma, camera che segue i corpi. */
+const moviola = { speed: 1, trails: true, follow: false, shown: false, followAt: null, ghosts: [], dots: null, markers: [] };
 let labels = [];
 let dragging = false;
 /** Etichetta del pezzo sotto il mouse; dove e quando è iniziato il gesto (clic o trascinamento). */
@@ -206,7 +208,20 @@ function render(time) {
   lastTime = time;
   let busy = false;
   if (model) {
-    if (state.motion && !state.building) model.animate(dt);
+    if (state.motion && !state.building) {
+      model.animate(dt * moviola.speed);
+      // "once": arrivati in fondo la moviola si ferma sull'ultimo fotogramma
+      const tl = moviola.shown && model.timeline;
+      if (tl && tl.loop === 'once' && model.elapsed >= tl.period) {
+        model.seek(tl.period);
+        state.motion = false;
+        status();
+      }
+    }
+    if (moviola.shown) {
+      updateMoviola();
+      busy = followMovers() || busy;
+    }
     busy = animateEntering(time) || busy;
     busy = approachCamera() || busy;
     placeRim();
@@ -240,18 +255,50 @@ function animateEntering(time) {
  * un aereo visto in diagonale ha angoli vuoti enormi (davanti-sopra alle estremità alari) che
  * altrimenti allontanano la camera e lasciano metà schermo vuoto.
  */
-function framing() {
-  const center = model.bounds.getCenter(new T.Vector3());
+/**
+ * Volume dell'azione (mondo): dove passano i corpi che si muovono lungo tutto il ciclo. Si ricalcola
+ * solo quando arrivano parti nuove (in streaming i corpi crescono).
+ */
+let action = { model: null, parts: -1, box: null };
+function actionBox() {
+  const tl = model.timeline;
+  if (!tl) return null;
+  if (action.model === model && action.parts === model.parts) return action.box;
+  const keep = model.elapsed;
+  const box = new T.Box3();
+  for (let i = 0; i <= 16; i++) {
+    model.seek((tl.period * i) / 16);
+    for (const o of model.movers()) box.union(new T.Box3().setFromObject(o, true));
+  }
+  model.seek(keep);
+  action = { model, parts: model.parts, box: box.isEmpty() ? null : box };
+  return action.box;
+}
+function framing(bare = false) {
+  let center = model.bounds.getCenter(new T.Vector3());
   const dir = new T.Vector3(...model.direction).normalize();
   const right = new T.Vector3(0, 1, 0).cross(dir).normalize();
   if (right.lengthSq() === 0) right.set(1, 0, 0);
   const up = dir.clone().cross(right);
   // spazio riservato: ai lati le colonne dei biglietti (se ci sono etichette), sotto la barra dei comandi
-  const side = model.labels.length ? Math.min(0.24, 250 / width) : 0.03;
-  const tanV = Math.tan((camera.fov * Math.PI) / 360) * 0.82;
+  // `bare` (miniatura del quaderno): niente biglietti né barre, il modello riempie l'immagine
+  const side = model.labels.length && !bare ? Math.min(0.24, 250 / width) : 0.03;
+  const tanV = Math.tan((camera.fov * Math.PI) / 360) * (bare ? 0.94 : model.timeline ? 0.72 : 0.82);
   const tanH = Math.tan((camera.fov * Math.PI) / 360) * camera.aspect * (1 - 2 * side);
   // ingombri delle parti in coordinate di root → mondo (root è scalato alla misura della scena)
-  const boxes = model.partBounds().map((b) => b.applyMatrix4(model.root.matrixWorld));
+  let boxes = model.partBounds().map((b) => b.applyMatrix4(model.root.matrixWorld));
+  // scena animata: si inquadra l'azione. Il contesto molto più grande dei corpi che si muovono
+  // (suolo, piazzola, campo) si taglia attorno all'azione invece di allontanare la camera.
+  const acting = actionBox();
+  if (acting) {
+    const size = acting.getSize(new T.Vector3()).length();
+    const zone = acting.clone().expandByScalar(size * 0.08);
+    boxes = boxes
+      .map((b) => (b.getSize(new T.Vector3()).length() > size * 1.5 ? b.clone().intersect(zone) : b))
+      .filter((b) => !b.isEmpty());
+    boxes.push(acting.clone());
+    center = boxes.reduce((u, b) => u.union(b), new T.Box3()).getCenter(new T.Vector3());
+  }
   if (!boxes.length) boxes.push(model.bounds);
   let distance = 0;
   const p = new T.Vector3();
@@ -276,9 +323,9 @@ function applyFraming(goal) {
   camera.updateProjectionMatrix();
 }
 /** Riporta subito la camera sull'inquadratura (↺, ridimensionamento, prima parte). */
-function fitCamera() {
+function fitCamera(bare = false) {
   if (!model || model.bounds.isEmpty()) return;
-  const goal = framing();
+  const goal = framing(bare);
   applyFraming(goal);
   controls.target.copy(goal.center);
   camera.position.copy(goal.position);
@@ -517,7 +564,7 @@ function placeLabels() {
   const box = screenBox();
   const cx = (box.minX + box.maxX) / 2;
   const top = 16;
-  const bottom = height - 140; // sopra la barra degli strumenti
+  const bottom = height - (moviola.shown ? 215 : 140); // sopra la barra degli strumenti (e la moviola)
   const gap = 10;
   for (const left of [true, false]) {
     const items = labels.filter((item) => item.x < cx === left).sort((a, b) => a.y - b.y);
@@ -586,8 +633,274 @@ function status() {
       : 'Modello illustrativo · trascina per ruotare · scorri per ingrandire';
   $('section').disabled = !model?.hasSection;
   $('motion').disabled = !model?.hasMotion;
+  const tl = model?.timeline;
+  const show = Boolean(tl && model.hasMotion && !state.building);
+  if (show !== moviola.shown) {
+    moviola.shown = show;
+    $('timeline').hidden = !show;
+    if (show) buildMoviola();
+    else clearTrails();
+  }
+  // con la moviola play e pausa stanno lì; Movimento resta per i modelli che girano soltanto
+  $('motion').hidden = show;
+  if (show) {
+    $('tl-play').textContent = state.motion ? '❚❚' : '▶';
+    $('tl-play').setAttribute('aria-label', state.motion ? 'Pausa' : 'Riproduci');
+  }
   $('section').setAttribute('aria-pressed', String(state.section));
   $('motion').setAttribute('aria-pressed', String(state.motion));
+}
+
+/* ---------- moviola: tempo, marcatori, scie ---------- */
+
+/** Istante della scena dentro il suo ciclo (repeat ricomincia, once si ferma, pingpong va e torna). */
+function phaseOf(tl, elapsed) {
+  if (tl.loop === 'once') return Math.min(elapsed, tl.period);
+  return ((elapsed % tl.period) + tl.period) % tl.period;
+}
+const fmt = (t) => t.toFixed(2).replace('.', ',');
+const ghostMaterial = new T.MeshStandardMaterial({
+  color: '#f2efe6',
+  transparent: true,
+  opacity: 0.24,
+  depthWrite: false,
+  roughness: 0.6,
+});
+const dotMaterial = new T.MeshBasicMaterial({ color: '#e2674f', transparent: true, opacity: 0.9 });
+const trailGroup = new T.Group();
+scene.add(trailGroup);
+function clearTrails() {
+  for (const child of [...trailGroup.children]) {
+    trailGroup.remove(child);
+    if (child.isInstancedMesh) {
+      child.geometry.dispose();
+      child.dispose();
+    }
+  }
+  moviola.ghosts = [];
+  moviola.dots = null;
+}
+/** Centro dell'ingombro visibile di un oggetto, nel mondo. */
+function centerOf(obj, out = new T.Vector3()) {
+  return new T.Box3().setFromObject(obj, true).getCenter(out);
+}
+/**
+ * Scie dei corpi che si spostano: la traiettoria intera a puntini e alcune pose fantasma lungo il
+ * percorso (solo dove il corpo si è davvero spostato). Si calcolano una volta, rimettendo la scena in
+ * ogni istante campionato; durante la riproduzione si accendono solo le pose già passate.
+ */
+function buildTrails() {
+  clearTrails();
+  const tl = model?.timeline;
+  if (!tl) return;
+  const keep = model.elapsed;
+  const diag = model.bounds.getSize(new T.Vector3()).length() || 1;
+  const SAMPLES = 72;
+  const dots = [];
+  for (const obj of model.movers()) {
+    let meshes = 0;
+    obj.traverse((o) => {
+      if (o.isMesh) meshes++;
+    });
+    const path = [];
+    for (let i = 0; i <= SAMPLES; i++) {
+      const t = (tl.period * i) / SAMPLES;
+      model.seek(t);
+      path.push({ t, at: centerOf(obj) });
+    }
+    let travel = 0;
+    for (let i = 1; i < path.length; i++) travel += path[i].at.distanceTo(path[i - 1].at);
+    if (travel < diag * 0.03) continue; // fermo, o quasi: niente scia
+    // puntini lungo il percorso, fitti dove il corpo è veloce
+    let since = Number.POSITIVE_INFINITY;
+    for (let i = 1; i < path.length; i++) {
+      since += path[i].at.distanceTo(path[i - 1].at);
+      if (since >= diag * 0.018) {
+        dots.push(path[i].at);
+        since = 0;
+      }
+    }
+    // pose fantasma: solo dove il corpo si è spostato più della sua misura, così le pose non si
+    // sovrappongono (pose fitte e trasparenti una sull'altra confondono); al massimo 5.
+    // Un corpo che si muove meno di due volte la sua misura ha solo i puntini.
+    if (meshes > 90) continue;
+    model.seek(path[0].t);
+    const reach = new T.Box3().setFromObject(obj, true).getSize(new T.Vector3()).length() * 0.85;
+    if (travel < reach * 2) continue;
+    const start = new T.Box3().setFromObject(obj, true);
+    let last = path[0].at;
+    let lastBox = start;
+    let count = 0;
+    for (const { t, at } of path) {
+      if (count >= 5 || at.distanceTo(last) < reach) continue;
+      model.seek(t);
+      const box = new T.Box3().setFromObject(obj, true);
+      // niente posa che copre la precedente o quella di partenza
+      if (box.intersectsBox(lastBox) || box.intersectsBox(start)) continue;
+      const ghost = obj.clone(true);
+      ghost.traverse((o) => {
+        if (o.isMesh) {
+          o.material = ghostMaterial;
+          o.castShadow = false;
+          o.receiveShadow = false;
+        }
+        if (o.isLine || o.isLineSegments) o.visible = false;
+      });
+      ghost.matrixAutoUpdate = false;
+      ghost.matrix.copy(obj.matrixWorld);
+      ghost.userData.time = t;
+      ghost.renderOrder = -0.5;
+      trailGroup.add(ghost);
+      moviola.ghosts.push(ghost);
+      last = at;
+      lastBox = box;
+      count++;
+    }
+  }
+  if (dots.length) {
+    const dot = new T.InstancedMesh(new T.SphereGeometry(diag * 0.0032, 8, 6), dotMaterial, dots.length);
+    const m = new T.Matrix4();
+    dots.forEach((p, i) => dot.setMatrixAt(i, m.makeTranslation(p.x, p.y, p.z)));
+    dot.renderOrder = -0.4;
+    trailGroup.add(dot);
+    moviola.dots = dot;
+  }
+  model.seek(keep);
+  trailGroup.updateMatrixWorld(true);
+}
+/** Marcatori sulla barra: inizio, contatti dichiarati, fine. */
+function buildMarkers() {
+  const tl = model.timeline;
+  const list = [{ time: 0, label: 'inizio', kind: 'start' }];
+  for (const c of tl.contacts) if (c.time > 0 && c.time < tl.period) list.push({ time: c.time, label: `contatto ${fmt(c.time)} s`, kind: 'contact', title: c.id });
+  if (tl.loop === 'pingpong') list.push({ time: tl.duration, label: 'ritorno', kind: 'turn' });
+  list.push({ time: tl.period, label: 'fine', kind: 'end' });
+  moviola.markers = list;
+  const box = $('tl-marks');
+  box.replaceChildren();
+  for (const m of list) {
+    const el = document.createElement('span');
+    el.className = `tl-mark ${m.kind}`;
+    el.style.left = `${(m.time / tl.period) * 100}%`;
+    if (m.title) el.title = m.title;
+    const label = document.createElement('b');
+    label.textContent = m.label;
+    el.append(document.createElement('i'), label);
+    box.append(el);
+  }
+}
+function buildMoviola() {
+  if (!model?.timeline) return;
+  buildMarkers();
+  buildTrails();
+  $('tl-trails').setAttribute('aria-pressed', String(moviola.trails));
+  $('tl-follow').setAttribute('aria-pressed', String(moviola.follow));
+  updateMoviola();
+}
+/** Cursore, tempo e pose fantasma all'istante attuale. */
+function updateMoviola() {
+  const tl = model?.timeline;
+  if (!tl) return;
+  const now = phaseOf(tl, model.elapsed);
+  const scrub = $('tl-scrub');
+  if (document.activeElement !== scrub || state.motion) scrub.value = String(now / tl.period);
+  $('tl-fill').style.width = `${(now / tl.period) * 100}%`;
+  $('tl-time').textContent = `${fmt(now)} / ${fmt(tl.period)} s`;
+  for (const g of moviola.ghosts) g.visible = moviola.trails && g.userData.time < now - 1e-3;
+  if (moviola.dots) moviola.dots.visible = moviola.trails;
+}
+function togglePlay() {
+  const tl = model?.timeline;
+  if (!tl) return;
+  // ripartire dalla fine di una scena "once" significa rivederla
+  if (!state.motion && tl.loop === 'once' && model.elapsed >= tl.period - 1e-3) model.seek(0);
+  state.motion = !state.motion;
+  status();
+  invalidate();
+}
+function seekTo(t) {
+  model.seek(t);
+  state.motion = false;
+  status();
+  updateMoviola(); // tempo e cursore subito, non al prossimo fotogramma
+  invalidate();
+}
+function jumpMarker(dir) {
+  const tl = model?.timeline;
+  if (!tl) return;
+  const now = phaseOf(tl, model.elapsed);
+  const times = moviola.markers.map((m) => m.time);
+  const next = dir > 0 ? times.find((t) => t > now + 0.01) : [...times].reverse().find((t) => t < now - 0.01);
+  seekTo(next ?? (dir > 0 ? tl.period : 0));
+}
+/** «Segui»: centro della camera sui corpi che si spostano, che restano in mezzo allo schermo. */
+function followMovers() {
+  if (!moviola.follow || !model) return false;
+  const movers = model.movers();
+  if (!movers.length) return false;
+  const box = new T.Box3();
+  for (const obj of movers) box.expandByObject(obj, true);
+  const at = box.getCenter(new T.Vector3());
+  if (moviola.followAt) {
+    const delta = at.clone().sub(moviola.followAt);
+    controls.target.add(delta);
+    camera.position.add(delta);
+    controls.update();
+  }
+  moviola.followAt = at;
+  return false;
+}
+$('tl-play').onclick = togglePlay;
+$('tl-prev').onclick = () => jumpMarker(-1);
+$('tl-next').onclick = () => jumpMarker(1);
+$('tl-scrub').addEventListener('input', (event) => {
+  const tl = model?.timeline;
+  if (tl) seekTo(Number(event.target.value) * tl.period);
+});
+for (const b of document.querySelectorAll('[data-speed]')) {
+  b.onclick = () => {
+    moviola.speed = Number(b.dataset.speed);
+    for (const o of document.querySelectorAll('[data-speed]')) o.setAttribute('aria-pressed', String(o === b));
+  };
+}
+$('tl-trails').onclick = () => {
+  moviola.trails = !moviola.trails;
+  $('tl-trails').setAttribute('aria-pressed', String(moviola.trails));
+  updateMoviola();
+  invalidate();
+};
+$('tl-follow').onclick = () => {
+  moviola.follow = !moviola.follow;
+  moviola.followAt = null;
+  if (moviola.follow) userMoved = true; // la camera non torna da sola all'inquadratura intera
+  $('tl-follow').setAttribute('aria-pressed', String(moviola.follow));
+  invalidate();
+};
+
+/**
+ * Miniatura per il quaderno (PNG base64, sfondo trasparente): solo il 3D, inquadrato da capo.
+ * Una scena animata si ferma dopo l'ultimo contatto, con le scie: la figura del libro di fisica.
+ */
+function thumbnail(size = 640) {
+  if (!model || model.bounds.isEmpty()) return null;
+  for (const { holder } of entering) holder.position.y = 0;
+  entering = [];
+  fitCamera(true);
+  const tl = model.timeline;
+  if (tl && model.hasMotion) {
+    const last = Math.max(0, ...tl.contacts.map((c) => c.time));
+    const t = tl.loop === 'pingpong' ? tl.duration * 0.8 : last + (tl.period - last) * 0.8;
+    if (!moviola.ghosts.length && !moviola.dots) buildTrails();
+    model.seek(t);
+    for (const g of moviola.ghosts) g.visible = g.userData.time < t - 1e-3;
+  }
+  placeRim();
+  renderer.render(scene, camera);
+  const out = document.createElement('canvas');
+  out.width = size;
+  out.height = Math.round((size * height) / Math.max(1, width));
+  out.getContext('2d').drawImage(renderer.domElement, 0, 0, out.width, out.height);
+  return out.toDataURL('image/png').split(',')[1];
 }
 
 /* ---------- eventi dello streaming ---------- */
@@ -615,6 +928,12 @@ function start(header) {
   userMoved = false;
   partBoxes = [];
   clearTimeout(anchorTimer);
+  clearTrails();
+  moviola.shown = false;
+  moviola.follow = false;
+  moviola.speed = 1; // una scena nuova parte a velocità normale
+  for (const b of document.querySelectorAll('[data-speed]')) b.setAttribute('aria-pressed', String(b.dataset.speed === '1'));
+  $('timeline').hidden = true;
   $('labels').replaceChildren();
   $('leaders').replaceChildren($('pin-back'), $('pin')); // il filo del fumetto resta
   $('pin').setAttribute('d', '');
@@ -704,6 +1023,7 @@ function end(event) {
     }
     $('error').hidden = false;
   }
+  if (moviola.shown) buildMoviola(); // fine di una scena già in riproduzione (patch): scie da capo
   if (!userMoved) moveCamera();
   if (history) history.ended = event ?? { errors: [] };
   if (parts) notifySceneVisible();
@@ -884,7 +1204,7 @@ function labelUnder(event) {
   const hit = firstVisible(raycaster.ray.origin.clone(), raycaster.ray.direction.clone());
   return hit ? model.labelAt(hit.object) : null;
 }
-const onUI = (target) => Boolean(target.closest?.('button, .toolbar, #explanation'));
+const onUI = (target) => Boolean(target.closest?.('button, input, .toolbar, .timeline, #explanation'));
 document.addEventListener('mousemove', (event) => {
   const hit = dragging || onUI(event.target) || hitsModel(event);
   setInteractive(hit);
@@ -941,11 +1261,24 @@ $('reset').onclick = () => {
 };
 $('dismiss').onclick = () => selectLabel(state.selected);
 $('close').onclick = () => close();
+$('notebook').onclick = () => bridge?.openNotebook?.();
 function close() {
   if (bridge) bridge.close();
   else window.close();
 }
 window.addEventListener('keydown', (event) => {
+  if (moviola.shown && !event.metaKey && !event.ctrlKey && !event.altKey) {
+    if (event.key === ' ') {
+      event.preventDefault();
+      togglePlay();
+      return;
+    }
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+      event.preventDefault();
+      jumpMarker(event.key === 'ArrowRight' ? 1 : -1);
+      return;
+    }
+  }
   if (event.key !== 'Escape') return;
   if (state.selected) selectLabel(state.selected);
   else close();
@@ -961,6 +1294,8 @@ document.addEventListener('visibilitychange', () => {
 // Banco di prova (smoke test): stessi eventi del daemon, più lo stato del rendering.
 window.remi3d = {
   feed: handle,
+  thumbnail,
+  seek: (t) => model && seekTo(t),
   refreshAnchors,
   snapshot,
   getSnapshot: () => ({
@@ -975,6 +1310,7 @@ window.remi3d = {
     shells: model ? model.shellIds() : [],
     labelPoints: model ? model.labels.map((l) => [l.title, ...l.at.toArray().map((v) => Math.round(v * 100) / 100)]) : [],
     renderScheduled: Boolean(frame),
+    moviola: { shown: moviola.shown, elapsed: model?.elapsed ?? 0, timeline: model?.timeline ?? null, ghosts: moviola.ghosts.length, markers: moviola.markers.map((m) => m.time) },
   }),
 };
 resize();

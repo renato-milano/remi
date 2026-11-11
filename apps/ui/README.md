@@ -40,4 +40,20 @@ OPENMATE_EXTERNAL=1 pnpm --filter @openmate/ui dev   # overlay che si collega a 
 - **Personaggio**: robot SVG procedurale (glifi cyan per stato); **Rive** come drop-in
   (vedi `assets/README.md`).
 
-Variabili: `OPENMATE_URL` (daemon), `OPENMATE_HOTKEY` (default `⌘⇧O`), `OPENMATE_PORT`.
+## Quaderno e moviola
+- **Quaderno** (⌘⇧Y / Ctrl+Shift+Y, l'icona di Remi nella barra dei menu o nell'area di notifica,
+  il menu del personaggio, il pulsante nella barra del modello 3D):
+  ogni lavagna, modello 3D, scena animata e risposta ai turni «indica» finisce in
+  `userData/notebook`, divisa per argomento. L'argomento lo propone il daemon
+  (`POST /notebook/topic`, chiamata breve), la miniatura la fa una finestra fuori schermo che carica
+  la lavagna o il visore veri (`electron/notebook.cjs`). Da lì si riapre, si riascolta, si continua
+  con una domanda, si sposta di argomento. Le sessioni salvate con `OPENMATE_UI_DEBUG` prima del
+  quaderno si importano una volta sola alla prima apertura.
+- **Moviola**: le scene con traiettorie hanno una barra del tempo con play, velocità ¼× ½× 1×,
+  marcatori sui contatti dichiarati, scie con pose fantasma e «Segui». Spazio = play/pausa,
+  frecce = marcatore precedente/successivo.
+- Prove: `pnpm --filter @openmate/ui test:scene3d` e `pnpm --filter @openmate/ui test:notebook`.
+
+Icona nella barra: si toglie dalle Impostazioni («Accesso rapido», `ui.tray` nel config).
+
+Variabili: `OPENMATE_NOTEBOOK_HOTKEY` (default `CommandOrControl+Shift+Y`), `OPENMATE_URL` (daemon), `OPENMATE_HOTKEY` (default `⌘⇧O`), `OPENMATE_PORT`.

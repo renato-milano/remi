@@ -88,6 +88,10 @@ export const voiceSchema = z.object({
   wakeWord: z.boolean().default(false),
   /** Voce di Remi: 'auto' = cloud se c'è il gateway, altrimenti voce di sistema. */
   tts: z.enum(['auto', 'cloud', 'system', 'off']).default('auto'),
+  /** Modello della voce cloud (gateway); vuoto = GATEWAY_TTS_MODEL (il più rapido). */
+  ttsModel: z.string().optional(),
+  /** Voce del modello (id del provider); vuoto = voce predefinita del modello. */
+  ttsVoice: z.string().optional(),
   /**
    * Trascrizione delle DOMANDE (hotkey o dopo "Hey Remi"): un modello del gateway, molto più
    * preciso del whisper locale sui nomi; 'local' = sempre whisper locale. L'ascolto di

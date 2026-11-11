@@ -202,6 +202,8 @@ export function compileContacts(input: Scene): ContactCompilation {
       fail(id, 'mover e response devono condividere duration e loop');
       continue;
     }
+    // la verifica geometrica è solo per traslazioni: l'assetto nei fotogrammi dei corpi a contatto si toglie
+    for (const a of [animation, responseAnimation]) a?.keyframes.forEach((f) => delete f.rotation);
     let valid = true;
     for (const endpoint of [source, target]) {
       if (!['sphere', 'box', 'roundedBox'].includes(String(endpoint.node.shape))) {

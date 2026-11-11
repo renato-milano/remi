@@ -39,6 +39,25 @@ try {
   await page.waitForTimeout(650);
   assert.equal((await snapshot()).parts, 3);
   assert.equal((await snapshot()).state.motion, true);
+  // Moviola: la barra del tempo compare con i marcatori di inizio, contatto e fine, e le scie
+  const kick = (await snapshot()).moviola;
+  assert.equal(kick.shown, true);
+  assert.equal(await page.locator('#timeline').isVisible(), true);
+  assert.equal(await page.locator('#motion').isVisible(), false, 'con la moviola play e pausa stanno sulla barra');
+  assert.deepEqual(kick.markers, [0, 1, 3]);
+  assert.ok(kick.ghosts > 0, 'pose fantasma lungo il tiro');
+  await page.click('#tl-play');
+  assert.equal((await snapshot()).state.motion, false, 'il tasto ferma la scena');
+  await page.click('#tl-next');
+  assert.ok(Math.abs((await snapshot()).moviola.elapsed - 1) < 1e-6, 'il marcatore successivo è il contatto');
+  assert.match(await page.locator('#tl-time').textContent(), /^1,00 \/ 3,00 s$/);
+  await page.keyboard.press('ArrowRight');
+  assert.ok(Math.abs((await snapshot()).moviola.elapsed - 3) < 1e-6, 'freccia destra: fine');
+  await page.click('[data-speed="0.25"]');
+  await page.keyboard.press(' ');
+  assert.equal((await snapshot()).state.motion, true, 'spazio fa ripartire');
+  const thumb = await page.evaluate(() => window.remi3d.thumbnail(320));
+  assert.ok(thumb && thumb.length > 1000, 'miniatura per il quaderno');
   await page.screenshot({ path: `${shots}contact-kick.png`, omitBackground: true });
   const invalidContact = JSON.parse(await example('contact-collision'));
   invalidContact.contacts[0].source.point = [0, 0, 0];
@@ -63,7 +82,7 @@ try {
   await page.waitForTimeout(350);
   const fallAfter = await snapshot();
   assert.notDeepEqual(fallAfter.labelPoints, fallBefore.labelPoints, 'le etichette seguono il corpo animato');
-  await page.locator('#motion').click();
+  await page.locator('#tl-play').click(); // scena con traiettorie: la pausa sta sulla moviola
   await page.waitForTimeout(150);
   const pausedFall = await snapshot();
   await page.waitForTimeout(150);

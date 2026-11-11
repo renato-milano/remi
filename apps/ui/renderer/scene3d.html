@@ -13,12 +13,34 @@
       <div id="labels"></div>
       <aside id="explanation" hidden aria-live="polite"><strong id="part-title"></strong><p id="part-text"></p><button id="dismiss" aria-label="Chiudi spiegazione">×</button></aside>
       <div class="bottom">
+        <div id="timeline" class="timeline" hidden role="group" aria-label="Moviola">
+          <div class="tl-row">
+            <button id="tl-play" class="tl-play" aria-label="Pausa">❚❚</button>
+            <span class="tl-speed" role="group" aria-label="Velocità">
+              <button data-speed="0.25" aria-pressed="false" title="Rallentato 4 volte">¼×</button>
+              <button data-speed="0.5" aria-pressed="false" title="Rallentato 2 volte">½×</button>
+              <button data-speed="1" aria-pressed="true" title="Velocità normale">1×</button>
+            </span>
+            <button id="tl-prev" title="Marcatore precedente (←)" aria-label="Marcatore precedente">◀︎</button>
+            <button id="tl-next" title="Marcatore successivo (→)" aria-label="Marcatore successivo">▶︎</button>
+            <i></i>
+            <button id="tl-trails" aria-pressed="true" title="Traiettoria e pose già passate">Scie</button>
+            <button id="tl-follow" aria-pressed="false" title="La camera segue i corpi in movimento">Segui</button>
+            <span id="tl-time" class="tl-time">0,00 / 0,00 s</span>
+          </div>
+          <div class="tl-track">
+            <div class="tl-rail"><div id="tl-fill"></div></div>
+            <div id="tl-marks"></div>
+            <input id="tl-scrub" type="range" min="0" max="1" step="0.001" value="0" aria-label="Istante della scena" />
+          </div>
+        </div>
         <div class="toolbar" role="toolbar" aria-label="Controlli modello">
           <span class="brand">remi<span>3D</span></span>
           <span id="title" class="title"></span>
           <i></i>
           <button id="section" aria-pressed="true">Sezione</button>
           <button id="motion" aria-pressed="false">Movimento</button>
+          <button id="notebook" title="Rivedi lavagne e modelli nel quaderno">Quaderno</button>
           <button id="reset" title="Ripristina vista" aria-label="Ripristina vista">↺</button>
           <button id="close" title="Chiudi" aria-label="Chiudi">×</button>
         </div>

@@ -1,5 +1,5 @@
 /* Costruisce in Three.js una scena 3D (formato @openmate/scene3d) un nodo alla volta, mentre arriva. */
-import { SHAPES, sampleAnimation, spinAngle } from '@openmate/scene3d';
+import { SHAPES, sampleAnimation, sampleRotation, spinAngle } from '@openmate/scene3d';
 import * as T from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { MarchingCubes } from 'three/addons/objects/MarchingCubes.js';
@@ -16,8 +16,6 @@ const SCENE_SIZE = 10;
 const PAINT_MAX = 8;
 /** Forme che non fanno mai da guscio (un pezzo "dentro" un'elica o una ruota è il suo mozzo). */
 const NOT_SHELLS = new Set(['propeller', 'rotor', 'wheel', 'duct', 'arrow', 'line']);
-/** Stile maquette: tutto di questo materiale chiaro e opaco, tranne le parti spiegate e i flussi. */
-const CLAY = { color: '#bfc5c6', roughness: 0.62, metalness: 0.08 };
 const FLOW = { color: '#3d9be0', roughness: 0.4, metalness: 0 };
 const AXIS = { x: new T.Vector3(1, 0, 0), y: new T.Vector3(0, 1, 0), z: new T.Vector3(0, 0, 1) };
 
@@ -405,28 +403,14 @@ export function createScene(header) {
   const unit = header.size ? SCENE_SIZE / header.size : 1;
   root.scale.setScalar(unit);
   const clip = header.section ? new T.Plane(new T.Vector3(0, -1, 0), header.section.y * unit) : null;
-  const defs = { __rubber: RUBBER, __rim: RIM_METAL, __clay: CLAY, __flow: FLOW, ...header.materials };
-  const maquette = header.style !== 'real';
-  /** In maquette restano colorati solo flussi, frecce e materiali trasparenti (vetri, getti). */
-  const keepsColor = (n, material) =>
-    n.shape === 'arrow' || n.showWhen === 'motion' || (defs[material]?.opacity ?? 1) < 1;
-  /** Colore della parte spiegata: la tinta della sua etichetta, più piena (pezzo ↔ biglietto). */
-  const accents = new Map();
-  const accentOf = (labelColor, base, lightness = 0.55) => {
-    const key = `${labelColor}|${base.uuid}|${lightness}`;
-    if (!accents.has(key)) {
-      const c = new T.Color(labelColor);
-      const hsl = c.getHSL({});
-      c.setHSL(hsl.h, Math.max(0.62, hsl.s), lightness);
-      const m = base.clone();
-      m.color = c;
-      materials.add(m);
-      accents.set(key, m);
-    }
-    return accents.get(key);
-  };
+  // colori veri: ogni parte tiene il materiale che le dà il modello, il motore non ricolora
+  const defs = { __rubber: RUBBER, __rim: RIM_METAL, __flow: FLOW, ...header.materials };
   /** Parti con un id (la prima copia): bersagli degli agganci. */
   const parts = new Map();
+  /** Gruppo di montaggio di una parte agganciata (id → gruppo): si sposta con lei. */
+  const mounts = new Map();
+  /** Condotti (tutte le copie): un'elica che ci finisce dentro va sul loro asse. */
+  const ducts = [];
   /** Dettagli in costruzione o montati: id della parte → sotto-scena. */
   const details = new Map();
   /** Gusci: parti che contengono parti montate al loro interno; con Sezione diventano trasparenti. */
@@ -774,18 +758,18 @@ for (int i = 0; i < ${PAINT_MAX}; i++) {
     // Rispetta le misure della freccia: la scena non deve gonfiare i vettori.
     let obj;
     if (!n.shape) obj = new T.Group();
-    else if (n.shape === 'wheel') obj = wheelObject(n, maquette ? '__clay' : material);
-    else if (n.shape === 'propeller') obj = propellerObject(n, maquette ? '__clay' : material);
-    else if (n.shape === 'stages') obj = stagesObject(n, maquette ? '__clay' : material);
+    else if (n.shape === 'wheel') obj = wheelObject(n, material);
+    else if (n.shape === 'propeller') obj = propellerObject(n, material);
+    else if (n.shape === 'stages') obj = stagesObject(n, material);
     else if (n.shape === 'line') obj = new T.Line(geometry(n), stroke(material));
     else if (n.shape === 'rotor') {
-      obj = new T.InstancedMesh(geometry(n), surface(maquette ? '__clay' : material), n.count);
+      obj = new T.InstancedMesh(geometry(n), surface(material), n.count);
       const axis = AXIS[(n.axis ?? 'y').replace('-', '')];
       for (let i = 0; i < n.count; i++)
         obj.setMatrixAt(i, new T.Matrix4().makeRotationAxis(axis, (i / n.count) * Math.PI * 2));
       obj.instanceMatrix.needsUpdate = true;
     } else {
-      const mat = maquette && !keepsColor(n, material) ? '__clay' : n.shape === 'arrow' && !material ? '__flow' : material;
+      const mat = n.shape === 'arrow' && !material ? '__flow' : material;
       obj = new T.Mesh(geometry(n), surface(mat));
     }
     if (n.shape === 'cylinder' && n.from) {
@@ -801,7 +785,8 @@ for (int i = 0; i < ${PAINT_MAX}; i++) {
       obj.scale.set(...(Array.isArray(n.scale) ? n.scale : [n.scale, n.scale, n.scale]));
     if (n.outline && obj.isMesh && !obj.isInstancedMesh)
       obj.add(new T.LineSegments(outline(obj.geometry), edgeMat));
-    if (n.animation) animations.push({ obj, animation: n.animation, base: obj.position.clone() });
+    if (n.animation)
+      animations.push({ obj, animation: n.animation, base: obj.position.clone(), baseQuat: obj.quaternion.clone() });
     if (n.spin) {
       spinners.push({
         obj,
@@ -817,9 +802,10 @@ for (int i = 0; i < ${PAINT_MAX}; i++) {
       obj.visible = n.showWhen === 'section' ? section : motion;
     }
     if (n.spin || n.animation || n.showWhen) obj.userData.dynamic = true;
-    if (n.paint && !maquette && obj.isMesh && !obj.isInstancedMesh) painted(obj, n.paint);
+    if (n.paint && obj.isMesh && !obj.isInstancedMesh) painted(obj, n.paint);
     // un condotto lungo (un tubo, non una gabbia) fa da carter: può aprirsi nello spaccato
     obj.userData.shape = n.shape === 'duct' && n.height >= n.radius * 1.2 ? 'casing' : n.shape;
+    if (n.shape === 'duct') ducts.push({ obj, radius: n.radius, height: n.height, axis: AXIS[(n.axis ?? 'y').replace('-', '')] });
     // parte spiegata: tutte le sue copie (specchiate, ripetute) rimandano alla stessa etichetta
     if (n.label) obj.userData.labelNode = n;
     if (n.id) {
@@ -1003,7 +989,9 @@ for (int i = 0; i < ${PAINT_MAX}; i++) {
         }
       }
       top.position.y = flying;
+      if (own.shape === 'propeller' || own.shape === 'rotor') centerInDuct(g, attach.to);
     }
+    if (own.id) mounts.set(own.id, g);
     if (mirror) {
       const m = new T.Group();
       m.scale[mirror] = -1;
@@ -1011,7 +999,55 @@ for (int i = 0; i < ${PAINT_MAX}; i++) {
       const g2 = new T.Group();
       g2.position.copy(g.position);
       m.add(g2);
+      g.userData.mirrorCopy = g2;
       repeated(own, g2, undefined, labelled);
+    }
+  }
+
+  /** Sposta un gruppo di montaggio (e la sua copia specchiata) di `delta` nello spazio della scena. */
+  function shift(g, delta) {
+    const before = g.parent.worldToLocal(root.localToWorld(new T.Vector3()));
+    const after = g.parent.worldToLocal(root.localToWorld(delta.clone()));
+    const d = after.sub(before);
+    g.position.add(d);
+    // la copia specchiata vive in un gruppo con scala -1 sullo stesso genitore: stesso spostamento
+    g.userData.mirrorCopy?.position.add(d);
+  }
+
+  /**
+   * Elica dentro un condotto (gabbia di un drone, ventola intubata): va sul suo asse, col motore
+   * su cui è montata. Il modello spesso aggancia gabbie e motori a parti diverse (gabbia sul
+   * fianco con mirror, motore sul fianco opposto con un offset): le eliche finivano fuori centro.
+   */
+  function centerInDuct(g, motherId) {
+    if (!ducts.length) return;
+    const box = localBounds(g);
+    if (box.isEmpty()) return;
+    const c = box.getCenter(new T.Vector3());
+    for (const d of ducts) {
+      let top = d.obj;
+      while (top.parent && top.parent !== root) top = top.parent;
+      const flying = top.position.y;
+      top.position.y = 0;
+      const center = localBounds(d.obj).getCenter(new T.Vector3());
+      top.position.y = flying;
+      const axis = d.axis.clone().transformDirection(d.obj.matrixWorld);
+      const off = c.clone().sub(center);
+      const along = off.dot(axis);
+      const radial = off.sub(axis.clone().multiplyScalar(along));
+      const dist = radial.length();
+      // dentro il cerchio del condotto e alla sua altezza; già centrata = niente da fare
+      if (dist >= d.radius || dist < d.radius * 0.02 || Math.abs(along) > d.height + d.radius) continue;
+      const delta = radial.negate();
+      shift(g, delta);
+      // il motore che la porta (una parte piccola, non il corpo né il condotto) si sposta con lei
+      const mother = mounts.get(motherId);
+      const mb = mother && localBounds(mother);
+      if (mb && !mb.isEmpty() && !mother.getObjectById(d.obj.id)) {
+        const size = mb.getSize(new T.Vector3());
+        if (Math.max(size.x, size.y, size.z) <= d.radius * 1.2) shift(mother, delta);
+      }
+      return;
     }
   }
 
@@ -1066,20 +1102,6 @@ for (int i = 0; i < ${PAINT_MAX}; i++) {
       envelope.expandByScalar(envelope.getSize(new T.Vector3()).length() * .1 + .002);
       if (!envelope.containsBox(detailBox)) { model.discardDetail(target); return false; }
       model.highlight(null);
-      // in maquette il dettaglio prende la tinta dell'etichetta della parte, in più toni
-      const id = first.userData.labelNode ? labelOf.get(first.userData.labelNode) : null;
-      const color = id ? model.labels.find((l) => l.id === id)?.color : null;
-      if (maquette && color) {
-        sub.root.children.forEach((holder, i) =>
-          holder.traverse((m) => {
-            if (!m.isMesh || m.material.transparent || m.userData.shape === 'arrow') return;
-            if (m.parent?.userData.shape === 'arrow') return;
-            const c = m.material.color.getHSL({});
-            const hot = c.s > 0.5 && (c.h < 0.11 || c.h > 0.95); // ciò che brucia resta caldo
-            if (!hot) m.material = accentOf(color, m.material, [0.42, 0.55, 0.68][i % 3]);
-          }),
-        );
-      }
       if (!first.isMesh || sub.installed) return false;
       for (const copy of copiesOf(first)) {
         // Il nodo originale continua a governare posa, animazioni e figli già montati.
@@ -1164,6 +1186,38 @@ for (int i = 0; i < ${PAINT_MAX}; i++) {
       );
     },
     get elapsed() { return elapsed; },
+    /**
+     * Linea del tempo della moviola: la traiettoria più lunga detta la durata (le scene coordinate
+     * condividono duration), i contatti dichiarati diventano marcatori. null se ci sono solo rotazioni.
+     */
+    get timeline() {
+      if (!animations.length) return null;
+      const main = animations.reduce((a, b) => (b.animation.duration > a.animation.duration ? b : a));
+      const { duration, loop = 'repeat' } = main.animation;
+      return {
+        duration,
+        loop,
+        period: loop === 'pingpong' ? duration * 2 : duration,
+        contacts: (header.contacts ?? [])
+          .filter((c) => Number.isFinite(c.time))
+          .map((c) => ({ id: c.id, time: c.time })),
+      };
+    },
+    /** Porta traiettorie e rotazioni all'istante t (secondi dall'inizio della scena). */
+    seek(t) {
+      elapsed = 0;
+      model.animate(Math.max(0, t));
+    },
+    /** I corpi che si spostano: animati, e non dentro un altro corpo animato (che li porta con sé). */
+    movers() {
+      const animated = new Set(animations.map((a) => a.obj));
+      return animations
+        .map((a) => a.obj)
+        .filter((obj) => {
+          for (let p = obj.parent; p && p !== root; p = p.parent) if (animated.has(p)) return false;
+          return true;
+        });
+    },
     title: header.title ?? '',
     labels: [],
     direction: header.camera?.direction ?? [-0.45, 0.32, 0.8],
@@ -1223,18 +1277,6 @@ for (int i = 0; i < ${PAINT_MAX}; i++) {
           // punto fisso rispetto alla parte senza il suo spin: segue le traiettorie, non la rotazione
           root.updateMatrixWorld(true);
           movingLabels.push({ label, obj, local: at.clone().applyMatrix4(staticMatrix(obj).invert()) });
-        }
-        // maquette: la parte spiegata prende la tinta della sua etichetta (non il corpo principale)
-        // una parte grande (ala, scocca) colorata coprirebbe tutto: resta chiara, si accende al passaggio
-        const big = header.size && Math.max(...localBounds(obj).getSize(new T.Vector3()).toArray()) > header.size * 0.5;
-        if (maquette && model.parts > 1 && !big) {
-          const color = model.labels.at(-1).color;
-          root.traverse((o) => {
-            if (o.userData.labelNode !== n) return;
-            o.traverse((m) => {
-              if (m.isMesh && !(m.material.transparent && m.material.opacity < 1)) m.material = accentOf(color, m.material);
-            });
-          });
         }
       }
       return holder;
@@ -1304,6 +1346,9 @@ for (int i = 0; i < ${PAINT_MAX}; i++) {
       for (const sub of details.values()) if (sub.installed) sub.animate(dt);
       for (const a of animations) {
         a.obj.position.copy(a.base).add(new T.Vector3(...sampleAnimation(a.animation, elapsed)));
+        // assetto: rotazione dei fotogrammi negli assi del genitore, sopra la posa iniziale
+        const r = sampleRotation(a.animation, elapsed);
+        if (r) a.obj.quaternion.setFromEuler(new T.Euler(r[0] * DEG, r[1] * DEG, r[2] * DEG)).multiply(a.baseQuat);
       }
       for (const s of spinners) {
         let timeline;

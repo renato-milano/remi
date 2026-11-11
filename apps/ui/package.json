@@ -19,7 +19,8 @@
     "dist": "pnpm run prepare:installer && electron-builder ",
     "release": "pnpm run prepare:installer && electron-builder --publish always",
     "test:scene3d": "node scene3d/build.mjs && node scene3d/smoke.mjs && node scene3d/contact-smoke.mjs",
-    "prepare:installer": "pnpm -w build && pnpm run bundle:daemon && pnpm run bundle:scene3d && bash ../../packaging/build-whisper.sh"
+    "prepare:installer": "pnpm -w build && pnpm run bundle:daemon && pnpm run bundle:scene3d && bash ../../packaging/build-whisper.sh",
+    "test:notebook": "node tests/notebook-smoke.mjs"
   },
   "dependencies": {
     "@nut-tree-fork/nut-js": "^4.2.6",

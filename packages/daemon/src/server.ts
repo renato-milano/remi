@@ -96,6 +96,25 @@ export function startHttpServer(daemon: Daemon, port: number) {
     }
   });
 
+  // Quaderno: argomento in cui archiviare una spiegazione (l'interfaccia tiene l'archivio)
+  app.post('/notebook/topic', async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as {
+      title?: unknown;
+      question?: unknown;
+      sentences?: unknown;
+      topics?: unknown;
+    };
+    const str = (v: unknown) => (typeof v === 'string' ? v.slice(0, 500) : undefined);
+    const list = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
+    const topic = await daemon.suggestTopic({
+      title: str(body.title),
+      question: str(body.question),
+      sentences: list(body.sentences),
+      topics: list(body.topics),
+    });
+    return c.json({ ok: Boolean(topic), topic });
+  });
+
   app.post('/command', async (c) => {
     const cmd = (await c.req.json()) as ClientCommand;
     switch (cmd.kind) {

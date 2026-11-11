@@ -34,6 +34,8 @@ export type Trigger =
  */
 export type AgentEvent =
   | { kind: 'state'; state: AgentState }
+  /** Inizio di un turno chiesto dall'utente: la sua domanda (versione compatta se c'è). */
+  | { kind: 'turn'; question: string; fast: boolean }
   /** `channel: 'panel'`: il testo è già mostrato (e letto) dal pannello di spiegazione. */
   | { kind: 'message'; role: 'agent'; content: string; channel?: 'panel' }
   | { kind: 'action'; summary: string }

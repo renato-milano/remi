@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('scene3d', {
   interactive: (on) => ipcRenderer.send('scene3d-interactive', Boolean(on)),
   ready: () => ipcRenderer.send('scene3d-visible'),
   close: () => ipcRenderer.send('scene3d-close'),
+  openNotebook: () => ipcRenderer.send('notebook-open'),
   // revisione con la vista: main chiede due viste del modello costruito, il visore le rende e le rimanda
   onSnapshot: (cb) => ipcRenderer.on('scene3d-snapshot', () => cb()),
   snapshot: (images) => ipcRenderer.send('scene3d-snapshot', images),

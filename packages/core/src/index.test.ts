@@ -274,6 +274,9 @@ describe('@openmate/core — modello 3D nella risposta', () => {
     expect(result.text).toBe('Eccolo, guarda le pale.');
     expect(events.filter((e) => e.kind === 'message').map((e) => e.content)).toEqual(['Eccolo, guarda le pale.']);
     expect(events.filter((e) => e.kind === 'scene3d').map((e) => e.op)).toEqual(['start', 'node', 'node', 'end']);
+    // il turno si apre con la domanda, prima di qualunque risposta (quaderno)
+    expect(events.find((e) => e.kind === 'turn')).toEqual({ kind: 'turn', question: 'mostrami una ventola in 3D', fast: false });
+    expect(events.findIndex((e) => e.kind === 'turn')).toBeLessThan(events.findIndex((e) => e.kind === 'scene3d'));
     // la frase si dice appena il blocco inizia, prima delle parti, non a modello finito
     expect(events.findIndex((e) => e.kind === 'message')).toBeLessThan(
       events.findIndex((e) => e.kind === 'scene3d' && e.op === 'node'),

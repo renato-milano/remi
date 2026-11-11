@@ -139,6 +139,10 @@ api.onData(({ config, hasKey }) => {
   document.getElementById('voiceEnabled').checked = Boolean(config.voice?.enabled);
   document.getElementById('voiceTts').value = config.voice?.tts === 'cloud' ? 'auto' : config.voice?.tts || 'auto';
   document.getElementById('wakeWord').checked = Boolean(config.voice?.wakeWord);
+  document.getElementById('tray').checked = config.ui?.tray !== false;
+  if (!/Mac/i.test(navigator.platform)) {
+    document.getElementById('notebookHotkey').textContent = 'Il quaderno si apre anche con Ctrl+Shift+Y, senza chiamare Remi.';
+  }
   renderPerms();
   void showVoiceStatus();
 });
@@ -161,6 +165,7 @@ function collect() {
     voice: document.getElementById('voiceEnabled').checked,
     voiceTts: document.getElementById('voiceTts').value,
     wakeWord: document.getElementById('wakeWord').checked,
+    tray: document.getElementById('tray').checked,
     apiKey: apiKeyEl.value.trim(), // vuoto = non cambiare
   };
 }

@@ -55,6 +55,8 @@ export class CognitiveLoop {
   /** Buffer di conversazione (memoria a breve termine della chat): ultimi turni
    *  user/assistant inclusi nel contesto del modello, così ricorda cosa ci si è detti. */
   private readonly history: ModelMessage[] = [];
+  /** L'ultimo modello 3D mostrato (JSON come scritto): base per le scene successive sullo stesso oggetto. */
+  private lastScene?: { title: string; source: string };
 
   constructor(private readonly opts: CognitiveLoopOptions) {
     this.audit = opts.audit ?? new InMemoryAuditSink();
@@ -77,6 +79,10 @@ export class CognitiveLoop {
       this.opts.tasks.updateTaskStatus(task.id, 'in_progress');
     }
     this.setState({ status: 'thinking', activeTaskId: task?.id, activeGoalId: task?.goalId });
+    // la domanda che apre il turno: l'interfaccia la archivia con ciò che Remi mostra (quaderno)
+    if (trigger.kind === 'user_message') {
+      this.opts.onEvent?.({ kind: 'turn', question: trigger.historyText ?? trigger.content, fast: Boolean(trigger.fast) });
+    }
 
     const core = this.opts.memory.coreBlocks();
     const hasComputer = Boolean(this.opts.registry.get('computer.screenshot'));
@@ -88,18 +94,22 @@ export class CognitiveLoop {
     // Immagini allegate (es. "indica sullo schermo"): vanno solo nel turno corrente;
     // nel buffer di conversazione resta il testo, per non rimandarle a ogni turno.
     const images = trigger.kind === 'user_message' ? (trigger.images ?? []) : [];
+    // nuova scena 3D: il modello già costruito in questa conversazione è il punto di partenza
+    // (solo per questa chiamata, non resta nella cronologia)
+    const modelText =
+      trigger.kind === 'user_message' && wants3d(trigger.content) ? userText + this.previousSceneNote() : userText;
     const userMessage: ModelMessage = images.length
       ? {
           role: 'user',
           content: [
-            { type: 'text', text: userText },
+            { type: 'text', text: modelText },
             ...images.flatMap((img) => [
               ...(img.label ? [{ type: 'text' as const, text: img.label }] : []),
               { type: 'image' as const, image: img.data, mediaType: 'image/png' },
             ]),
           ],
         }
-      : { role: 'user', content: userText };
+      : { role: 'user', content: modelText };
     const messages: ModelMessage[] = [...this.history, userMessage];
 
     // 2. tool context: l'approval segna lo stato waiting_approval; il signal è il kill-switch
@@ -304,6 +314,8 @@ export class CognitiveLoop {
           (panel?.used ? `[Ho disegnato un pannello: «${panel.title}»] ` : '') +
           (scene.used ? `[Ho mostrato un modello 3D: «${scene.title}», ${scene.nodes} parti] ` : '');
         if (finalText) this.history.push({ role: 'assistant', content: `${drawn}${finalText}` });
+        if (scene.used && sceneEnd?.source && sceneEnd.nodes > 0)
+          this.lastScene = { title: scene.title, source: sceneEnd.source };
       } else if (finalText) {
         // heartbeat/cron che produce un messaggio proattivo: resta nel dialogo
         this.history.push({ role: 'assistant', content: finalText });
@@ -316,7 +328,28 @@ export class CognitiveLoop {
     this.setState({ status: 'idle', activeTaskId: undefined, activeGoalId: undefined });
     return { taskId: task?.id, actions, text: finalText, usage };
   }
+
+  /**
+   * Il modello 3D mostrato prima, finché la conversazione lo ricorda: una scena animata o una
+   * modifica sullo stesso oggetto riparte da lì invece di ricostruirlo più in fretta e peggio.
+   */
+  private previousSceneNote(): string {
+    const last = this.lastScene;
+    if (!last || last.source.length > MAX_SCENE_SOURCE) return '';
+    const mark = `«${last.title}»`;
+    const remembered = this.history.some((m) => typeof m.content === 'string' && m.content.includes(mark));
+    if (!remembered) return '';
+    return (
+      `\n\n[MODELLO 3D GIÀ COSTRUITO in questa conversazione, ${mark}:\n${last.source}\n` +
+      "Se la nuova scena riguarda lo stesso oggetto (anche in movimento o in un'altra situazione), RIUSA questo modello: " +
+      'stesse parti, misure, materiali e dettagli, messi dentro il gruppo animato; cambia solo ciò che la richiesta chiede. ' +
+      'Se riguarda un altro oggetto, ignoralo.]'
+    );
+  }
 }
+
+/** Oltre questa lunghezza (caratteri) il modello precedente non si ripropone: costerebbe troppo. */
+const MAX_SCENE_SOURCE = 40_000;
 
 /** Tool di sola visualizzazione: nei turni rapidi non richiedono un passo successivo. */
 const OVERLAY_TOOLS = ['overlay.draw', 'overlay.clear'].map(wireName);

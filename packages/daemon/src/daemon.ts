@@ -17,10 +17,11 @@ import {
   type Task,
   TaskStore,
   type Trigger,
+  wants3d,
 } from '@openmate/core';
 import { Scheduler } from '@openmate/scheduler';
 import { BrowserSession, ExtensionEngine } from '@openmate/browser';
-import { createExecutor, markPath, markPoint } from '@openmate/computer';
+import { createExecutor, markPath, markPoint, paletteOf } from '@openmate/computer';
 import type { WebSocket as WsSocket } from 'ws';
 import {
   type ApprovalRequest,
@@ -133,6 +134,8 @@ export class Daemon {
   private lastPointAt = 0;
   /** Voce: trascrizione e sintesi vocale. */
   readonly voice: VoiceService;
+  /** Il modello della chat: serve anche a compiti brevi fuori dai turni (argomento del quaderno). */
+  private readonly backend: ReasoningBackend;
   /** Il modello vede le immagini? Senza vision "indica e chiedi" manda solo il testo. */
   readonly vision: boolean;
   /** Geometria dell'ultima immagine dello schermo vista dal modello (per overlay.*). */
@@ -262,6 +265,7 @@ export class Daemon {
       ? { backend: opts.backend, sceneBackend: undefined, vision: true }
       : buildBackend(opts.config, opts.secrets);
     const backend = built.backend;
+    this.backend = backend;
     this.vision = built.vision;
 
     this.voice = new VoiceService(opts.config, {
@@ -405,6 +409,47 @@ export class Daemon {
     await this.loop.reviewScene(images);
   }
 
+  /**
+   * Quaderno: in quale argomento va una spiegazione appena mostrata (lavagna, modello 3D, risposta).
+   * Riusa un argomento esistente se calza, altrimenti ne propone uno nuovo. Chiamata breve e a
+   * ragionamento basso, fuori dalla coda dei turni: non rallenta Remi e non entra nella cronologia.
+   */
+  async suggestTopic(input: { title?: string; question?: string; sentences?: string[]; topics?: string[] }): Promise<string | undefined> {
+    const topics = (input.topics ?? []).filter((t) => typeof t === 'string' && t.trim()).slice(0, 60);
+    const said = (input.sentences ?? []).filter(Boolean).slice(0, 4).join(' ').slice(0, 600);
+    const lines = [
+      'Archivio le spiegazioni di un assistente in un quaderno diviso per ARGOMENTI, come i capitoli di un corso.',
+      'Spiegazione da archiviare:',
+      `- titolo: ${input.title || '(nessuno)'}`,
+      `- domanda: ${input.question || '(nessuna)'}`,
+      said ? `- cosa ha detto: ${said}` : '',
+      topics.length ? `Argomenti già nel quaderno: ${topics.map((t) => `«${t}»`).join(', ')}.` : '',
+      "Se uno degli argomenti esistenti va bene, rispondi ESATTAMENTE con quello. Altrimenti scrivine uno nuovo: 2-5 parole in italiano, con l'iniziale maiuscola, ampio quanto un capitolo (es. «Fisica del calcio», «Come funzionano gli LLM», «Elicotteri e droni»), non il titolo della spiegazione. Rispondi solo con l'argomento.",
+    ];
+    const prompt = lines.filter(Boolean).join('\n');
+    let text = '';
+    const abort = new AbortController();
+    const timer = setTimeout(() => abort.abort(), 25_000);
+    try {
+      for await (const ev of this.backend.run({
+        messages: [{ role: 'user', content: prompt }],
+        budget: { maxSteps: 1, wallClockMs: 25_000 },
+        signal: abort.signal,
+        fast: true,
+      })) {
+        if (ev.type === 'text-delta') text += ev.text;
+      }
+    } catch {
+      return undefined;
+    } finally {
+      clearTimeout(timer);
+    }
+    const topic = text.trim().split('\n')[0].replace(/^[«"'*\s-]+|[»"'*.\s]+$/g, '').trim();
+    if (!topic || topic.length > 60) return undefined;
+    // un argomento esistente scritto con maiuscole diverse resta quello
+    return topics.find((t) => t.toLowerCase() === topic.toLowerCase()) ?? topic;
+  }
+
   /** Lo screenshot (base64) è un PNG leggibile? Il server lo controlla prima di accettare il turno. */
   isPng(b64: string): boolean {
     return pngSize(b64) !== undefined;
@@ -425,6 +470,8 @@ export class Daemon {
     this.screenFrame = { imageW: size.w, imageH: size.h, ...msg.frame };
     const t0 = Date.now();
     const area = msg.path && msg.path.length > 2 ? msg.path : undefined;
+    // modello 3D di ciò che si indica: i colori veri misurati sull'immagine (in parallelo alle marcature)
+    const colors = wants3d(question) ? screenColors(msg, area, size).catch(() => '') : Promise.resolve('');
     const images = [
       area
         ? { data: await markPath(msg.image, area), label: POINT_LABELS.area }
@@ -444,7 +491,9 @@ export class Daemon {
     // nel prompt cursore e zona nelle stesse coordinate in cui il modello risponde
     const toModel = (p: { x: number; y: number }) =>
       this.normalized ? { x: (p.x / size.w) * NORMALIZED, y: (p.y / size.h) * NORMALIZED } : p;
-    const prompt = pointPrompt(question, toModel(msg.cursor), area?.map(toModel), this.normalized, followUp, msg.target, msg.board);
+    const prompt =
+      pointPrompt(question, toModel(msg.cursor), area?.map(toModel), this.normalized, followUp, msg.target, msg.board) +
+      (await colors);
     const what = msg.target ? `la finestra${msg.target.app ? ` di ${msg.target.app}` : ''}` : area ? 'una zona' : 'un punto';
     const historyText = msg.board
       ? `${question} [indicando ${area ? 'una parte' : 'un punto'} della lavagna «${msg.board.title || ''}»]`
@@ -624,6 +673,34 @@ const FOLLOW_UP_MS = 5 * 60_000;
 /** Modelli che localizzano meglio con coordinate normalizzate 0-1000 (Gemini). */
 export function usesNormalizedCoords(model: string): boolean {
   return /gemini/i.test(model);
+}
+
+/**
+ * Colori dominanti di ciò che l'utente indica (zona, ingrandimento o intorno del puntatore),
+ * come nota per il prompt: il modello 3D li usa invece dei colori tipici dell'oggetto.
+ */
+async function screenColors(
+  msg: PointMessage,
+  area: { x: number; y: number }[] | undefined,
+  size: { w: number; h: number },
+): Promise<string> {
+  let palette;
+  if (area) {
+    const xs = area.map((p) => p.x);
+    const ys = area.map((p) => p.y);
+    const [x0, y0] = [Math.min(...xs), Math.min(...ys)];
+    palette = await paletteOf(msg.image, { x: x0, y: y0, w: Math.max(...xs) - x0, h: Math.max(...ys) - y0 });
+  } else if (msg.zoom) palette = await paletteOf(msg.zoom);
+  else {
+    const side = Math.min(size.w, size.h) * 0.3;
+    palette = await paletteOf(msg.image, { x: msg.cursor.x - side / 2, y: msg.cursor.y - side / 2, w: side, h: side });
+  }
+  if (!palette.length) return '';
+  const list = palette.map((c) => `${c.hex} ${Math.round(c.share * 100)}%`).join(', ');
+  return (
+    `\n\n[COLORI MISURATI nella zona indicata, dal più esteso (sfondo escluso): ${list}. ` +
+    "Se costruisci un modello 3D di ciò che indico, usa questi colori per le parti corrispondenti dell'oggetto.]"
+  );
 }
 
 /** Didascalie delle immagini di un turno "indica" (esportate per l'eval dei segni). */

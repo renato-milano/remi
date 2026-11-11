@@ -18,7 +18,7 @@ export {
   validateScene,
 } from './schema.js';
 export { type SceneDetailEvent, SceneStream, type SceneStreamEvent } from './stream.js';
-export { sampleAnimation, spinAngle } from './animation.js';
+export { sampleAnimation, sampleRotation, spinAngle } from './animation.js';
 export { compileContacts } from './contacts.js';
 
 export { applyScenePatch, type ScenePatch } from './patch.js';

@@ -272,9 +272,10 @@ bridge.onWakeDone(() => {
 });
 
 /* --- dopo "Hey Remi": ascolta la domanda fino alla pausa --- */
-const LISTEN_END_MS = 900;
+// una pausa per pensare mentre si spiega non chiude la domanda: serve un silenzio più lungo
+const LISTEN_END_MS = 1500;
 const LISTEN_NO_SPEECH_MS = 6000;
-const LISTEN_MAX_MS = 15000;
+const LISTEN_MAX_MS = 120_000; // solo sicurezza: la domanda finisce con la pausa
 const LISTEN_HEARD_MS = 200; // parlato minimo perché la domanda sia "iniziata" (non basta un rumore)
 const listen = { on: false, chunks: [], ms: 0, speechMs: 0, silenceMs: 0, heard: false };
 
@@ -1636,6 +1637,40 @@ function holdBoard() {
   anchor.classList.add('hidden');
   panel.style.transition = 'none'; // nessuno spostamento a metà screenshot
   return true;
+}
+
+/**
+ * Quaderno: la lavagna intera, finita, senza penna, voce, segni sullo schermo né animazioni.
+ * La chiama il processo principale in una finestra fuori schermo per farne la miniatura;
+ * restituisce il riquadro del pannello da fotografare.
+ */
+// eslint-disable-next-line no-unused-vars -- chiamata da main.cjs con executeJavaScript
+async function renderBoardStill(dump) {
+  await document.fonts.load('17px Virgil').catch(() => {});
+  reset();
+  remiCursor.classList.add('hidden');
+  panel.style.animation = 'none';
+  panel.style.transition = 'none';
+  panelClose.style.visibility = 'hidden'; // nella miniatura la crocetta non serve
+  panelState.ownColors = Boolean(dump.ownColors);
+  if (dump.rows) {
+    panelState.grid = { rows: dump.rows, cols: dump.cols || 4 };
+    panelSvg.setAttribute('viewBox', `0 0 ${DRAW_W} ${gridHeight(panelState.grid)}`);
+  }
+  panel.style.width = `${panelWidth()}px`;
+  panelTitle.textContent = dump.title || '';
+  panel.classList.remove('hidden');
+  panel.style.left = '0px';
+  panel.style.top = '0px';
+  (dump.steps || []).forEach((step, i) => {
+    panelState.steps[i] = { ...step, index: i, marks: undefined, ink: autoInk(step, i) };
+    drawStepNow(i);
+  });
+  refreshProgress(-1);
+  for (const a of document.getAnimations()) a.finish();
+  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  const r = panel.getBoundingClientRect();
+  return { x: Math.floor(r.left), y: Math.floor(r.top), width: Math.ceil(r.width), height: Math.ceil(r.height) };
 }
 
 function reset() {

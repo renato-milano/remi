@@ -131,3 +131,31 @@ describe('@openmate/daemon — voce', () => {
     on.stop();
   });
 });
+
+describe('@openmate/daemon — argomento del quaderno', () => {
+  it('riusa un argomento esistente anche con maiuscole diverse, e ne propone uno nuovo altrimenti', async () => {
+    const reply = (text: string): ReasoningBackend => ({
+      id: 'topic',
+      async *run() {
+        yield { type: 'text-delta', text };
+        yield { type: 'finish', finishReason: 'stop', usage: {} };
+      },
+    });
+    const same = makeDaemon(reply('«fisica del calcio»\n'));
+    expect(await same.suggestTopic({ title: 'Tiro a giro', topics: ['Fisica del calcio', 'Elicotteri'] })).toBe('Fisica del calcio');
+    same.stop();
+    const fresh = makeDaemon(reply('Come funzionano gli LLM.'));
+    expect(await fresh.suggestTopic({ title: 'Transformer', topics: [] })).toBe('Come funzionano gli LLM');
+    fresh.stop();
+    const broken: ReasoningBackend = {
+      id: 'broken',
+      // biome-ignore lint/correctness/useYield: il backend fallisce prima di produrre testo
+      async *run() {
+        throw new Error('gateway giù');
+      },
+    };
+    const failing = makeDaemon(broken);
+    expect(await failing.suggestTopic({ title: 'x' })).toBeUndefined();
+    failing.stop();
+  });
+});
