@@ -54,6 +54,10 @@ jobs:
           # lo stesso runner produce il DMG arm64 e quello x64)
           if [ "$RUNNER_OS" = "macOS" ]; then export CMAKE_OSX_ARCHITECTURES="arm64;x86_64"; fi
           packaging/build-whisper.sh
+          # uiohook-napi (tasto "indica") ha già i binari N-API per ogni OS in prebuilds/,
+          # validi anche per Electron: senza binding.gyp @electron/rebuild lo salta invece
+          # di ricompilarlo (node-gyp 9 non trova VS 2026, distutils, header X11).
+          find node_modules -path '*uiohook-napi/binding.gyp' -not -path '*/libuiohook/*' -print -delete
           EXTRA=""
           if [ "$RUNNER_OS" = "macOS" ] && [ -z "$MAC_CSC_LINK" ]; then
             EXTRA="-c.mac.identity=null"
